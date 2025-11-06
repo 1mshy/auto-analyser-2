@@ -82,10 +82,10 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
               symbol: stock.symbol,
               interval: 'D',
               timezone: 'Etc/UTC',
-              theme: 'light',
+              theme: 'dark',
               style: '1',
               locale: 'en',
-              toolbar_bg: '#f1f3f6',
+              toolbar_bg: '#1e222d',
               enable_publishing: false,
               hide_top_toolbar: false,
               hide_legend: false,
@@ -99,43 +99,59 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
             });
           }
 
-          // Company Profile Widget (HTML embed)
+          // Company Profile Widget
           if (profileContainerRef.current) {
-            profileContainerRef.current.innerHTML = `
-              <div class="tradingview-widget-container" style="height:100%;width:100%">
-                <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%"></div>
-                <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-profile.js" async>
-                {
-                  "width": "100%",
-                  "height": "100%",
-                  "colorTheme": "light",
-                  "isTransparent": false,
-                  "symbol": "${stock.symbol}",
-                  "locale": "en"
-                }
-                </script>
-              </div>
-            `;
+            const container = profileContainerRef.current;
+            container.innerHTML = '';
+            
+            const script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-symbol-info.js';
+            script.async = true;
+            script.innerHTML = JSON.stringify({
+              symbol: stock.symbol,
+              width: '100%',
+              locale: 'en',
+              colorTheme: 'dark',
+              isTransparent: false
+            });
+            
+            const widgetContainer = document.createElement('div');
+            widgetContainer.className = 'tradingview-widget-container';
+            widgetContainer.style.height = '100%';
+            widgetContainer.style.width = '100%';
+            widgetContainer.appendChild(script);
+            
+            container.appendChild(widgetContainer);
           }
 
-          // Fundamental Data Widget (HTML embed)
+          // Fundamental Data Widget
           if (fundamentalsContainerRef.current) {
-            fundamentalsContainerRef.current.innerHTML = `
-              <div class="tradingview-widget-container" style="height:100%;width:100%">
-                <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%"></div>
-                <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-financials.js" async>
-                {
-                  "width": "100%",
-                  "height": "100%",
-                  "colorTheme": "light",
-                  "isTransparent": false,
-                  "symbol": "${stock.symbol}",
-                  "displayMode": "regular",
-                  "locale": "en"
-                }
-                </script>
-              </div>
-            `;
+            const container = fundamentalsContainerRef.current;
+            container.innerHTML = '';
+            
+            const script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-financials.js';
+            script.async = true;
+            script.innerHTML = JSON.stringify({
+              symbol: stock.symbol,
+              colorTheme: 'dark',
+              isTransparent: false,
+              largeChartUrl: '',
+              displayMode: 'regular',
+              width: '100%',
+              height: '100%',
+              locale: 'en'
+            });
+            
+            const widgetContainer = document.createElement('div');
+            widgetContainer.className = 'tradingview-widget-container';
+            widgetContainer.style.height = '100%';
+            widgetContainer.style.width = '100%';
+            widgetContainer.appendChild(script);
+            
+            container.appendChild(widgetContainer);
           }
         } else {
           // Retry after 500ms if TradingView not loaded yet
