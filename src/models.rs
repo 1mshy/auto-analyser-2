@@ -73,6 +73,30 @@ pub struct AnalysisProgress {
     pub errors: usize,
 }
 
+// NASDAQ API response structures
+#[derive(Debug, Clone, Deserialize)]
+pub struct NasdaqResponse {
+    pub data: NasdaqData,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NasdaqData {
+    pub table: NasdaqTable,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NasdaqTable {
+    pub rows: Vec<NasdaqStock>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NasdaqStock {
+    pub symbol: String,
+    pub name: String,
+    #[serde(rename = "marketCap")]
+    pub market_cap: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
