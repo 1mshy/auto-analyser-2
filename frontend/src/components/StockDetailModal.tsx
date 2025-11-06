@@ -56,9 +56,13 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, stock]);
 
-  const formatPrice = (price: number) => `$${price.toFixed(2)}`;
-  const formatMarketCap = (cap?: number) => {
-    if (!cap) return 'N/A';
+  const formatPrice = (price?: number | null) => {
+    if (price === null || price === undefined) return 'N/A';
+    return `$${price.toFixed(2)}`;
+  };
+  
+  const formatMarketCap = (cap?: number | null) => {
+    if (!cap || cap === null) return 'N/A';
     if (cap >= 1e12) return `$${(cap / 1e12).toFixed(2)}T`;
     if (cap >= 1e9) return `$${(cap / 1e9).toFixed(2)}B`;
     if (cap >= 1e6) return `$${(cap / 1e6).toFixed(2)}M`;
@@ -80,7 +84,7 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
           <DialogTitle>
             <HStack>
               <Text fontSize="2xl" fontWeight="bold">{stock.symbol}</Text>
-              <Text fontSize="xl" color="blue.600">{formatPrice(stock.price)}</Text>
+              <Text fontSize="xl" color="blue.400">{formatPrice(stock.price)}</Text>
             </HStack>
           </DialogTitle>
           <DialogCloseTrigger />
@@ -99,23 +103,23 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
               <VStack align="stretch" gap={4} py={4}>
                 <Grid templateColumns="repeat(2, 1fr)" gap={4}>
                   <GridItem>
-                    <Box p={3} bg="gray.50" borderRadius="md">
-                      <Text fontSize="sm" color="gray.600" mb={1}>Current Price</Text>
+                    <Box p={3} bg="bg.muted" borderRadius="md">
+                      <Text fontSize="sm" color="fg.muted" mb={1}>Current Price</Text>
                       <Text fontSize="2xl" fontWeight="bold">{formatPrice(stock.price)}</Text>
                     </Box>
                   </GridItem>
 
                   <GridItem>
-                    <Box p={3} bg="gray.50" borderRadius="md">
-                      <Text fontSize="sm" color="gray.600" mb={1}>Market Cap</Text>
+                    <Box p={3} bg="bg.muted" borderRadius="md">
+                      <Text fontSize="sm" color="fg.muted" mb={1}>Market Cap</Text>
                       <Text fontSize="2xl" fontWeight="bold">{formatMarketCap(stock.market_cap)}</Text>
                     </Box>
                   </GridItem>
 
                   {stock.volume && (
                     <GridItem>
-                      <Box p={3} bg="gray.50" borderRadius="md">
-                        <Text fontSize="sm" color="gray.600" mb={1}>Volume</Text>
+                      <Box p={3} bg="bg.muted" borderRadius="md">
+                        <Text fontSize="sm" color="fg.muted" mb={1}>Volume</Text>
                         <Text fontSize="xl" fontWeight="bold">{(stock.volume / 1e6).toFixed(2)}M</Text>
                       </Box>
                     </GridItem>
@@ -123,8 +127,8 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
 
                   {stock.sector && (
                     <GridItem>
-                      <Box p={3} bg="gray.50" borderRadius="md">
-                        <Text fontSize="sm" color="gray.600" mb={1}>Sector</Text>
+                      <Box p={3} bg="bg.muted" borderRadius="md">
+                        <Text fontSize="sm" color="fg.muted" mb={1}>Sector</Text>
                         <Text fontSize="xl" fontWeight="bold">{stock.sector}</Text>
                       </Box>
                     </GridItem>
@@ -133,7 +137,7 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
 
                 {/* Alerts */}
                 {(stock.is_oversold || stock.is_overbought) && (
-                  <Box p={4} bg="yellow.50" borderRadius="md" borderWidth="1px" borderColor="yellow.300">
+                  <Box p={4} bg="yellow.subtle" borderRadius="md" borderWidth="1px" borderColor="yellow.emphasized">
                     <Text fontSize="sm" fontWeight="semibold" mb={2}>⚠️ Alerts</Text>
                     <HStack gap={2}>
                       {stock.is_oversold && (
@@ -157,14 +161,14 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
               <VStack align="stretch" gap={4} py={4}>
                 {/* RSI */}
                 {stock.rsi !== undefined && (
-                  <Box p={4} bg="gray.50" borderRadius="md">
+                  <Box p={4} bg="bg.muted" borderRadius="md">
                     <HStack justify="space-between" mb={2}>
                       <Text fontSize="md" fontWeight="semibold">RSI (Relative Strength Index)</Text>
                       <Badge colorScheme={getRsiBadgeColor(stock.rsi)} fontSize="lg" px={3} py={1}>
                         {stock.rsi.toFixed(2)}
                       </Badge>
                     </HStack>
-                    <Box bg="gray.200" h="8px" borderRadius="full" position="relative">
+                    <Box bg="bg.emphasized" h="8px" borderRadius="full" position="relative">
                       <Box
                         bg={stock.rsi < 30 ? 'green.500' : stock.rsi > 70 ? 'red.500' : 'blue.500'}
                         h="8px"
@@ -173,14 +177,14 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
                       />
                     </Box>
                     <HStack justify="space-between" mt={1}>
-                      <Text fontSize="xs" color="gray.600">0 (Oversold)</Text>
-                      <Text fontSize="xs" color="gray.600">100 (Overbought)</Text>
+                      <Text fontSize="xs" color="fg.muted">0 (Oversold)</Text>
+                      <Text fontSize="xs" color="fg.muted">100 (Overbought)</Text>
                     </HStack>
                   </Box>
                 )}
 
                 {/* Moving Averages */}
-                <Box p={4} bg="gray.50" borderRadius="md">
+                <Box p={4} bg="bg.muted" borderRadius="md">
                   <Text fontSize="md" fontWeight="semibold" mb={3}>Moving Averages</Text>
                   <VStack align="stretch" gap={2}>
                     {stock.sma_20 !== undefined && (
@@ -200,7 +204,7 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
 
                 {/* MACD */}
                 {stock.macd && (
-                  <Box p={4} bg="gray.50" borderRadius="md">
+                  <Box p={4} bg="bg.muted" borderRadius="md">
                     <Text fontSize="md" fontWeight="semibold" mb={3}>MACD</Text>
                     <VStack align="stretch" gap={2}>
                       <HStack justify="space-between">
@@ -252,7 +256,7 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
                 {loading ? (
                   <Box textAlign="center" py={8}>
                     <Spinner size="lg" />
-                    <Text mt={2} color="gray.600">Loading historical data...</Text>
+                    <Text mt={2} color="fg.muted">Loading historical data...</Text>
                   </Box>
                 ) : historicalData.length > 0 ? (
                   <Box>
@@ -264,7 +268,7 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
                             key={idx}
                             justify="space-between"
                             p={2}
-                            bg="gray.50"
+                            bg="bg.muted"
                             borderRadius="md"
                             fontSize="sm"
                           >
@@ -283,7 +287,7 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
                     </Box>
                   </Box>
                 ) : (
-                  <Box textAlign="center" py={4} color="gray.500">
+                  <Box textAlign="center" py={4} color="fg.muted">
                     No historical data available
                   </Box>
                 )}

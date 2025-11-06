@@ -19,10 +19,13 @@ interface StockCardProps {
 }
 
 const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
-  const formatPrice = (price: number) => `$${price.toFixed(2)}`;
+  const formatPrice = (price?: number | null) => {
+    if (price === null || price === undefined) return 'N/A';
+    return `$${price.toFixed(2)}`;
+  };
   
-  const formatMarketCap = (cap?: number) => {
-    if (!cap) return 'N/A';
+  const formatMarketCap = (cap?: number | null) => {
+    if (!cap || cap === null) return 'N/A';
     if (cap >= 1e12) return `$${(cap / 1e12).toFixed(2)}T`;
     if (cap >= 1e9) return `$${(cap / 1e9).toFixed(2)}B`;
     if (cap >= 1e6) return `$${(cap / 1e6).toFixed(2)}M`;
@@ -37,7 +40,7 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
   };
 
   const getTrendIcon = () => {
-    if (!stock.sma_20 || !stock.sma_50) return AiOutlineMinus;
+    if (!stock.price || !stock.sma_20 || !stock.sma_50) return AiOutlineMinus;
     if (stock.price > stock.sma_20 && stock.sma_20 > stock.sma_50) {
       return IoTrendingUp;
     }
@@ -48,18 +51,18 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
   };
 
   const getTrendColor = () => {
-    if (!stock.sma_20 || !stock.sma_50) return 'gray';
+    if (!stock.price || !stock.sma_20 || !stock.sma_50) return 'gray';
     if (stock.price > stock.sma_20 && stock.sma_20 > stock.sma_50) return 'green';
     if (stock.price < stock.sma_20 && stock.sma_20 < stock.sma_50) return 'red';
     return 'gray';
   };
 
-  const borderColor = stock.is_oversold ? 'green.400' : stock.is_overbought ? 'red.400' : 'gray.200';
-  const bgGradient = stock.is_oversold 
-    ? 'linear(to-br, white, green.50)' 
+  const borderColor = stock.is_oversold ? 'green.400' : stock.is_overbought ? 'red.400' : 'border';
+  const bgColor = stock.is_oversold 
+    ? 'green.subtle' 
     : stock.is_overbought 
-    ? 'linear(to-br, white, red.50)' 
-    : 'white';
+    ? 'red.subtle' 
+    : 'bg.panel';
 
   return (
     <Box
@@ -67,7 +70,7 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
       borderColor={borderColor}
       borderRadius="lg"
       p={5}
-      bgGradient={bgGradient}
+      bg={bgColor}
       boxShadow="md"
       cursor={onClick ? 'pointer' : 'default'}
       _hover={{
@@ -81,10 +84,10 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
       <VStack align="stretch" gap={3}>
         {/* Header */}
         <HStack justify="space-between" align="center">
-          <Text fontSize="2xl" fontWeight="bold" color="gray.800">
+          <Text fontSize="2xl" fontWeight="bold" color="fg">
             {stock.symbol}
           </Text>
-          <Text fontSize="xl" fontWeight="semibold" color="blue.600">
+          <Text fontSize="xl" fontWeight="semibold" color="blue.400">
             {formatPrice(stock.price)}
           </Text>
         </HStack>
@@ -93,10 +96,10 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
 
         {/* Indicators Grid */}
         <Grid templateColumns="repeat(2, 1fr)" gap={3}>
-          {stock.rsi !== undefined && (
+          {stock.rsi !== undefined && stock.rsi !== null && (
             <GridItem>
               <Box>
-                <Text fontSize="xs" color="gray.600" mb={1}>RSI</Text>
+                <Text fontSize="xs" color="fg.muted" mb={1}>RSI</Text>
                 <Badge colorScheme={getRsiBadgeColor(stock.rsi)} fontSize="sm">
                   {stock.rsi.toFixed(2)}
                 </Badge>
@@ -107,7 +110,7 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
           {stock.sma_20 !== undefined && (
             <GridItem>
               <Box>
-                <Text fontSize="xs" color="gray.600" mb={1}>SMA 20</Text>
+                <Text fontSize="xs" color="fg.muted" mb={1}>SMA 20</Text>
                 <Text fontSize="md" fontWeight="semibold">{formatPrice(stock.sma_20)}</Text>
               </Box>
             </GridItem>
@@ -116,7 +119,7 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
           {stock.sma_50 !== undefined && (
             <GridItem>
               <Box>
-                <Text fontSize="xs" color="gray.600" mb={1}>SMA 50</Text>
+                <Text fontSize="xs" color="fg.muted" mb={1}>SMA 50</Text>
                 <Text fontSize="md" fontWeight="semibold">{formatPrice(stock.sma_50)}</Text>
               </Box>
             </GridItem>
@@ -125,16 +128,16 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
           {stock.market_cap !== undefined && (
             <GridItem>
               <Box>
-                <Text fontSize="xs" color="gray.600" mb={1}>Market Cap</Text>
+                <Text fontSize="xs" color="fg.muted" mb={1}>Market Cap</Text>
                 <Text fontSize="md" fontWeight="semibold">{formatMarketCap(stock.market_cap)}</Text>
               </Box>
             </GridItem>
           )}
 
-          {stock.volume !== undefined && (
+          {stock.volume !== undefined && stock.volume !== null && (
             <GridItem colSpan={2}>
               <Box>
-                <Text fontSize="xs" color="gray.600" mb={1}>Volume</Text>
+                <Text fontSize="xs" color="fg.muted" mb={1}>Volume</Text>
                 <Text fontSize="md" fontWeight="semibold">{(stock.volume / 1e6).toFixed(2)}M</Text>
               </Box>
             </GridItem>
@@ -168,7 +171,7 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
         <Separator />
 
         {/* Footer */}
-        <Text fontSize="xs" color="gray.500" textAlign="center">
+        <Text fontSize="xs" color="fg.muted" textAlign="center">
           Updated: {new Date(stock.analyzed_at).toLocaleTimeString()}
         </Text>
       </VStack>

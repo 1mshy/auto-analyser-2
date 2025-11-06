@@ -126,6 +126,17 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
     setFilter((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleNumberInput = (key: keyof StockFilter, value: string, multiplier: number = 1) => {
+    if (value === '' || value === null) {
+      updateFilter(key, undefined);
+      return;
+    }
+    const parsed = parseFloat(value);
+    if (!isNaN(parsed) && parsed >= 0) {
+      updateFilter(key, parsed * multiplier);
+    }
+  };
+
   return (
     <>
       <Button
@@ -190,7 +201,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                   </Text>
                   <VStack gap={2} align="stretch">
                     {savedFilters.map((sf) => (
-                      <HStack key={sf.id} justify="space-between" p={2} bg="gray.50" borderRadius="md">
+                      <HStack key={sf.id} justify="space-between" p={2} bg="bg.muted" borderRadius="md">
                         <Button
                           size="sm"
                           variant="ghost"
@@ -228,8 +239,10 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                     <Text fontSize="sm" mb={1}>Min Price</Text>
                     <Input
                       type="number"
-                      value={filter.min_price || ''}
-                      onChange={(e) => updateFilter('min_price', e.target.value ? parseFloat(e.target.value) : undefined)}
+                      min={0}
+                      step="0.01"
+                      value={filter.min_price ?? ''}
+                      onChange={(e) => handleNumberInput('min_price', e.target.value)}
                       placeholder="$0"
                     />
                   </Box>
@@ -237,8 +250,10 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                     <Text fontSize="sm" mb={1}>Max Price</Text>
                     <Input
                       type="number"
-                      value={filter.max_price || ''}
-                      onChange={(e) => updateFilter('max_price', e.target.value ? parseFloat(e.target.value) : undefined)}
+                      min={0}
+                      step="0.01"
+                      value={filter.max_price ?? ''}
+                      onChange={(e) => handleNumberInput('max_price', e.target.value)}
                       placeholder="$1000"
                     />
                   </Box>
@@ -257,8 +272,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                       type="number"
                       min={0}
                       max={100}
-                      value={filter.min_rsi || ''}
-                      onChange={(e) => updateFilter('min_rsi', e.target.value ? parseFloat(e.target.value) : undefined)}
+                      step="0.01"
+                      value={filter.min_rsi ?? ''}
+                      onChange={(e) => handleNumberInput('min_rsi', e.target.value)}
                       placeholder="0"
                     />
                   </Box>
@@ -268,8 +284,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                       type="number"
                       min={0}
                       max={100}
-                      value={filter.max_rsi || ''}
-                      onChange={(e) => updateFilter('max_rsi', e.target.value ? parseFloat(e.target.value) : undefined)}
+                      step="0.01"
+                      value={filter.max_rsi ?? ''}
+                      onChange={(e) => handleNumberInput('max_rsi', e.target.value)}
                       placeholder="100"
                     />
                   </Box>
@@ -286,8 +303,10 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                     <Text fontSize="sm" mb={1}>Min (Billions)</Text>
                     <Input
                       type="number"
-                      value={filter.min_market_cap ? filter.min_market_cap / 1e9 : ''}
-                      onChange={(e) => updateFilter('min_market_cap', e.target.value ? parseFloat(e.target.value) * 1e9 : undefined)}
+                      min={0}
+                      step="0.01"
+                      value={filter.min_market_cap && filter.min_market_cap > 0 ? (filter.min_market_cap / 1e9).toFixed(2) : ''}
+                      onChange={(e) => handleNumberInput('min_market_cap', e.target.value, 1e9)}
                       placeholder="0"
                     />
                   </Box>
@@ -295,8 +314,10 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                     <Text fontSize="sm" mb={1}>Max (Billions)</Text>
                     <Input
                       type="number"
-                      value={filter.max_market_cap ? filter.max_market_cap / 1e9 : ''}
-                      onChange={(e) => updateFilter('max_market_cap', e.target.value ? parseFloat(e.target.value) * 1e9 : undefined)}
+                      min={0}
+                      step="0.01"
+                      value={filter.max_market_cap && filter.max_market_cap > 0 ? (filter.max_market_cap / 1e9).toFixed(2) : ''}
+                      onChange={(e) => handleNumberInput('max_market_cap', e.target.value, 1e9)}
                       placeholder="5000"
                     />
                   </Box>
@@ -308,8 +329,10 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                 <Text fontSize="sm" mb={1}>Min Volume (Millions)</Text>
                 <Input
                   type="number"
-                  value={filter.min_volume ? filter.min_volume / 1e6 : ''}
-                  onChange={(e) => updateFilter('min_volume', e.target.value ? parseFloat(e.target.value) * 1e6 : undefined)}
+                  min={0}
+                  step="0.01"
+                  value={filter.min_volume && filter.min_volume > 0 ? (filter.min_volume / 1e6).toFixed(2) : ''}
+                  onChange={(e) => handleNumberInput('min_volume', e.target.value, 1e6)}
                   placeholder="0"
                 />
               </Box>

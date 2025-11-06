@@ -306,8 +306,18 @@ impl AnalysisEngine {
     }
 
     fn parse_market_cap(market_cap_str: &str) -> Option<f64> {
-        // Remove commas and parse
-        let cleaned = market_cap_str.replace(',', "");
+        // Remove dollar signs, commas, and whitespace, then parse
+        // Examples: "$1,234,567,890", "1234567890", "$0"
+        let cleaned = market_cap_str
+            .replace('$', "")
+            .replace(',', "")
+            .trim()
+            .to_string();
+        
+        if cleaned.is_empty() || cleaned == "0" {
+            return None;
+        }
+        
         cleaned.parse::<f64>().ok()
     }
 }

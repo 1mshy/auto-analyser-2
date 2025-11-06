@@ -122,15 +122,15 @@ function App() {
   const overboughtCount = Array.isArray(stocks) ? stocks.filter(s => s.is_overbought).length : 0;
 
   return (
-    <Box bg="gray.50" minH="100vh" py={8}>
+    <Box bg="bg" minH="100vh" py={8}>
         <Container maxW="container.xl">
           <VStack gap={6} align="stretch">
             {/* Header */}
             <Box>
-              <Heading as="h1" size="2xl" color="blue.600" mb={2}>
+              <Heading as="h1" size="2xl" color="blue.400" mb={2}>
                 🚀 Auto Stock Analyser
               </Heading>
-              <Text fontSize="lg" color="gray.600">
+              <Text fontSize="lg" color="fg.muted">
                 Real-time stock analysis with technical indicators
               </Text>
             </Box>
@@ -182,7 +182,7 @@ function App() {
 
             {/* Error Message */}
             {error && (
-              <Box bg="red.100" p={4} borderRadius="md" color="red.800">
+              <Box bg="red.subtle" p={4} borderRadius="md" color="red.fg">
                 <Text fontWeight="bold">Error!</Text>
                 <Text>{error}</Text>
               </Box>
@@ -191,8 +191,8 @@ function App() {
             {/* Loading State */}
             {loading && (!Array.isArray(stocks) || stocks.length === 0) && (
               <Box textAlign="center" py={10}>
-                <Spinner size="xl" color="blue.500" borderWidth="4px" />
-                <Text mt={4} fontSize="lg" color="gray.600">
+                <Spinner size="xl" color="blue.400" borderWidth="4px" />
+                <Text mt={4} fontSize="lg" color="fg.muted">
                   Loading stocks...
                 </Text>
               </Box>
@@ -200,7 +200,7 @@ function App() {
 
             {/* Empty State */}
             {!loading && (!Array.isArray(stocks) || stocks.length === 0) && (
-              <Box bg="blue.100" p={4} borderRadius="md" color="blue.800">
+              <Box bg="blue.subtle" p={4} borderRadius="md" color="blue.fg">
                 <Text fontWeight="bold">No stocks found</Text>
                 <Text>
                   The analysis engine is still running. Stocks will appear here once analyzed.

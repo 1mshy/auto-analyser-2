@@ -26,17 +26,17 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
 
   return (
     <Box
-      bg="white"
+      bg="bg.panel"
       p={6}
       borderRadius="lg"
       boxShadow="md"
       borderWidth="1px"
-      borderColor="gray.200"
+      borderColor="border"
     >
       <VStack gap={4} align="stretch">
         {/* Header */}
         <HStack justify="space-between">
-          <Text fontSize="xl" fontWeight="bold" color="gray.800">
+          <Text fontSize="xl" fontWeight="bold" color="fg">
             Analysis Progress
           </Text>
           <Badge colorScheme={percentage === 100 ? 'green' : 'blue'} fontSize="md" px={3} py={1}>
@@ -60,7 +60,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
           <Box>
             <HStack gap={1} mb={1}>
               {createElement(IoTime as any, { style: { width: '12px', height: '12px' } })}
-              <Text fontSize="xs" color="gray.600">Total Stocks</Text>
+              <Text fontSize="xs" color="fg.muted">Total Stocks</Text>
             </HStack>
             <Text fontSize="2xl" fontWeight="bold">{progress.total_stocks}</Text>
           </Box>
@@ -68,9 +68,9 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
           <Box>
             <HStack gap={1} mb={1}>
               {createElement(IoCheckmarkCircle as any, { style: { width: '12px', height: '12px', color: '#48BB78' } })}
-              <Text fontSize="xs" color="gray.600">Analyzed</Text>
+              <Text fontSize="xs" color="fg.muted">Analyzed</Text>
             </HStack>
-            <Text fontSize="2xl" fontWeight="bold" color="green.600">
+            <Text fontSize="2xl" fontWeight="bold" color="green.400">
               {progress.analyzed}
             </Text>
           </Box>
@@ -78,16 +78,16 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
           <Box>
             <HStack gap={1} mb={1}>
               {createElement(IoWarning as any, { style: { width: '12px', height: '12px', color: '#F56565' } })}
-              <Text fontSize="xs" color="gray.600">Errors</Text>
+              <Text fontSize="xs" color="fg.muted">Errors</Text>
             </HStack>
-            <Text fontSize="2xl" fontWeight="bold" color={progress.errors > 0 ? 'red.600' : 'gray.400'}>
+            <Text fontSize="2xl" fontWeight="bold" color={progress.errors > 0 ? 'red.400' : 'fg.muted'}>
               {progress.errors}
             </Text>
           </Box>
 
           <Box>
-            <Text fontSize="xs" color="gray.600" mb={1}>Cycle Time</Text>
-            <Text fontSize="2xl" fontWeight="bold" color="blue.600">
+            <Text fontSize="xs" color="fg.muted" mb={1}>Cycle Time</Text>
+            <Text fontSize="2xl" fontWeight="bold" color="blue.400">
               {cycleMinutes}:{cycleSeconds.toString().padStart(2, '0')}
             </Text>
           </Box>
@@ -96,14 +96,14 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
         {/* Current Symbol */}
         {progress.current_symbol && (
           <Box
-            bg="blue.50"
+            bg="blue.subtle"
             p={3}
             borderRadius="md"
             borderWidth="1px"
-            borderColor="blue.200"
+            borderColor="blue.emphasized"
           >
             <HStack justify="space-between">
-              <Text fontSize="sm" color="gray.600">
+              <Text fontSize="sm" color="fg.muted">
                 Currently Analyzing:
               </Text>
               <Badge colorScheme="blue" fontSize="md">
@@ -116,15 +116,15 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
         {/* Completion Message */}
         {percentage === 100 && (
           <Box
-            bg="green.50"
+            bg="green.subtle"
             p={3}
             borderRadius="md"
             borderWidth="1px"
-            borderColor="green.200"
+            borderColor="green.emphasized"
           >
             <HStack>
               {createElement(IoCheckmarkCircle as any, { style: { width: '20px', height: '20px', color: '#48BB78' } })}
-              <Text fontSize="sm" color="green.700" fontWeight="medium">
+              <Text fontSize="sm" color="green.fg" fontWeight="medium">
                 Analysis cycle complete! Next cycle will begin shortly.
               </Text>
             </HStack>

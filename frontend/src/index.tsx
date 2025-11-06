@@ -11,7 +11,7 @@ const root = ReactDOM.createRoot(
 );
 root.render(
   <React.StrictMode>
-    <Provider>
+    <Provider defaultTheme="dark">
       <App />
       <Toaster />
     </Provider>
