@@ -105,8 +105,10 @@ function App() {
   };
 
   const handleStockClick = (stock: StockAnalysis) => {
+    console.log('Stock clicked:', stock.symbol);
     setSelectedStock(stock);
     setIsDetailModalOpen(true);
+    console.log('Modal should be open now');
   };
 
   const handleCloseDetailModal = () => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Box,
   Text,
@@ -10,12 +10,6 @@ import {
   Spinner,
   Tabs,
   Dialog,
-  DialogBackdrop,
-  DialogCloseTrigger,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogBody,
 } from '@chakra-ui/react';
 import { StockAnalysis, HistoricalDataPoint } from '../types';
 import { api } from '../api';
@@ -27,9 +21,21 @@ interface StockDetailModalProps {
   onClose: () => void;
 }
 
+// TradingView widget loader
+declare global {
+  interface Window {
+    TradingView: any;
+  }
+}
+
 const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onClose }) => {
   const [historicalData, setHistoricalData] = useState<HistoricalDataPoint[]>([]);
   const [loading, setLoading] = useState(false);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const profileContainerRef = useRef<HTMLDivElement>(null);
+  const fundamentalsContainerRef = useRef<HTMLDivElement>(null);
+
+  console.log('StockDetailModal render:', { symbol: stock.symbol, isOpen });
 
   const fetchHistoricalData = async () => {
     try {
@@ -49,9 +55,95 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
     }
   };
 
+  // Load TradingView script
+  useEffect(() => {
+    if (!document.getElementById('tradingview-widget-script')) {
+      const script = document.createElement('script');
+      script.id = 'tradingview-widget-script';
+      script.src = 'https://s3.tradingview.com/tv.js';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  // Initialize TradingView widgets when modal opens
   useEffect(() => {
     if (isOpen && stock) {
       fetchHistoricalData();
+
+      // Wait for TradingView script to load
+      const initWidgets = () => {
+        if (typeof window.TradingView !== 'undefined') {
+          // Advanced Chart Widget
+          if (chartContainerRef.current) {
+            chartContainerRef.current.innerHTML = '';
+            new window.TradingView.widget({
+              autosize: true,
+              symbol: stock.symbol,
+              interval: 'D',
+              timezone: 'Etc/UTC',
+              theme: 'light',
+              style: '1',
+              locale: 'en',
+              toolbar_bg: '#f1f3f6',
+              enable_publishing: false,
+              hide_top_toolbar: false,
+              hide_legend: false,
+              save_image: false,
+              container_id: chartContainerRef.current.id,
+              studies: [
+                'RSI@tv-basicstudies',
+                'MASimple@tv-basicstudies',
+                'MACD@tv-basicstudies'
+              ],
+            });
+          }
+
+          // Company Profile Widget (HTML embed)
+          if (profileContainerRef.current) {
+            profileContainerRef.current.innerHTML = `
+              <div class="tradingview-widget-container" style="height:100%;width:100%">
+                <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%"></div>
+                <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-profile.js" async>
+                {
+                  "width": "100%",
+                  "height": "100%",
+                  "colorTheme": "light",
+                  "isTransparent": false,
+                  "symbol": "${stock.symbol}",
+                  "locale": "en"
+                }
+                </script>
+              </div>
+            `;
+          }
+
+          // Fundamental Data Widget (HTML embed)
+          if (fundamentalsContainerRef.current) {
+            fundamentalsContainerRef.current.innerHTML = `
+              <div class="tradingview-widget-container" style="height:100%;width:100%">
+                <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%"></div>
+                <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-financials.js" async>
+                {
+                  "width": "100%",
+                  "height": "100%",
+                  "colorTheme": "light",
+                  "isTransparent": false,
+                  "symbol": "${stock.symbol}",
+                  "displayMode": "regular",
+                  "locale": "en"
+                }
+                </script>
+              </div>
+            `;
+          }
+        } else {
+          // Retry after 500ms if TradingView not loaded yet
+          setTimeout(initWidgets, 500);
+        }
+      };
+
+      setTimeout(initWidgets, 100);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, stock]);
@@ -77,25 +169,35 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
   };
 
   return (
-    <Dialog.Root open={isOpen} onOpenChange={(e: any) => !e.open && onClose()} size="xl">
-      <DialogBackdrop />
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            <HStack>
-              <Text fontSize="2xl" fontWeight="bold">{stock.symbol}</Text>
-              <Text fontSize="xl" color="blue.400">{formatPrice(stock.price)}</Text>
-            </HStack>
-          </DialogTitle>
-          <DialogCloseTrigger />
-        </DialogHeader>
+    <Dialog.Root open={isOpen} onOpenChange={(details: any) => !details.open && onClose()}>
+      <Dialog.Backdrop />
+      <Dialog.Positioner>
+        <Dialog.Content 
+          maxW="95vw" 
+          maxH="95vh" 
+          overflowY="auto"
+          bg="black"
+          p={6}
+          borderRadius="lg"
+        >
+          <Dialog.Header>
+            <Dialog.Title>
+              <HStack>
+                <Text fontSize="2xl" fontWeight="bold">{stock.symbol}</Text>
+                <Text fontSize="xl" color="blue.400">{formatPrice(stock.price)}</Text>
+              </HStack>
+            </Dialog.Title>
+            <Dialog.CloseTrigger />
+          </Dialog.Header>
 
-        <DialogBody>
+          <Dialog.Body>
           <Tabs.Root defaultValue="overview" variant="enclosed">
             <Tabs.List>
               <Tabs.Trigger value="overview">Overview</Tabs.Trigger>
               <Tabs.Trigger value="technicals">Technical Indicators</Tabs.Trigger>
               <Tabs.Trigger value="chart">Chart</Tabs.Trigger>
+              <Tabs.Trigger value="company">Company Profile</Tabs.Trigger>
+              <Tabs.Trigger value="fundamentals">Fundamentals</Tabs.Trigger>
             </Tabs.List>
 
             {/* Overview Tab */}
@@ -230,26 +332,13 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
             {/* Chart Tab */}
             <Tabs.Content value="chart">
               <VStack align="stretch" gap={4} py={4}>
-                {/* TradingView Widget */}
+                {/* TradingView Advanced Chart Widget */}
                 <Box>
                   <div
-                    className="tradingview-widget-container"
-                    style={{ height: '500px', width: '100%' }}
-                  >
-                    <div
-                      className="tradingview-widget-container__widget"
-                      style={{ height: 'calc(100% - 32px)', width: '100%' }}
-                    >
-                      <iframe
-                        title={`TradingView Chart for ${stock.symbol}`}
-                        scrolling="no"
-                        allowTransparency
-                        frameBorder="0"
-                        src={`https://www.tradingview.com/widgetembed/?frameElementId=tradingview_${stock.symbol}&symbol=${stock.symbol}&interval=D&hidesidetoolbar=0&symboledit=1&saveimage=1&toolbarbg=f1f3f6&studies=[]&theme=light&style=1&timezone=Etc%2FUTC&withdateranges=1&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=[]&locale=en&utm_source=localhost&utm_medium=widget_new&utm_campaign=chart&utm_term=${stock.symbol}`}
-                        style={{ width: '100%', height: '100%' }}
-                      />
-                    </div>
-                  </div>
+                    id={`tradingview_chart_${stock.symbol}`}
+                    ref={chartContainerRef}
+                    style={{ height: '600px', width: '100%' }}
+                  />
                 </Box>
 
                 {/* Historical Data */}
@@ -293,9 +382,38 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
                 )}
               </VStack>
             </Tabs.Content>
+
+            {/* Company Profile Tab */}
+            <Tabs.Content value="company">
+              <VStack align="stretch" gap={4} py={4}>
+                <Box>
+                  <Text fontSize="lg" fontWeight="semibold" mb={3}>Company Information</Text>
+                  <div
+                    id={`tradingview_profile_${stock.symbol}`}
+                    ref={profileContainerRef}
+                    style={{ height: '500px', width: '100%' }}
+                  />
+                </Box>
+              </VStack>
+            </Tabs.Content>
+
+            {/* Fundamentals Tab */}
+            <Tabs.Content value="fundamentals">
+              <VStack align="stretch" gap={4} py={4}>
+                <Box>
+                  <Text fontSize="lg" fontWeight="semibold" mb={3}>Fundamental Data</Text>
+                  <div
+                    id={`tradingview_fundamentals_${stock.symbol}`}
+                    ref={fundamentalsContainerRef}
+                    style={{ height: '500px', width: '100%' }}
+                  />
+                </Box>
+              </VStack>
+            </Tabs.Content>
           </Tabs.Root>
-        </DialogBody>
-      </DialogContent>
+        </Dialog.Body>
+      </Dialog.Content>
+    </Dialog.Positioner>
     </Dialog.Root>
   );
 };
