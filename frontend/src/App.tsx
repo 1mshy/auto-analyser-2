@@ -17,10 +17,16 @@ import { MdRefresh } from 'react-icons/md';
 import StockCard from './components/StockCard';
 import FilterPanel from './components/FilterPanel';
 import ProgressBar from './components/ProgressBar';
+import StockDetailModal from './components/StockDetailModal';
 import { useWebSocket } from './hooks';
 import { api } from './api';
 import { StockAnalysis, StockFilter, AnalysisProgress } from './types';
 import { toaster } from './components/ui/toaster';
+
+// Default filter: Show low RSI stocks (potential buying opportunities)
+const DEFAULT_FILTER: StockFilter = {
+  max_rsi: 30,
+};
 
 function App() {
   const { stocks: wsStocks, isConnected } = useWebSocket();
@@ -28,11 +34,13 @@ function App() {
   const [progress, setProgress] = useState<AnalysisProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState<StockFilter>({});
+  const [activeFilter, setActiveFilter] = useState<StockFilter>(DEFAULT_FILTER);
+  const [selectedStock, setSelectedStock] = useState<StockAnalysis | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // Fetch initial data
+  // Fetch initial data with default filter
   useEffect(() => {
-    fetchStocks();
+    fetchStocksWithFilter(DEFAULT_FILTER);
     fetchProgress();
     const progressInterval = setInterval(fetchProgress, 5000);
     return () => clearInterval(progressInterval);
@@ -47,9 +55,24 @@ function App() {
   }, [wsStocks]);
 
   const fetchStocks = async () => {
+    await fetchStocksWithFilter(activeFilter);
+  };
+
+  const fetchStocksWithFilter = async (filter: StockFilter) => {
     try {
       setLoading(true);
-      const data = await api.getStocks();
+      
+      // Check if filter is empty
+      const isEmptyFilter = Object.keys(filter).length === 0 || 
+        Object.values(filter).every(v => v === undefined || v === false);
+
+      let data;
+      if (isEmptyFilter) {
+        data = await api.getStocks();
+      } else {
+        data = await api.filterStocks(filter);
+      }
+      
       setStocks(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err) {
@@ -70,41 +93,25 @@ function App() {
   };
 
   const handleApplyFilter = async (filter: StockFilter) => {
-    try {
-      setLoading(true);
-      setActiveFilter(filter);
-      
-      // Check if filter is empty
-      const isEmptyFilter = Object.keys(filter).length === 0 || 
-        Object.values(filter).every(v => v === undefined || v === false);
+    setActiveFilter(filter);
+    await fetchStocksWithFilter(filter);
+    
+    toaster.create({
+      title: 'Filters applied',
+      description: `Showing ${stocks.length} stocks`,
+      type: 'success',
+      duration: 3000,
+    });
+  };
 
-      let data;
-      if (isEmptyFilter) {
-        data = await api.getStocks();
-      } else {
-        data = await api.filterStocks(filter);
-      }
-      
-      const safeData = Array.isArray(data) ? data : [];
-      setStocks(safeData);
-      
-      toaster.create({
-        title: 'Filters applied',
-        description: `Showing ${safeData.length} stocks`,
-        type: 'success',
-        duration: 3000,
-      });
-    } catch (err) {
-      toaster.create({
-        title: 'Filter failed',
-        description: 'Failed to apply filters',
-        type: 'error',
-        duration: 3000,
-      });
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+  const handleStockClick = (stock: StockAnalysis) => {
+    setSelectedStock(stock);
+    setIsDetailModalOpen(true);
+  };
+
+  const handleCloseDetailModal = () => {
+    setIsDetailModalOpen(false);
+    setSelectedStock(null);
   };
 
   const countActiveFilters = () => {
@@ -205,9 +212,22 @@ function App() {
             {Array.isArray(stocks) && stocks.length > 0 && (
               <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} gap={6}>
                 {stocks.map((stock) => (
-                  <StockCard key={stock.symbol} stock={stock} />
+                  <StockCard 
+                    key={stock.symbol} 
+                    stock={stock} 
+                    onClick={() => handleStockClick(stock)}
+                  />
                 ))}
               </SimpleGrid>
+            )}
+
+            {/* Stock Detail Modal */}
+            {selectedStock && (
+              <StockDetailModal
+                stock={selectedStock}
+                isOpen={isDetailModalOpen}
+                onClose={handleCloseDetailModal}
+              />
             )}
           </VStack>
         </Container>

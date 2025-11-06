@@ -15,9 +15,10 @@ import { StockAnalysis } from '../types';
 
 interface StockCardProps {
   stock: StockAnalysis;
+  onClick?: () => void;
 }
 
-const StockCard: React.FC<StockCardProps> = ({ stock }) => {
+const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
   const formatPrice = (price: number) => `$${price.toFixed(2)}`;
   
   const formatMarketCap = (cap?: number) => {
@@ -68,12 +69,14 @@ const StockCard: React.FC<StockCardProps> = ({ stock }) => {
       p={5}
       bgGradient={bgGradient}
       boxShadow="md"
+      cursor={onClick ? 'pointer' : 'default'}
       _hover={{
         boxShadow: 'xl',
         transform: 'translateY(-2px)',
         transition: 'all 0.2s',
       }}
       transition="all 0.2s"
+      onClick={onClick}
     >
       <VStack align="stretch" gap={3}>
         {/* Header */}

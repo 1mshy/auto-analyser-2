@@ -43,6 +43,7 @@ struct YahooError {
     description: String,
 }
 
+#[derive(Clone)]
 pub struct YahooFinanceClient {
     client: reqwest::Client,
     max_retries: u32,
@@ -193,6 +194,15 @@ impl YahooFinanceClient {
             .last()
             .ok_or_else(|| anyhow!("No latest quote for {}", symbol))?;
         Ok((latest.close, latest.volume))
+    }
+
+    /// Fetch historical data for a symbol (alias for get_historical_prices)
+    pub async fn fetch_historical_data(
+        &self,
+        symbol: &str,
+        days: i64,
+    ) -> Result<Vec<HistoricalPrice>> {
+        self.get_historical_prices(symbol, days).await
     }
 }
 

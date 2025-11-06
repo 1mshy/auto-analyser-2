@@ -12,6 +12,7 @@ use api::{create_router, AppState};
 use cache::CacheLayer;
 use config::Config;
 use db::MongoDB;
+use yahoo::YahooFinanceClient;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -40,6 +41,10 @@ async fn main() -> anyhow::Result<()> {
     // Initialize cache
     let cache = CacheLayer::new(config.cache_ttl_secs);
     tracing::info!("Cache layer initialized with TTL: {}s", config.cache_ttl_secs);
+
+    // Initialize Yahoo Finance client
+    let yahoo_client = YahooFinanceClient::new();
+    tracing::info!("Yahoo Finance client initialized");
 
     // Create analysis engine
     let analysis_engine = AnalysisEngine::new(
@@ -77,6 +82,7 @@ async fn main() -> anyhow::Result<()> {
         db: db.clone(),
         cache: cache.clone(),
         progress,
+        yahoo_client,
     };
 
     // Build API router with CORS

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { StockAnalysis, StockFilter, AnalysisProgress } from './types';
+import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint } from './types';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3030';
 
@@ -7,13 +7,19 @@ export const api = {
   // Get all stocks
   getStocks: async (): Promise<StockAnalysis[]> => {
     const response = await axios.get(`${API_BASE_URL}/api/stocks`);
-    return response.data;
+    return response.data.stocks || response.data;
   },
 
   // Filter stocks
   filterStocks: async (filter: StockFilter): Promise<StockAnalysis[]> => {
     const response = await axios.post(`${API_BASE_URL}/api/stocks/filter`, filter);
-    return response.data;
+    return response.data.stocks || response.data;
+  },
+
+  // Get stock historical data
+  getStockHistory: async (symbol: string): Promise<HistoricalDataPoint[]> => {
+    const response = await axios.get(`${API_BASE_URL}/api/stocks/${symbol}/history`);
+    return response.data.history || [];
   },
 
   // Get analysis progress

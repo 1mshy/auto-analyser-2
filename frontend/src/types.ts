@@ -40,3 +40,19 @@ export interface AnalysisProgress {
   cycle_start: string;
   errors: number;
 }
+
+export interface SavedFilter {
+  id: string;
+  name: string;
+  filter: StockFilter;
+  createdAt: string;
+}
+
+export interface HistoricalDataPoint {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}

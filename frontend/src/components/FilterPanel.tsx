@@ -1,4 +1,4 @@
-import React, { useState, createElement } from 'react';
+import React, { useState, useEffect, createElement } from 'react';
 import {
   Box,
   Button,
@@ -9,19 +9,43 @@ import {
   useDisclosure,
   Badge,
   Text,
+  IconButton,
 } from '@chakra-ui/react';
-import { IoSettings } from 'react-icons/io5';
+import { IoSettings, IoBookmark, IoTrash } from 'react-icons/io5';
 import { Checkbox } from './ui/checkbox';
-import { StockFilter } from '../types';
+import { StockFilter, SavedFilter } from '../types';
+import { toaster } from './ui/toaster';
 
 interface FilterPanelProps {
   onApplyFilter: (filter: StockFilter) => void;
   activeFilterCount: number;
 }
 
+const SAVED_FILTERS_KEY = 'stock_analyzer_saved_filters';
+
 const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCount }) => {
   const { open, onOpen, onClose } = useDisclosure();
   const [filter, setFilter] = useState<StockFilter>({});
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
+  const [filterName, setFilterName] = useState('');
+
+  // Load saved filters from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem(SAVED_FILTERS_KEY);
+    if (saved) {
+      try {
+        setSavedFilters(JSON.parse(saved));
+      } catch (e) {
+        console.error('Failed to load saved filters:', e);
+      }
+    }
+  }, []);
+
+  // Save filters to localStorage
+  const saveFiltersToStorage = (filters: SavedFilter[]) => {
+    localStorage.setItem(SAVED_FILTERS_KEY, JSON.stringify(filters));
+    setSavedFilters(filters);
+  };
 
   const handleApply = () => {
     onApplyFilter(filter);
@@ -31,6 +55,71 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
   const handleClear = () => {
     setFilter({});
     onApplyFilter({});
+  };
+
+  const handleSaveFilter = () => {
+    if (!filterName.trim()) {
+      toaster.create({
+        title: 'Name required',
+        description: 'Please enter a name for this filter',
+        type: 'error',
+        duration: 3000,
+      });
+      return;
+    }
+
+    const newFilter: SavedFilter = {
+      id: Date.now().toString(),
+      name: filterName,
+      filter: filter,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updated = [...savedFilters, newFilter];
+    saveFiltersToStorage(updated);
+    setFilterName('');
+    
+    toaster.create({
+      title: 'Filter saved',
+      description: `"${filterName}" saved successfully`,
+      type: 'success',
+      duration: 3000,
+    });
+  };
+
+  const handleLoadFilter = (savedFilter: SavedFilter) => {
+    setFilter(savedFilter.filter);
+    toaster.create({
+      title: 'Filter loaded',
+      description: `"${savedFilter.name}" applied`,
+      type: 'success',
+      duration: 2000,
+    });
+  };
+
+  const handleDeleteFilter = (id: string) => {
+    const updated = savedFilters.filter(f => f.id !== id);
+    saveFiltersToStorage(updated);
+    
+    toaster.create({
+      title: 'Filter deleted',
+      type: 'success',
+      duration: 2000,
+    });
+  };
+
+  const loadPreset = (preset: 'oversold' | 'overbought' | 'all') => {
+    switch (preset) {
+      case 'oversold':
+        setFilter({ max_rsi: 30 });
+        break;
+      case 'overbought':
+        setFilter({ min_rsi: 70 });
+        break;
+      case 'all':
+        setFilter({});
+        break;
+    }
   };
 
   const updateFilter = (key: keyof StockFilter, value: any) => {
@@ -75,6 +164,60 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
 
             <Drawer.Body>
             <VStack gap={4} align="stretch">
+              {/* Quick Presets */}
+              <Box>
+                <Text fontSize="lg" fontWeight="semibold" mb={2}>
+                  Quick Presets
+                </Text>
+                <HStack gap={2} flexWrap="wrap">
+                  <Button size="sm" onClick={() => loadPreset('oversold')} colorScheme="green">
+                    Low RSI (&lt;30)
+                  </Button>
+                  <Button size="sm" onClick={() => loadPreset('overbought')} colorScheme="red">
+                    High RSI (&gt;70)
+                  </Button>
+                  <Button size="sm" onClick={() => loadPreset('all')} variant="outline">
+                    All Stocks
+                  </Button>
+                </HStack>
+              </Box>
+
+              {/* Saved Filters */}
+              {savedFilters.length > 0 && (
+                <Box>
+                  <Text fontSize="lg" fontWeight="semibold" mb={2}>
+                    Saved Filters
+                  </Text>
+                  <VStack gap={2} align="stretch">
+                    {savedFilters.map((sf) => (
+                      <HStack key={sf.id} justify="space-between" p={2} bg="gray.50" borderRadius="md">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleLoadFilter(sf)}
+                          flex="1"
+                          justifyContent="flex-start"
+                          display="flex"
+                          alignItems="center"
+                          gap={2}
+                        >
+                          {createElement(IoBookmark as any)}
+                          {sf.name}
+                        </Button>
+                        <IconButton
+                          aria-label="Delete filter"
+                          size="sm"
+                          variant="ghost"
+                          colorScheme="red"
+                          onClick={() => handleDeleteFilter(sf.id)}
+                        >
+                          {createElement(IoTrash as any)}
+                        </IconButton>
+                      </HStack>
+                    ))}
+                  </VStack>
+                </Box>
+              )}
               {/* Price Range */}
               <Box>
                 <Text fontSize="lg" fontWeight="semibold" mb={2}>
@@ -195,12 +338,30 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
           </Drawer.Body>
 
           <Drawer.Footer>
-            <Button variant="outline" mr={3} onClick={handleClear}>
-              Clear All
-            </Button>
-            <Button colorScheme="blue" onClick={handleApply}>
-              Apply Filters
-            </Button>
+            <VStack gap={3} width="100%">
+              {/* Save Current Filter */}
+              <HStack width="100%">
+                <Input
+                  placeholder="Filter name..."
+                  value={filterName}
+                  onChange={(e) => setFilterName(e.target.value)}
+                  size="sm"
+                />
+                <Button size="sm" onClick={handleSaveFilter} colorScheme="green">
+                  Save
+                </Button>
+              </HStack>
+              
+              {/* Action Buttons */}
+              <HStack width="100%" justify="flex-end">
+                <Button variant="outline" onClick={handleClear}>
+                  Clear All
+                </Button>
+                <Button colorScheme="blue" onClick={handleApply}>
+                  Apply Filters
+                </Button>
+              </HStack>
+            </VStack>
           </Drawer.Footer>
         </Drawer.Content>
         </Drawer.Positioner>

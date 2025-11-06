@@ -2,11 +2,12 @@ use crate::{
     cache::CacheLayer,
     db::MongoDB,
     models::{AnalysisProgress, StockFilter},
+    yahoo::YahooFinanceClient,
 };
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        State, WebSocketUpgrade,
+        Path, State, WebSocketUpgrade,
     },
     response::{IntoResponse, Json},
     routing::{get, post},
@@ -22,6 +23,7 @@ pub struct AppState {
     pub db: MongoDB,
     pub cache: CacheLayer,
     pub progress: Arc<RwLock<AnalysisProgress>>,
+    pub yahoo_client: YahooFinanceClient,
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -30,6 +32,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/api/stocks", get(get_stocks))
         .route("/api/stocks/filter", post(filter_stocks))
+        .route("/api/stocks/:symbol/history", get(get_stock_history))
         .route("/api/progress", get(get_progress))
         .route("/ws", get(websocket_handler))
         .with_state(state)
@@ -121,6 +124,26 @@ async fn filter_stocks(
                 "count": stocks.len(),
                 "stocks": stocks,
                 "cached": false
+            }))
+        }
+        Err(e) => Json(json!({
+            "success": false,
+            "error": e.to_string()
+        })),
+    }
+}
+
+async fn get_stock_history(
+    State(state): State<AppState>,
+    Path(symbol): Path<String>,
+) -> impl IntoResponse {
+    // Fetch from Yahoo Finance (90 days of historical data)
+    match state.yahoo_client.fetch_historical_data(&symbol, 90).await {
+        Ok(history) => {
+            Json(json!({
+                "success": true,
+                "symbol": symbol,
+                "history": history,
             }))
         }
         Err(e) => Json(json!({
