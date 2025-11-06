@@ -8,7 +8,7 @@ echo "=================================="
 echo ""
 
 # Base URL
-BASE_URL="http://localhost:3000"
+BASE_URL="http://localhost:3030"
 
 # Colors
 GREEN='\033[0;32m'
