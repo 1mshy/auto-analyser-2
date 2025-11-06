@@ -3,17 +3,28 @@ use crate::models::{HistoricalPrice, MACDIndicator};
 pub struct TechnicalIndicators;
 
 impl TechnicalIndicators {
-    /// Calculate RSI (Relative Strength Index)
+    /// Calculate RSI (Relative Strength Index) using Wilder's Smoothing
+    /// This matches TradingView's RSI calculation
     pub fn calculate_rsi(prices: &[HistoricalPrice], period: usize) -> Option<f64> {
         if prices.len() < period + 1 {
             return None;
         }
 
+        // Calculate price changes
+        let mut changes = Vec::new();
+        for i in 1..prices.len() {
+            changes.push(prices[i].close - prices[i - 1].close);
+        }
+
+        if changes.len() < period {
+            return None;
+        }
+
+        // Calculate initial average gain and loss using SMA for first period
         let mut gains = Vec::new();
         let mut losses = Vec::new();
-
-        for i in 1..prices.len() {
-            let change = prices[i].close - prices[i - 1].close;
+        
+        for &change in &changes[..period] {
             if change > 0.0 {
                 gains.push(change);
                 losses.push(0.0);
@@ -23,22 +34,29 @@ impl TechnicalIndicators {
             }
         }
 
-        if gains.len() < period {
-            return None;
+        let mut avg_gain: f64 = gains.iter().sum::<f64>() / period as f64;
+        let mut avg_loss: f64 = losses.iter().sum::<f64>() / period as f64;
+
+        // Apply Wilder's Smoothing for remaining periods
+        for &change in &changes[period..] {
+            let gain = if change > 0.0 { change } else { 0.0 };
+            let loss = if change < 0.0 { change.abs() } else { 0.0 };
+            
+            // Wilder's smoothing: (previous_avg * (period - 1) + current_value) / period
+            avg_gain = (avg_gain * (period - 1) as f64 + gain) / period as f64;
+            avg_loss = (avg_loss * (period - 1) as f64 + loss) / period as f64;
         }
 
-        let avg_gain: f64 = gains.iter().rev().take(period).sum::<f64>() / period as f64;
-        let avg_loss: f64 = losses.iter().rev().take(period).sum::<f64>() / period as f64;
-
+        // Calculate RSI
         if avg_loss == 0.0 {
             if avg_gain == 0.0 {
                 return Some(50.0); // No movement
             }
-            return Some(100.0); // All gains
+            return Some(100.0); // All gains, no losses
         }
 
         if avg_gain == 0.0 {
-            return Some(0.0); // All losses
+            return Some(0.0); // All losses, no gains
         }
 
         let rs = avg_gain / avg_loss;

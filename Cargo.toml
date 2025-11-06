@@ -21,8 +21,7 @@ mongodb = "3.1"
 bson = { version = "2.13", features = ["chrono-0_4"] }
 
 # HTTP client for stock data
-reqwest = { version = "0.12", features = ["json"] }
-yahoo_finance_api = "1.3"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
 
 # Caching
 moka = { version = "0.12", features = ["future"] }
@@ -32,7 +31,6 @@ ta = "0.5"
 
 # Date/Time
 chrono = { version = "0.4", features = ["serde"] }
-time = { version = "0.3", features = ["macros"] }
 
 # Error handling
 anyhow = "1.0"

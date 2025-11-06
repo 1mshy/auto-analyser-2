@@ -105,8 +105,8 @@ impl AnalysisEngine {
                 }
             }
 
-            // Rate limiting: wait between requests
-            sleep(Duration::from_millis(500)).await;
+            // Rate limiting: wait 4 seconds between requests to avoid 429 errors
+            sleep(Duration::from_millis(4000)).await;
         }
 
         // Invalidate list caches after cycle
