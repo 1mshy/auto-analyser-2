@@ -1,5 +1,6 @@
 use crate::models::{Stock, StockAnalysis, StockFilter};
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use futures::stream::StreamExt;
 use mongodb::{
     bson::{doc, Document},
@@ -85,6 +86,16 @@ impl MongoDB {
         Ok(())
     }
 
+    /// Get analysis for a specific symbol
+    pub async fn get_analysis_by_symbol(&self, symbol: &str) -> Result<Option<StockAnalysis>> {
+        let collection = self.analysis_collection();
+        
+        match collection.find_one(doc! { "symbol": symbol }).await? {
+            Some(analysis) => Ok(Some(analysis)),
+            None => Ok(None),
+        }
+    }
+
     pub async fn get_latest_analyses(&self, filter: StockFilter) -> Result<Vec<StockAnalysis>> {
         let collection = self.analysis_collection();
         let mut filter_doc = Document::new();
@@ -139,5 +150,40 @@ impl MongoDB {
 
     pub async fn get_analysis_count(&self) -> Result<u64> {
         Ok(self.analysis_collection().estimated_document_count().await?)
+    }
+
+    /// Get the timestamp of the most recent analysis
+    pub async fn get_latest_analysis_timestamp(&self) -> Result<Option<DateTime<Utc>>> {
+        let collection = self.analysis_collection();
+        
+        let mut cursor = collection
+            .find(doc! {})
+            .sort(doc! { "analyzed_at": -1 })
+            .limit(1)
+            .await?;
+
+        if let Some(doc) = cursor.next().await {
+            if let Ok(analysis) = doc {
+                return Ok(Some(analysis.analyzed_at));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Get all analyses from the database
+    pub async fn get_all_analyses(&self) -> Result<Vec<StockAnalysis>> {
+        let collection = self.analysis_collection();
+        let mut cursor = collection
+            .find(doc! {})
+            .sort(doc! { "analyzed_at": -1 })
+            .await?;
+
+        let mut results = Vec::new();
+        while let Some(doc) = cursor.next().await {
+            if let Ok(analysis) = doc {
+                results.push(analysis);
+            }
+        }
+        Ok(results)
     }
 }

@@ -49,6 +49,21 @@ async fn main() -> anyhow::Result<()> {
     );
     let progress = analysis_engine.get_progress();
 
+    // Load existing data from MongoDB and populate cache
+    tracing::info!("📥 Loading existing stock data from database...");
+    match analysis_engine.load_existing_data().await {
+        Ok(count) => {
+            if count > 0 {
+                tracing::info!("✅ Loaded {} stock analyses from database", count);
+            } else {
+                tracing::info!("📊 No existing data found. Will perform initial analysis.");
+            }
+        }
+        Err(e) => {
+            tracing::warn!("⚠️  Failed to load existing data: {}. Starting fresh.", e);
+        }
+    }
+
     // Start continuous analysis in background
     let analysis_handle = {
         let engine = analysis_engine;

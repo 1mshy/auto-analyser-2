@@ -52,12 +52,41 @@ impl AnalysisEngine {
         }
     }
 
+    /// Load existing data from MongoDB and populate cache
+    pub async fn load_existing_data(&self) -> anyhow::Result<usize> {
+        info!("Loading existing data from MongoDB...");
+        
+        match self.db.get_all_analyses().await {
+            Ok(analyses) => {
+                let count = analyses.len();
+                if count > 0 {
+                    info!("Found {} existing analyses in database", count);
+                    
+                    // Populate cache
+                    for analysis in analyses {
+                        self.cache.set_stock(analysis.symbol.clone(), analysis).await;
+                    }
+                    
+                    info!("✅ Loaded {} analyses into cache", count);
+                } else {
+                    info!("No existing analyses found in database");
+                }
+                Ok(count)
+            }
+            Err(e) => {
+                warn!("Failed to load existing data: {}. Starting fresh.", e);
+                Ok(0)
+            }
+        }
+    }
+
     pub fn get_progress(&self) -> Arc<RwLock<AnalysisProgress>> {
         Arc::clone(&self.progress)
     }
 
     pub async fn start_continuous_analysis(&self) {
         info!("Starting continuous analysis engine...");
+        info!("Per-ticker caching enabled: {}s threshold", self.interval_secs);
         
         loop {
             info!("Beginning new analysis cycle");
@@ -86,6 +115,7 @@ impl AnalysisEngine {
         drop(progress);
 
         info!("Analyzing {} stocks", symbols.len());
+        let mut skipped = 0;
 
         for (idx, (symbol, market_cap)) in symbols.iter().enumerate() {
             // Update progress
@@ -95,28 +125,56 @@ impl AnalysisEngine {
                 progress.analyzed = idx;
             }
 
-            // Analyze stock with rate limiting
-            match self.analyze_stock(symbol, *market_cap).await {
-                Ok(analysis) => {
-                    // Save to database
-                    if let Err(e) = self.db.save_analysis(&analysis).await {
-                        error!("Failed to save analysis for {}: {}", symbol, e);
-                        let mut progress = self.progress.write().await;
-                        progress.errors += 1;
+            // Check if this ticker was analyzed recently
+            let should_analyze = match self.db.get_analysis_by_symbol(symbol).await {
+                Ok(Some(existing)) => {
+                    let now = Utc::now();
+                    let elapsed = now.signed_duration_since(existing.analyzed_at).num_seconds() as u64;
+                    
+                    if elapsed < self.interval_secs {
+                        info!("⏭️  Skipping {} - analyzed {}s ago (threshold: {}s)", 
+                            symbol, elapsed, self.interval_secs);
+                        skipped += 1;
+                        false
                     } else {
-                        // Update cache
-                        self.cache.set_stock(symbol.clone(), analysis).await;
+                        info!("🔄 Re-analyzing {} - last analyzed {}s ago", symbol, elapsed);
+                        true
                     }
                 }
-                Err(e) => {
-                    warn!("Failed to analyze {}: {}", symbol, e);
-                    let mut progress = self.progress.write().await;
-                    progress.errors += 1;
+                Ok(None) => {
+                    info!("🆕 Analyzing new ticker: {}", symbol);
+                    true
                 }
-            }
+                Err(e) => {
+                    warn!("Error checking existing data for {}: {}. Will analyze.", symbol, e);
+                    true
+                }
+            };
 
-            // Rate limiting: wait 4 seconds between requests to avoid 429 errors
-            sleep(Duration::from_millis(4000)).await;
+            if should_analyze {
+                // Analyze stock with rate limiting
+                match self.analyze_stock(symbol, *market_cap).await {
+                    Ok(analysis) => {
+                        // Save to database
+                        if let Err(e) = self.db.save_analysis(&analysis).await {
+                            error!("Failed to save analysis for {}: {}", symbol, e);
+                            let mut progress = self.progress.write().await;
+                            progress.errors += 1;
+                        } else {
+                            // Update cache
+                            self.cache.set_stock(symbol.clone(), analysis).await;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to analyze {}: {}", symbol, e);
+                        let mut progress = self.progress.write().await;
+                        progress.errors += 1;
+                    }
+                }
+
+                // Rate limiting: wait 4 seconds between requests to avoid 429 errors
+                sleep(Duration::from_millis(4000)).await;
+            }
         }
 
         // Invalidate list caches after cycle
@@ -127,8 +185,10 @@ impl AnalysisEngine {
         progress.current_symbol = None;
 
         info!(
-            "Cycle complete. Analyzed {} stocks with {} errors",
+            "Cycle complete. Processed {} stocks ({} analyzed, {} skipped, {} errors)",
             symbols.len(),
+            symbols.len() - skipped,
+            skipped,
             progress.errors
         );
 
