@@ -1,0 +1,78 @@
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: stock_analyzer_db
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    environment:
+      - MONGO_INITDB_DATABASE=stock_analyzer
+    networks:
+      - stock_analyzer_network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/stock_analyzer --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Rust Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stock_analyzer_backend
+    restart: unless-stopped
+    ports:
+      - "3030:3030"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017
+      - DATABASE_NAME=stock_analyzer
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=3030
+      - ANALYSIS_INTERVAL_SECS=3600
+      - CACHE_TTL_SECS=300
+      - RUST_LOG=info
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - stock_analyzer_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3030/api/progress"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: stock_analyzer_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - stock_analyzer_network
+    healthcheck:
+      test: ["CMD", "test", "-f", "/usr/share/nginx/html/index.html"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+
+networks:
+  stock_analyzer_network:
+    driver: bridge

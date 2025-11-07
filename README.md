@@ -7,7 +7,6 @@ A high-performance, production-ready stock market analysis platform combining a 
 ### 🔥 **Performance & Reliability**
 - **High-Speed Analysis**: Rust-powered backend for maximum performance
 - **Intelligent Caching**: Multi-layer caching with Moka for sub-second response times
-- **Database Persistence**: SQLite storage with automatic migrations
 - **Rate Limiting**: Built-in API rate limiting to prevent throttling
 - **Error Resilience**: Comprehensive error handling and recovery
 
@@ -33,3 +32,39 @@ A high-performance, production-ready stock market analysis platform combining a 
 - 📡 **WebSocket Updates**: Real-time progress updates via WebSocket connections
 - 🎯 **Live Filtering**: Apply filters to view subsets of continuously updated results
 - 📊 **Persistent Results**: Analysis results are stored and filtered server-side
+
+## 🐳 Quick Start with Docker
+
+The easiest way to run the entire application stack:
+
+```bash
+# Start all services (backend, frontend, MongoDB)
+docker-compose up -d
+
+# Access the application
+# Frontend: http://localhost
+# Backend API: http://localhost:3030/api
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+See [DOCKER.md](DOCKER.md) for detailed Docker documentation.
+
+### Using Makefile (Even Easier)
+
+```bash
+make up          # Start all services
+make down        # Stop all services  
+make logs        # View logs
+make rebuild     # Rebuild and restart
+make status      # Show service status
+make help        # Show all commands
+```
+
+See [DOCKER_QUICK_REF.md](DOCKER_QUICK_REF.md) for more Docker commands.
+
+## 📦 Manual Installation

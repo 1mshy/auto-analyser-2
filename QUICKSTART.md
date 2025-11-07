@@ -1,8 +1,31 @@
 # 🚀 Quick Start Guide
 
-## Prerequisites
+## Choose Your Installation Method
 
-Before you start, ensure you have:
+### 🐳 **Option 1: Docker (Recommended - Easiest)**
+
+**Prerequisites**: Docker Desktop installed
+
+```bash
+# Clone and start everything with one command
+git clone <repository-url>
+cd auto-analyser-2
+docker-compose up -d
+
+# Access the application
+# Frontend: http://localhost
+# Backend: http://localhost:3030/api
+```
+
+That's it! Skip to [Test It Out](#-test-it-out) below.
+
+See [DOCKER.md](DOCKER.md) for detailed Docker documentation.
+
+---
+
+### 🛠️ **Option 2: Manual Installation**
+
+**Prerequisites**:
 - ✅ **Rust 1.70+** installed ([rustup.rs](https://rustup.rs/))
 - ✅ **MongoDB** running locally or MongoDB Atlas account
 - ✅ **Git** for version control

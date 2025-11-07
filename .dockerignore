@@ -1,0 +1,32 @@
+# Rust build artifacts
+target/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+!README.md
+
+# Git
+.git/
+.gitignore
+
+# Frontend
+frontend/
+
+# Test files
+test_*.sh
+TEST_*.md
