@@ -6,6 +6,7 @@ use crate::{
     yahoo::YahooFinanceClient,
 };
 use chrono::Utc;
+use rand::Rng;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
@@ -18,6 +19,7 @@ pub struct AnalysisEngine {
     cache: CacheLayer,
     progress: Arc<RwLock<AnalysisProgress>>,
     interval_secs: u64,
+    yahoo_delay_ms: u64,
     cached_symbols: Arc<RwLock<Vec<(String, Option<f64>)>>>,
 }
 
@@ -26,6 +28,7 @@ impl AnalysisEngine {
         db: MongoDB,
         cache: CacheLayer,
         interval_secs: u64,
+        yahoo_delay_ms: u64,
     ) -> Self {
         let progress = Arc::new(RwLock::new(AnalysisProgress {
             total_stocks: 0,
@@ -48,6 +51,7 @@ impl AnalysisEngine {
             cache,
             progress,
             interval_secs,
+            yahoo_delay_ms,
             cached_symbols: Arc::new(RwLock::new(Vec::new())),
         }
     }
@@ -87,6 +91,7 @@ impl AnalysisEngine {
     pub async fn start_continuous_analysis(&self) {
         info!("Starting continuous analysis engine...");
         info!("Per-ticker caching enabled: {}s threshold", self.interval_secs);
+        info!("Yahoo Finance request delay: {}ms (+ 0-2s jitter)", self.yahoo_delay_ms);
         
         loop {
             info!("Beginning new analysis cycle");
@@ -172,8 +177,13 @@ impl AnalysisEngine {
                     }
                 }
 
-                // Rate limiting: wait 4 seconds between requests to avoid 429 errors
-                sleep(Duration::from_millis(4000)).await;
+                // Rate limiting with jitter based on config
+                let base_delay = self.yahoo_delay_ms;
+                let jitter = rand::thread_rng().gen_range(0..2000); // Add 0-2 seconds jitter
+                let delay_ms = base_delay + jitter;
+                // info!("⏱️  Waiting {}ms before next request", delay_ms);
+                // info!("Sike doing it rn!")
+                // sleep(Duration::from_millis(delay_ms)).await;
             }
         }
 

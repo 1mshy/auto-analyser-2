@@ -1,7 +1,9 @@
 use crate::models::HistoricalPrice;
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
+use rand::Rng;
 use reqwest;
+use reqwest::header::ACCEPT;
 use serde::Deserialize;
 use std::time::Duration as StdDuration;
 use tokio::time::sleep;
@@ -51,8 +53,41 @@ pub struct YahooFinanceClient {
 
 impl YahooFinanceClient {
     pub fn new() -> Self {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::ACCEPT,
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert(
+            reqwest::header::ACCEPT_LANGUAGE,
+            "en-GB,en-US;q=0.9,en;q=0.8".parse().unwrap(),
+        );
+        headers.insert(
+            reqwest::header::CACHE_CONTROL,
+            "max-age=0".parse().unwrap(),
+        );
+        headers.insert(
+            "sec-ch-ua",
+            "\"Chromium\";v=\"142\", \"Google Chrome\";v=\"142\", \"Not_A Brand\";v=\"99\""
+                .parse()
+                .unwrap(),
+        );
+        headers.insert("sec-ch-ua-mobile", "?0".parse().unwrap());
+        headers.insert("sec-ch-ua-platform", "\"macOS\"".parse().unwrap());
+        headers.insert("sec-fetch-dest", "document".parse().unwrap());
+        headers.insert("sec-fetch-mode", "navigate".parse().unwrap());
+        headers.insert("sec-fetch-site", "none".parse().unwrap());
+        headers.insert("sec-fetch-user", "?1".parse().unwrap());
+        headers.insert(
+            "upgrade-insecure-requests",
+            "1".parse().unwrap(),
+        );
+
         let client = reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .default_headers(headers)
             .timeout(StdDuration::from_secs(30))
             .build()
             .expect("Failed to create HTTP client");
@@ -73,15 +108,28 @@ impl YahooFinanceClient {
 
         while attempt < self.max_retries {
             if attempt > 0 {
-                // Exponential backoff: 2, 4, 8 seconds
-                let delay = 2u64.pow(attempt);
-                tracing::debug!("Retry attempt {} for {} after {}s delay", attempt + 1, symbol, delay);
+                // Exponential backoff with jitter: 5-7s, 10-14s, 20-28s
+                let base_delay = 5u64 * 2u64.pow(attempt - 1);
+                let jitter = rand::thread_rng().gen_range(0..=(base_delay / 2));
+                let delay = base_delay + jitter;
+                tracing::warn!("Retry attempt {} for {} after {}s delay (rate limited)", attempt + 1, symbol, delay);
                 sleep(StdDuration::from_secs(delay)).await;
             }
 
             match self.fetch_historical_prices(symbol, days).await {
-                Ok(prices) => return Ok(prices),
+                Ok(prices) => {
+                    if attempt > 0 {
+                        tracing::info!("✅ Successfully fetched {} after {} retries", symbol, attempt);
+                    }
+                    return Ok(prices);
+                }
                 Err(e) => {
+                    let err_msg = e.to_string();
+                    if err_msg.contains("429") || err_msg.contains("Rate limited") {
+                        tracing::warn!("⚠️  Rate limited on attempt {} for {}", attempt + 1, symbol);
+                    } else {
+                        tracing::error!("❌ Error fetching {}: {}", symbol, err_msg);
+                    }
                     last_error = Some(e);
                     attempt += 1;
                 }
@@ -97,23 +145,30 @@ impl YahooFinanceClient {
         days: i64,
     ) -> Result<Vec<HistoricalPrice>> {
         let url = format!(
-            "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range={}d",
-            symbol, days
+            "https://query2.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range={}d",
+            symbol.replace("/", "-"), days
         );
 
+        tracing::debug!("Fetching {} from Yahoo Finance (query2): {}", symbol, url);
+        
         let response = self
             .client
             .get(&url)
+            .header(ACCEPT, "application/json")
             .send()
             .await
             .map_err(|e| anyhow!("HTTP request failed for {}: {}", symbol, e))?;
 
         let status = response.status();
+        tracing::debug!("Response status for {}: {}", symbol, status);
+        
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
             return Err(anyhow!("Rate limited by Yahoo Finance (429)"));
         }
 
         if !status.is_success() {
+            let body = response.text().await.unwrap_or_else(|_| "Unable to read response".to_string());
+            tracing::warn!("Yahoo Finance error for {}: status={}, body={}", symbol, status, body);
             return Err(anyhow!("Yahoo Finance returned status {}", status));
         }
 

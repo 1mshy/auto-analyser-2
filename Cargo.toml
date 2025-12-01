@@ -46,3 +46,4 @@ dotenv = "0.15"
 # Utilities
 futures = "0.3"
 once_cell = "1.19"
+rand = "0.8"

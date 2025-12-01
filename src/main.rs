@@ -51,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
         db.clone(),
         cache.clone(),
         config.analysis_interval_secs,
+        config.yahoo_request_delay_ms,
     );
     let progress = analysis_engine.get_progress();
 

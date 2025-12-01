@@ -9,6 +9,7 @@ pub struct Config {
     pub server_port: u16,
     pub analysis_interval_secs: u64,
     pub cache_ttl_secs: u64,
+    pub yahoo_request_delay_ms: u64,
 }
 
 impl Config {
@@ -30,6 +31,9 @@ impl Config {
                 .parse()?,
             cache_ttl_secs: env::var("CACHE_TTL_SECS")
                 .unwrap_or_else(|_| "300".to_string())
+                .parse()?,
+            yahoo_request_delay_ms: env::var("YAHOO_REQUEST_DELAY_MS")
+                .unwrap_or_else(|_| "8000".to_string())
                 .parse()?,
         })
     }
