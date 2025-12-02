@@ -8,12 +8,13 @@ use crate::{
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        Path, State, WebSocketUpgrade,
+        Path, Query, State, WebSocketUpgrade,
     },
     response::{IntoResponse, Json},
     routing::{get, post},
     Router,
 };
+use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -37,6 +38,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/stocks/filter", post(filter_stocks))
         .route("/api/stocks/:symbol/history", get(get_stock_history))
         .route("/api/stocks/:symbol/ai-analysis", get(get_ai_analysis))
+        .route("/api/market-summary", get(get_market_summary))
         .route("/api/progress", get(get_progress))
         .route("/api/ai/status", get(get_ai_status))
         .route("/api/ai/models", get(get_ai_models))
@@ -90,6 +92,10 @@ async fn get_stocks(State(state): State<AppState>) -> impl IntoResponse {
         sectors: None,
         only_oversold: None,
         only_overbought: None,
+        sort_by: Some("market_cap".to_string()),
+        sort_order: Some("desc".to_string()),
+        page: Some(1),
+        page_size: Some(50),
     };
 
     match state.db.get_latest_analyses(filter).await {
@@ -109,16 +115,51 @@ async fn filter_stocks(
     State(state): State<AppState>,
     Json(filter): Json<StockFilter>,
 ) -> impl IntoResponse {
+    // Clone filter for counting
+    let count_filter = StockFilter {
+        min_price: filter.min_price,
+        max_price: filter.max_price,
+        min_volume: filter.min_volume,
+        min_market_cap: filter.min_market_cap,
+        max_market_cap: filter.max_market_cap,
+        min_rsi: filter.min_rsi,
+        max_rsi: filter.max_rsi,
+        sectors: filter.sectors.clone(),
+        only_oversold: filter.only_oversold,
+        only_overbought: filter.only_overbought,
+        sort_by: None,
+        sort_order: None,
+        page: None,
+        page_size: None,
+    };
+
     // Try cache first
     let cache_key = format!("{:?}", filter);
     if let Some(cached) = state.cache.get_list(&cache_key).await {
+        let total = state.db.get_filtered_count(count_filter).await.unwrap_or(cached.len() as u64);
+        let page = filter.page.unwrap_or(1);
+        let page_size = filter.page_size.unwrap_or(50);
+        let total_pages = ((total as f64) / (page_size as f64)).ceil() as u32;
+        
         return Json(json!({
             "success": true,
             "count": cached.len(),
             "stocks": cached,
-            "cached": true
+            "cached": true,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": total_pages
+            }
         }));
     }
+
+    // Get total count for pagination
+    let total = state.db.get_filtered_count(count_filter).await.unwrap_or(0);
+    let page = filter.page.unwrap_or(1);
+    let page_size = filter.page_size.unwrap_or(50);
+    let total_pages = ((total as f64) / (page_size as f64)).ceil() as u32;
 
     match state.db.get_latest_analyses(filter).await {
         Ok(stocks) => {
@@ -129,9 +170,29 @@ async fn filter_stocks(
                 "success": true,
                 "count": stocks.len(),
                 "stocks": stocks,
-                "cached": false
+                "cached": false,
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total": total,
+                    "total_pages": total_pages
+                }
             }))
         }
+        Err(e) => Json(json!({
+            "success": false,
+            "error": e.to_string()
+        })),
+    }
+}
+
+/// Get market summary with top gainers, losers, and key highlights
+async fn get_market_summary(State(state): State<AppState>) -> impl IntoResponse {
+    match state.db.get_market_summary(10).await {
+        Ok(summary) => Json(json!({
+            "success": true,
+            "summary": summary
+        })),
         Err(e) => Json(json!({
             "success": false,
             "error": e.to_string()

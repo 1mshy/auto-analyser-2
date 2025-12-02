@@ -2,6 +2,8 @@ export interface StockAnalysis {
   id?: string;
   symbol: string;
   price: number;
+  price_change?: number;
+  price_change_percent?: number;
   rsi?: number;
   sma_20?: number;
   sma_50?: number;
@@ -12,12 +14,43 @@ export interface StockAnalysis {
   is_oversold: boolean;
   is_overbought: boolean;
   analyzed_at: string;
+  technicals?: NasdaqTechnicals;
+  news?: NasdaqNewsItem[];
 }
 
 export interface MACDIndicator {
   macd_line: number;
   signal_line: number;
   histogram: number;
+}
+
+export interface NasdaqTechnicals {
+  exchange?: string;
+  sector?: string;
+  industry?: string;
+  one_year_target?: number;
+  todays_high?: number;
+  todays_low?: number;
+  share_volume?: number;
+  average_volume?: number;
+  previous_close?: number;
+  fifty_two_week_high?: number;
+  fifty_two_week_low?: number;
+  pe_ratio?: number;
+  forward_pe?: number;
+  eps?: number;
+  annualized_dividend?: number;
+  ex_dividend_date?: string;
+  dividend_pay_date?: string;
+  current_yield?: number;
+}
+
+export interface NasdaqNewsItem {
+  title: string;
+  url: string;
+  publisher?: string;
+  created?: string;
+  ago?: string;
 }
 
 export interface StockFilter {
@@ -31,6 +64,44 @@ export interface StockFilter {
   sectors?: string[];
   only_oversold?: boolean;
   only_overbought?: boolean;
+  sort_by?: string;      // "market_cap", "price_change_percent", "rsi", "price"
+  sort_order?: string;   // "asc" or "desc"
+  page?: number;
+  page_size?: number;
+}
+
+export interface PaginationInfo {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface MarketSummary {
+  total_stocks: number;
+  top_gainers: StockAnalysis[];
+  top_losers: StockAnalysis[];
+  most_oversold: StockAnalysis[];
+  most_overbought: StockAnalysis[];
+  mega_cap_highlights: StockAnalysis[];
+  generated_at: string;
+}
+
+export interface AIAnalysisResponse {
+  success: boolean;
+  symbol?: string;
+  analysis?: string;
+  model_used?: string;
+  generated_at?: string;
+  stock_data?: {
+    price: number;
+    rsi?: number;
+    sma_20?: number;
+    sma_50?: number;
+    is_oversold: boolean;
+    is_overbought: boolean;
+  };
+  error?: string;
 }
 
 export interface AnalysisProgress {
@@ -55,4 +126,36 @@ export interface HistoricalDataPoint {
   low: number;
   close: number;
   volume: number;
+}
+
+// Market cap tier classification
+export type MarketCapTier = 'mega' | 'large' | 'mid' | 'small' | 'micro';
+
+export function getMarketCapTier(marketCap?: number): MarketCapTier {
+  if (!marketCap) return 'micro';
+  if (marketCap >= 200_000_000_000) return 'mega';  // $200B+
+  if (marketCap >= 10_000_000_000) return 'large';   // $10B+
+  if (marketCap >= 2_000_000_000) return 'mid';      // $2B+
+  if (marketCap >= 300_000_000) return 'small';      // $300M+
+  return 'micro';
+}
+
+export function getMarketCapTierLabel(tier: MarketCapTier): string {
+  switch (tier) {
+    case 'mega': return 'Mega Cap';
+    case 'large': return 'Large Cap';
+    case 'mid': return 'Mid Cap';
+    case 'small': return 'Small Cap';
+    case 'micro': return 'Micro Cap';
+  }
+}
+
+export function getMarketCapTierColor(tier: MarketCapTier): string {
+  switch (tier) {
+    case 'mega': return 'purple';
+    case 'large': return 'blue';
+    case 'mid': return 'teal';
+    case 'small': return 'orange';
+    case 'micro': return 'gray';
+  }
 }

@@ -21,6 +21,8 @@ pub struct StockAnalysis {
     pub id: Option<ObjectId>,
     pub symbol: String,
     pub price: f64,
+    pub price_change: Option<f64>,
+    pub price_change_percent: Option<f64>,
     pub rsi: Option<f64>,
     pub sma_20: Option<f64>,
     pub sma_50: Option<f64>,
@@ -66,6 +68,23 @@ pub struct StockFilter {
     pub sectors: Option<Vec<String>>,
     pub only_oversold: Option<bool>,
     pub only_overbought: Option<bool>,
+    // Sorting options
+    pub sort_by: Option<String>,      // "market_cap", "price_change_percent", "rsi", "price"
+    pub sort_order: Option<String>,   // "asc" or "desc"
+    // Pagination
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketSummary {
+    pub total_stocks: usize,
+    pub top_gainers: Vec<StockAnalysis>,
+    pub top_losers: Vec<StockAnalysis>,
+    pub most_oversold: Vec<StockAnalysis>,
+    pub most_overbought: Vec<StockAnalysis>,
+    pub mega_cap_highlights: Vec<StockAnalysis>,  // >$200B
+    pub generated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -175,6 +194,8 @@ mod tests {
             id: None,
             symbol: "MSFT".to_string(),
             price: 350.0,
+            price_change: Some(5.0),
+            price_change_percent: Some(1.45),
             rsi: Some(65.5),
             sma_20: Some(345.0),
             sma_50: Some(340.0),
@@ -275,6 +296,8 @@ mod tests {
             id: None,
             symbol: "TEST".to_string(),
             price: 100.0,
+            price_change: None,
+            price_change_percent: None,
             rsi: Some(25.0),
             sma_20: None,
             sma_50: None,

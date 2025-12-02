@@ -269,10 +269,41 @@ impl AnalysisEngine {
         // Get sector from technicals if available
         let sector = technicals.as_ref().and_then(|t| t.sector.clone());
 
+        // Calculate price change from previous close
+        let (price_change, price_change_percent) = if let Some(ref tech) = technicals {
+            if let Some(prev_close) = tech.previous_close {
+                if prev_close > 0.0 {
+                    let change = latest_price.close - prev_close;
+                    let change_percent = (change / prev_close) * 100.0;
+                    (Some(change), Some(change_percent))
+                } else {
+                    (None, None)
+                }
+            } else {
+                (None, None)
+            }
+        } else {
+            // Fallback: calculate from historical data if we have at least 2 days
+            if historical_prices.len() >= 2 {
+                let prev_close = historical_prices[historical_prices.len() - 2].close;
+                if prev_close > 0.0 {
+                    let change = latest_price.close - prev_close;
+                    let change_percent = (change / prev_close) * 100.0;
+                    (Some(change), Some(change_percent))
+                } else {
+                    (None, None)
+                }
+            } else {
+                (None, None)
+            }
+        };
+
         let analysis = StockAnalysis {
             id: None,
             symbol: symbol.to_string(),
             price: latest_price.close,
+            price_change,
+            price_change_percent,
             rsi,
             sma_20,
             sma_50,

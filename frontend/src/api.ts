@@ -1,19 +1,50 @@
 import axios from 'axios';
-import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint } from './types';
+import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse } from './types';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3030';
 
+export interface FilterResponse {
+  stocks: StockAnalysis[];
+  pagination: PaginationInfo;
+  cached: boolean;
+}
+
 export const api = {
-  // Get all stocks
+  // Get all stocks (paginated)
   getStocks: async (): Promise<StockAnalysis[]> => {
     const response = await axios.get(`${API_BASE_URL}/api/stocks`);
     return response.data.stocks || response.data;
   },
 
-  // Filter stocks
-  filterStocks: async (filter: StockFilter): Promise<StockAnalysis[]> => {
+  // Filter stocks with pagination
+  filterStocks: async (filter: StockFilter): Promise<FilterResponse> => {
     const response = await axios.post(`${API_BASE_URL}/api/stocks/filter`, filter);
-    return response.data.stocks || response.data;
+    return {
+      stocks: response.data.stocks || [],
+      pagination: response.data.pagination || { page: 1, page_size: 50, total: 0, total_pages: 0 },
+      cached: response.data.cached || false,
+    };
+  },
+
+  // Get market summary (top gainers, losers, etc.)
+  getMarketSummary: async (): Promise<MarketSummary> => {
+    const response = await axios.get(`${API_BASE_URL}/api/market-summary`);
+    if (response.data.success) {
+      return response.data.summary;
+    }
+    throw new Error(response.data.error || 'Failed to fetch market summary');
+  },
+
+  // Get AI analysis for a stock
+  getAIAnalysis: async (symbol: string): Promise<AIAnalysisResponse> => {
+    const response = await axios.get(`${API_BASE_URL}/api/stocks/${symbol}/ai-analysis`);
+    return response.data;
+  },
+
+  // Get AI status
+  getAIStatus: async (): Promise<{ enabled: boolean; current_model?: string; available_models_count: number }> => {
+    const response = await axios.get(`${API_BASE_URL}/api/ai/status`);
+    return response.data;
   },
 
   // Get stock historical data
