@@ -23,13 +23,13 @@ Complete Docker Compose setup for the Auto Stock Analyzer application, enabling 
    - Proxy rules for API requests to backend
    - WebSocket support for real-time updates
 
-4. **`docker-compose.yml`**
+4. **`docker compose.yml`**
    - Orchestrates all three services
    - Defines networking and volumes
    - Health checks for all services
    - Auto-restart policies
 
-5. **`docker-compose.prod.yml`**
+5. **`docker compose.prod.yml`**
    - Production overrides
    - Resource limits and reservations
    - MongoDB authentication
@@ -115,21 +115,21 @@ Complete Docker Compose setup for the Auto Stock Analyzer application, enabling 
 
 ```bash
 # Start everything
-docker-compose up -d
+docker compose up -d
 
 # Or with Makefile
 make up
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 make logs
 
 # Stop services
-docker-compose down
+docker compose down
 make down
 
 # Rebuild and restart
-docker-compose down && docker-compose build && docker-compose up -d
+docker compose down && docker compose build && docker compose up -d
 make rebuild
 ```
 
@@ -144,7 +144,7 @@ make rebuild
 
 ```bash
 # Start only MongoDB for local development
-docker-compose up -d mongodb
+docker compose up -d mongodb
 
 # Run backend locally
 cargo run
@@ -160,7 +160,7 @@ cd frontend && npm start
 export MONGO_PASSWORD=secure_password
 
 # Start with production config
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker compose.yml -f docker compose.prod.yml up -d
 ```
 
 ## Features
@@ -188,7 +188,7 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ### Logging
 - JSON logging for production
 - Log rotation configured
-- Easy access via `docker-compose logs`
+- Easy access via `docker compose logs`
 
 ## Testing
 

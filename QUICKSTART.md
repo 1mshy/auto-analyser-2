@@ -10,7 +10,7 @@
 # Clone and start everything with one command
 git clone <repository-url>
 cd auto-analyser-2
-docker-compose up -d
+docker compose up -d
 
 # Access the application
 # Frontend: http://localhost

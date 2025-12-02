@@ -7,8 +7,8 @@ auto-analyser-2/
 │
 ├── 🐳 Docker Configuration
 │   ├── Dockerfile                      # Backend (Rust) image
-│   ├── docker-compose.yml              # Main orchestration file
-│   ├── docker-compose.prod.yml         # Production overrides
+│   ├── docker compose.yml              # Main orchestration file
+│   ├── docker compose.prod.yml         # Production overrides
 │   ├── .dockerignore                   # Backend build exclusions
 │   └── .env.docker                     # Environment template
 │
@@ -37,7 +37,7 @@ auto-analyser-2/
 
 ### Option 1: Docker Compose (Easiest)
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Option 2: Makefile (Even Easier)
@@ -88,22 +88,22 @@ make up
 
 ### Start & Stop
 ```bash
-docker-compose up -d        # Start all services
-docker-compose down         # Stop all services
-docker-compose restart      # Restart services
+docker compose up -d        # Start all services
+docker compose down         # Stop all services
+docker compose restart      # Restart services
 ```
 
 ### View & Debug
 ```bash
-docker-compose logs -f      # View all logs
-docker-compose ps           # Service status
+docker compose logs -f      # View all logs
+docker compose ps           # Service status
 docker stats                # Resource usage
 ```
 
 ### Management
 ```bash
-docker-compose build        # Rebuild images
-docker-compose down -v      # Remove everything
+docker compose build        # Rebuild images
+docker compose down -v      # Remove everything
 make help                   # Show all commands
 ```
 
@@ -115,8 +115,8 @@ make help                   # Show all commands
 |---------------------------|----------------------------------------------|
 | `Dockerfile`              | Builds optimized Rust backend image          |
 | `frontend/Dockerfile`     | Builds React app + nginx server              |
-| `docker-compose.yml`      | Orchestrates all 3 services                  |
-| `docker-compose.prod.yml` | Production configuration overrides           |
+| `docker compose.yml`      | Orchestrates all 3 services                  |
+| `docker compose.prod.yml` | Production configuration overrides           |
 
 ### Configuration
 
@@ -173,7 +173,7 @@ Stage 2: Server (nginx:alpine)
 
 ## Environment Variables
 
-Set in `docker-compose.yml` or override with `.env` file:
+Set in `docker compose.yml` or override with `.env` file:
 
 ```env
 # Database
@@ -244,7 +244,7 @@ GitHub Actions workflow (`.github/workflows/docker.yml`):
 2. ✅ Setup Docker Buildx
 3. ✅ Build backend image
 4. ✅ Build frontend image
-5. ✅ Start services with docker-compose
+5. ✅ Start services with docker compose
 6. ✅ Test health endpoints
 7. ✅ Cleanup
 
@@ -262,7 +262,7 @@ Runs on every push and PR to main/develop branches.
 - RAM: 4GB
 - Disk: 5GB
 
-### Production Limits (docker-compose.prod.yml)
+### Production Limits (docker compose.prod.yml)
 - Backend: 2 CPU, 2GB RAM
 - Frontend: 1 CPU, 512MB RAM
 - MongoDB: 2 CPU, 4GB RAM
@@ -271,27 +271,27 @@ Runs on every push and PR to main/develop branches.
 
 ```bash
 # 1. Build images
-docker-compose build
+docker compose build
 
 # 2. Start services
-docker-compose up -d
+docker compose up -d
 
 # 3. Check status
-docker-compose ps
+docker compose ps
 
 # 4. Test endpoints
 curl http://localhost:3030/api/progress
 curl http://localhost
 
 # 5. View logs
-docker-compose logs
+docker compose logs
 
 # 6. Check health
-docker-compose exec backend curl -f http://localhost:3030/api/progress
-docker-compose exec mongodb mongosh --eval "db.runCommand('ping')"
+docker compose exec backend curl -f http://localhost:3030/api/progress
+docker compose exec mongodb mongosh --eval "db.runCommand('ping')"
 
 # 7. Cleanup
-docker-compose down -v
+docker compose down -v
 ```
 
 Or simply run: `./docker-test.sh`
@@ -300,19 +300,19 @@ Or simply run: `./docker-test.sh`
 
 | Issue                  | Command                               |
 |------------------------|---------------------------------------|
-| View logs              | `docker-compose logs -f <service>`    |
-| Restart service        | `docker-compose restart <service>`    |
-| Rebuild image          | `docker-compose build --no-cache`     |
-| Reset everything       | `docker-compose down -v`              |
+| View logs              | `docker compose logs -f <service>`    |
+| Restart service        | `docker compose restart <service>`    |
+| Rebuild image          | `docker compose build --no-cache`     |
+| Reset everything       | `docker compose down -v`              |
 | Check ports            | `lsof -i :80,3030,27017`             |
 | Test endpoint          | `curl http://localhost:3030/api/progress` |
 
 ## Next Steps
 
-1. **Try it**: `docker-compose up -d`
+1. **Try it**: `docker compose up -d`
 2. **Access**: http://localhost
-3. **Monitor**: `docker-compose logs -f`
-4. **Deploy**: Use `docker-compose.prod.yml` for production
+3. **Monitor**: `docker compose logs -f`
+4. **Deploy**: Use `docker compose.prod.yml` for production
 
 ## Documentation Links
 

@@ -6,7 +6,7 @@ Since you mentioned you have a VPN, here's how to route Docker traffic through i
 
 This makes Docker use your host's network (including VPN):
 
-### Update docker-compose.yml:
+### Update docker compose.yml:
 ```yaml
 backend:
   network_mode: "host"  # Use host network instead of bridge
@@ -29,8 +29,8 @@ mongodb:
 
 ### Deploy:
 ```bash
-docker-compose down
-docker-compose up -d
+docker compose down
+docker compose up -d
 
 # Test - should now work through VPN
 docker logs -f stock_analyzer_backend | grep -E "(✅|Rate limited)"
@@ -65,7 +65,7 @@ tinyproxy -d  # -d for debug mode, remove for production
 brew services start tinyproxy
 ```
 
-### Step 3: Update docker-compose.yml
+### Step 3: Update docker compose.yml
 ```yaml
 backend:
   environment:
@@ -77,7 +77,7 @@ backend:
 
 ### Step 4: Test
 ```bash
-docker-compose down && docker-compose up -d
+docker compose down && docker compose up -d
 docker logs -f stock_analyzer_backend
 
 # You should see successful fetches:
@@ -91,7 +91,7 @@ docker logs -f stock_analyzer_backend
 ### Create a VPN container that other containers route through:
 
 ```yaml
-# docker-compose.yml
+# docker compose.yml
 services:
   vpn:
     image: dperson/openvpn-client
@@ -144,7 +144,7 @@ If local works but Docker doesn't, then Docker networking is the issue, not the 
 
 ### Quick Implementation:
 
-1. **Update docker-compose.yml**:
+1. **Update docker compose.yml**:
 ```yaml
 services:
   mongodb:
@@ -190,13 +190,13 @@ volumes:
 2. **Deploy**:
 ```bash
 # Stop existing containers
-docker-compose down
+docker compose down
 
 # Remove network (not needed anymore)
 docker network rm auto-analyser-2_stock_analyzer_network 2>/dev/null || true
 
 # Start with host network
-docker-compose up -d
+docker compose up -d
 
 # Monitor logs
 docker logs -f stock_analyzer_backend

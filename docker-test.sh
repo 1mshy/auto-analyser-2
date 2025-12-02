@@ -34,23 +34,23 @@ if ! docker info > /dev/null 2>&1; then
 fi
 print_status "Docker is running"
 
-# Check if docker-compose is available
-if ! command -v docker-compose &> /dev/null; then
-    print_error "docker-compose is not installed"
+# Check if docker compose is available
+if ! command -v docker compose &> /dev/null; then
+    print_error "docker compose is not installed"
     exit 1
 fi
-print_status "docker-compose is available"
+print_status "docker compose is available"
 
 # Stop any existing containers
 echo ""
 echo "🧹 Cleaning up existing containers..."
-docker-compose down -v > /dev/null 2>&1 || true
+docker compose down -v > /dev/null 2>&1 || true
 print_status "Cleaned up existing containers"
 
 # Build the images
 echo ""
 echo "🔨 Building Docker images..."
-if docker-compose build --no-cache; then
+if docker compose build --no-cache; then
     print_status "Images built successfully"
 else
     print_error "Failed to build images"
@@ -60,11 +60,11 @@ fi
 # Start the services
 echo ""
 echo "🚀 Starting services..."
-if docker-compose up -d; then
+if docker compose up -d; then
     print_status "Services started"
 else
     print_error "Failed to start services"
-    docker-compose logs
+    docker compose logs
     exit 1
 fi
 
@@ -76,7 +76,7 @@ sleep 10
 # Check MongoDB
 echo ""
 echo "Testing MongoDB..."
-if docker-compose exec -T mongodb mongosh --eval "db.runCommand('ping')" > /dev/null 2>&1; then
+if docker compose exec -T mongodb mongosh --eval "db.runCommand('ping')" > /dev/null 2>&1; then
     print_status "MongoDB is healthy"
 else
     print_warning "MongoDB might not be ready yet"
@@ -97,7 +97,7 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             print_error "Backend API is not responding after 60 seconds"
             echo ""
             echo "Backend logs:"
-            docker-compose logs backend
+            docker compose logs backend
             exit 1
         fi
         echo "   Waiting for backend... ($RETRY_COUNT/$MAX_RETRIES)"
@@ -117,12 +117,12 @@ fi
 # Show service status
 echo ""
 echo "📊 Service Status:"
-docker-compose ps
+docker compose ps
 
 # Show logs
 echo ""
 echo "📝 Recent logs:"
-docker-compose logs --tail=20
+docker compose logs --tail=20
 
 echo ""
 echo "✅ Docker Compose setup is working!"
@@ -131,5 +131,5 @@ echo "Access the application at:"
 echo "  Frontend: http://localhost"
 echo "  Backend:  http://localhost:3030/api"
 echo ""
-echo "To view logs: docker-compose logs -f"
-echo "To stop:      docker-compose down"
+echo "To view logs: docker compose logs -f"
+echo "To stop:      docker compose down"

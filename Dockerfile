@@ -39,7 +39,7 @@ WORKDIR /app
 # Copy the binary from builder
 COPY --from=builder /app/target/release/auto_analyser_2 .
 
-# Create .env file placeholder (will be overridden by docker-compose)
+# Create .env file placeholder (will be overridden by docker compose)
 ENV MONGODB_URI=mongodb://mongodb:27017
 ENV DATABASE_NAME=stock_analyzer
 ENV SERVER_HOST=0.0.0.0

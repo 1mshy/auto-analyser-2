@@ -12,7 +12,7 @@ This guide explains how to run the Auto Stock Analyzer application using Docker 
 ### 1. Build and Start All Services
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 This command will:
@@ -31,25 +31,25 @@ This command will:
 
 ```bash
 # All services
-docker-compose logs -f
+docker compose logs -f
 
 # Specific service
-docker-compose logs -f backend
-docker-compose logs -f frontend
-docker-compose logs -f mongodb
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f mongodb
 ```
 
 ### 4. Stop Services
 
 ```bash
 # Stop but keep data
-docker-compose stop
+docker compose stop
 
 # Stop and remove containers (data persists in volumes)
-docker-compose down
+docker compose down
 
 # Stop and remove everything including data
-docker-compose down -v
+docker compose down -v
 ```
 
 ## Docker Commands Reference
@@ -58,47 +58,47 @@ docker-compose down -v
 
 ```bash
 # Build all services
-docker-compose build
+docker compose build
 
 # Build specific service
-docker-compose build backend
-docker-compose build frontend
+docker compose build backend
+docker compose build frontend
 
 # Force rebuild without cache
-docker-compose build --no-cache
+docker compose build --no-cache
 ```
 
 ### Start/Stop Commands
 
 ```bash
 # Start services in foreground
-docker-compose up
+docker compose up
 
 # Start services in background
-docker-compose up -d
+docker compose up -d
 
 # Restart specific service
-docker-compose restart backend
+docker compose restart backend
 
 # Stop all services
-docker-compose stop
+docker compose stop
 
 # Stop and remove containers
-docker-compose down
+docker compose down
 ```
 
 ### Management Commands
 
 ```bash
 # Check service status
-docker-compose ps
+docker compose ps
 
 # View real-time logs
-docker-compose logs -f
+docker compose logs -f
 
 # Execute command in running container
-docker-compose exec backend sh
-docker-compose exec mongodb mongosh stock_analyzer
+docker compose exec backend sh
+docker compose exec mongodb mongosh stock_analyzer
 
 # View resource usage
 docker stats
@@ -128,7 +128,7 @@ The Docker setup includes three services:
 
 ## Environment Variables
 
-Default environment variables are set in `docker-compose.yml`:
+Default environment variables are set in `docker compose.yml`:
 
 ```yaml
 MONGODB_URI=mongodb://mongodb:27017
@@ -155,7 +155,7 @@ MongoDB data is stored in Docker volumes:
 These volumes persist even when containers are removed. To reset data:
 
 ```bash
-docker-compose down -v
+docker compose down -v
 ```
 
 ## Networking
@@ -170,13 +170,13 @@ All services communicate via the `stock_analyzer_network` bridge network:
 ### Backend fails to start
 ```bash
 # Check logs
-docker-compose logs backend
+docker compose logs backend
 
 # Ensure MongoDB is healthy
-docker-compose ps mongodb
+docker compose ps mongodb
 
 # Restart backend
-docker-compose restart backend
+docker compose restart backend
 ```
 
 ### Frontend shows connection errors
@@ -185,20 +185,20 @@ docker-compose restart backend
 curl http://localhost:3030/api/progress
 
 # Check nginx logs
-docker-compose logs frontend
+docker compose logs frontend
 ```
 
 ### MongoDB connection issues
 ```bash
 # Check MongoDB logs
-docker-compose logs mongodb
+docker compose logs mongodb
 
 # Verify MongoDB is accessible
-docker-compose exec mongodb mongosh --eval "db.runCommand('ping')"
+docker compose exec mongodb mongosh --eval "db.runCommand('ping')"
 ```
 
 ### Port conflicts
-If ports 80, 3030, or 27017 are already in use, modify `docker-compose.yml`:
+If ports 80, 3030, or 27017 are already in use, modify `docker compose.yml`:
 
 ```yaml
 ports:
@@ -213,7 +213,7 @@ For production deployment:
 
 1. **Use environment-specific config**:
 ```bash
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker compose.yml -f docker compose.prod.yml up -d
 ```
 
 2. **Enable TLS/SSL** for nginx (add certificates to frontend service)
@@ -245,7 +245,7 @@ For active development, you may prefer running services individually:
 
 ```bash
 # Start only MongoDB
-docker-compose up -d mongodb
+docker compose up -d mongodb
 
 # Run backend locally with hot reload
 cargo run
@@ -258,10 +258,10 @@ cd frontend && npm start
 
 ```bash
 # Remove stopped containers
-docker-compose rm
+docker compose rm
 
 # Remove all containers, networks, and volumes
-docker-compose down -v
+docker compose down -v
 
 # Remove all unused Docker resources
 docker system prune -a

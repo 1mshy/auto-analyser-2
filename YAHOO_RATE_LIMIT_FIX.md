@@ -46,7 +46,7 @@ Yahoo Finance uses sophisticated detection to identify and block automated traff
 Add a rotating proxy service to bypass rate limits:
 
 ```yaml
-# docker-compose.yml
+# docker compose.yml
 backend:
   environment:
     - HTTP_PROXY=http://your-proxy:port
@@ -91,7 +91,7 @@ https://api.polygon.io/v2/aggs/ticker/AAPL/range/1/day/...?apikey=YOUR_KEY
 For Docker without proxies, increase delays dramatically:
 
 ```yaml
-# docker-compose.yml
+# docker compose.yml
 backend:
   environment:
     - YAHOO_REQUEST_DELAY_MS=30000  # 30 seconds between requests
@@ -120,7 +120,7 @@ This is **slow** but bypasses most detection.
 Since you're already caching, extend cache TTL significantly:
 
 ```yaml
-# docker-compose.yml
+# docker compose.yml
 backend:
   environment:
     - ANALYSIS_INTERVAL_SECS=21600  # 6 hours instead of 1 hour
@@ -165,7 +165,7 @@ The application now includes:
 ## Recommended Configuration for Docker
 
 ```yaml
-# docker-compose.yml - Best balance of speed vs. success rate
+# docker compose.yml - Best balance of speed vs. success rate
 backend:
   environment:
     - YAHOO_REQUEST_DELAY_MS=15000   # 15 seconds
@@ -194,7 +194,7 @@ backend:
 - `src/analysis.rs` - Configurable delays with jitter, improved logging
 - `src/config.rs` - Added `yahoo_request_delay_ms` config
 - `src/main.rs` - Pass delay config to engine
-- `docker-compose.yml` - Added `YAHOO_REQUEST_DELAY_MS=10000`
+- `docker compose.yml` - Added `YAHOO_REQUEST_DELAY_MS=10000`
 - `.env.example` - Documented new config option
 - `Cargo.toml` - Added `rand` dependency for jitter
 
@@ -223,4 +223,4 @@ The technical implementation is correct, but **Yahoo Finance actively blocks Doc
 3. Dramatically increase delays to 30+ seconds (least efficient)
 4. Run locally instead of in Docker (not production-ready)
 
-**For your immediate use**: If you have a VPN or proxy, configure it in docker-compose.yml using the proxy environment variables.
+**For your immediate use**: If you have a VPN or proxy, configure it in docker compose.yml using the proxy environment variables.

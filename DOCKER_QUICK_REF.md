@@ -4,19 +4,19 @@
 
 ```bash
 # Start everything
-docker-compose up -d
+docker compose up -d
 
 # Stop everything
-docker-compose down
+docker compose down
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Restart
-docker-compose restart
+docker compose restart
 
 # Clean everything
-docker-compose down -v
+docker compose down -v
 ```
 
 ## Using Makefile (Easier)
@@ -42,33 +42,33 @@ make help        # Show all commands
 
 ### View Service Status
 ```bash
-docker-compose ps
+docker compose ps
 ```
 
 ### View Logs for Specific Service
 ```bash
-docker-compose logs -f backend
-docker-compose logs -f frontend
-docker-compose logs -f mongodb
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f mongodb
 ```
 
 ### Execute Commands in Container
 ```bash
 # Access backend shell
-docker-compose exec backend sh
+docker compose exec backend sh
 
 # Access MongoDB shell
-docker-compose exec mongodb mongosh stock_analyzer
+docker compose exec mongodb mongosh stock_analyzer
 
 # View MongoDB data
-docker-compose exec mongodb mongosh --eval "db.stock_analysis.find().pretty()"
+docker compose exec mongodb mongosh --eval "db.stock_analysis.find().pretty()"
 ```
 
 ### Rebuild After Code Changes
 ```bash
-docker-compose down
-docker-compose build
-docker-compose up -d
+docker compose down
+docker compose build
+docker compose up -d
 ```
 
 ### Check Resource Usage
@@ -81,10 +81,10 @@ docker stats
 ### Backend not starting
 ```bash
 # Check logs
-docker-compose logs backend
+docker compose logs backend
 
 # Restart backend
-docker-compose restart backend
+docker compose restart backend
 ```
 
 ### Port conflicts
@@ -95,23 +95,23 @@ lsof -i :80
 # Check what's using port 3030
 lsof -i :3030
 
-# Or change ports in docker-compose.yml
+# Or change ports in docker compose.yml
 ```
 
 ### Reset everything
 ```bash
 # Remove all containers, networks, and volumes
-docker-compose down -v
+docker compose down -v
 
 # Start fresh
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Development Workflow
 
 ### Start only MongoDB for local development
 ```bash
-docker-compose up -d mongodb
+docker compose up -d mongodb
 
 # Then run backend locally
 cargo run
@@ -123,7 +123,7 @@ cd frontend && npm start
 ### View database
 ```bash
 # Access MongoDB shell
-docker-compose exec mongodb mongosh stock_analyzer
+docker compose exec mongodb mongosh stock_analyzer
 
 # Run queries
 db.stock_analysis.find({is_oversold: true}).pretty()
@@ -134,7 +134,7 @@ db.stock_analysis.countDocuments()
 
 ```bash
 # Use production configuration
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker compose.yml -f docker compose.prod.yml up -d
 
 # Set environment variables
 export MONGO_PASSWORD=your_secure_password
@@ -148,10 +148,10 @@ cp .env.docker .env
 
 ```bash
 # Stop and remove containers
-docker-compose down
+docker compose down
 
 # Also remove volumes (deletes all data!)
-docker-compose down -v
+docker compose down -v
 
 # Remove all unused Docker resources
 docker system prune -a
@@ -161,7 +161,7 @@ docker system prune -a
 
 ```bash
 # Check if services are healthy
-docker-compose ps
+docker compose ps
 
 # Test backend API
 curl http://localhost:3030/api/progress
@@ -170,7 +170,7 @@ curl http://localhost:3030/api/progress
 curl http://localhost
 
 # Test MongoDB
-docker-compose exec mongodb mongosh --eval "db.runCommand('ping')"
+docker compose exec mongodb mongosh --eval "db.runCommand('ping')"
 ```
 
 ## Useful Docker Commands
@@ -197,7 +197,7 @@ docker image prune -a
 
 ## Environment Variables
 
-Default values in `docker-compose.yml`:
+Default values in `docker compose.yml`:
 - `MONGODB_URI=mongodb://mongodb:27017`
 - `SERVER_PORT=3030`
 - `ANALYSIS_INTERVAL_SECS=3600`

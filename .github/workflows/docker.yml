@@ -39,13 +39,13 @@ jobs:
 
     - name: Start services with Docker Compose
       run: |
-        docker-compose up -d
+        docker compose up -d
         sleep 30
 
     - name: Check service health
       run: |
-        docker-compose ps
-        docker-compose logs
+        docker compose ps
+        docker compose logs
 
     - name: Test backend API
       run: |
@@ -61,7 +61,7 @@ jobs:
           sleep 5
         done
         echo "Backend failed to respond"
-        docker-compose logs backend
+        docker compose logs backend
         exit 1
 
     - name: Test frontend
@@ -70,10 +70,10 @@ jobs:
           echo "Frontend is serving"
         else
           echo "Frontend failed"
-          docker-compose logs frontend
+          docker compose logs frontend
           exit 1
         fi
 
     - name: Cleanup
       if: always()
-      run: docker-compose down -v
+      run: docker compose down -v

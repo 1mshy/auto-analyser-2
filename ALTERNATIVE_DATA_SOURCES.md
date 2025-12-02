@@ -18,7 +18,7 @@ ALPHA_VANTAGE_API_KEY=your_api_key_here
 USE_ALPHA_VANTAGE=true  # Fallback to Alpha Vantage if Yahoo fails
 ```
 
-Add to `docker-compose.yml`:
+Add to `docker compose.yml`:
 ```yaml
 backend:
   environment:
@@ -195,9 +195,9 @@ async fn analyze_stock(&self, symbol: &str, market_cap: Option<f64>) -> anyhow::
 cargo build --release
 
 # Update Docker
-docker-compose down
-docker-compose build backend
-docker-compose up -d
+docker compose down
+docker compose build backend
+docker compose up -d
 
 # Check logs
 docker logs -f stock_analyzer_backend | grep "Alpha Vantage"

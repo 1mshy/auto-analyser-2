@@ -1,5 +1,5 @@
 # Production Docker Compose Override
-# Use with: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Use with: docker compose -f docker compose.yml -f docker compose.prod.yml up -d
 
 services:
   mongodb:

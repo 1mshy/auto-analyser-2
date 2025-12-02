@@ -39,17 +39,17 @@ The easiest way to run the entire application stack:
 
 ```bash
 # Start all services (backend, frontend, MongoDB)
-docker-compose up -d
+docker compose up -d
 
 # Access the application
 # Frontend: http://localhost
 # Backend API: http://localhost:3030/api
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Stop services
-docker-compose down
+docker compose down
 ```
 
 See [DOCKER.md](DOCKER.md) for detailed Docker documentation.
