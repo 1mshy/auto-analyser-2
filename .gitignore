@@ -1,5 +1,7 @@
 # Environment
 .env
+**.env
+.env.docker
 
 # Build artifacts
 /target/

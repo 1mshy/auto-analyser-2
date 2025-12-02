@@ -1,7 +1,8 @@
 use crate::{
     cache::CacheLayer,
     db::MongoDB,
-    models::{AnalysisProgress, StockFilter},
+    models::StockFilter,
+    openrouter::OpenRouterClient,
     yahoo::YahooFinanceClient,
 };
 use axum::{
@@ -16,7 +17,8 @@ use axum::{
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{info, warn};
+use crate::models::AnalysisProgress;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -24,6 +26,7 @@ pub struct AppState {
     pub cache: CacheLayer,
     pub progress: Arc<RwLock<AnalysisProgress>>,
     pub yahoo_client: YahooFinanceClient,
+    pub openrouter_client: OpenRouterClient,
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -33,7 +36,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/stocks", get(get_stocks))
         .route("/api/stocks/filter", post(filter_stocks))
         .route("/api/stocks/:symbol/history", get(get_stock_history))
+        .route("/api/stocks/:symbol/ai-analysis", get(get_ai_analysis))
         .route("/api/progress", get(get_progress))
+        .route("/api/ai/status", get(get_ai_status))
+        .route("/api/ai/models", get(get_ai_models))
         .route("/ws", get(websocket_handler))
         .with_state(state)
 }
@@ -151,6 +157,94 @@ async fn get_stock_history(
             "error": e.to_string()
         })),
     }
+}
+
+/// On-demand AI analysis endpoint
+async fn get_ai_analysis(
+    State(state): State<AppState>,
+    Path(symbol): Path<String>,
+) -> impl IntoResponse {
+    // Check if OpenRouter is enabled
+    if !state.openrouter_client.is_enabled() {
+        return Json(json!({
+            "success": false,
+            "error": "AI analysis is not enabled. Set OPENROUTER_API_KEY environment variable."
+        }));
+    }
+
+    // First, get the stock analysis from cache or database
+    let analysis = if let Some(cached) = state.cache.get_stock(&symbol).await {
+        cached
+    } else {
+        match state.db.get_analysis_by_symbol(&symbol).await {
+            Ok(Some(db_analysis)) => db_analysis,
+            Ok(None) => {
+                return Json(json!({
+                    "success": false,
+                    "error": format!("No analysis found for {}. Wait for the analysis cycle to complete.", symbol)
+                }));
+            }
+            Err(e) => {
+                return Json(json!({
+                    "success": false,
+                    "error": format!("Database error: {}", e)
+                }));
+            }
+        }
+    };
+
+    // Run AI analysis
+    match state.openrouter_client.analyze_stock(&analysis).await {
+        Ok(ai_response) => {
+            Json(json!({
+                "success": true,
+                "symbol": ai_response.symbol,
+                "analysis": ai_response.analysis,
+                "model_used": ai_response.model_used,
+                "generated_at": ai_response.generated_at,
+                "stock_data": {
+                    "price": analysis.price,
+                    "rsi": analysis.rsi,
+                    "sma_20": analysis.sma_20,
+                    "sma_50": analysis.sma_50,
+                    "is_oversold": analysis.is_oversold,
+                    "is_overbought": analysis.is_overbought,
+                }
+            }))
+        }
+        Err(e) => {
+            warn!("AI analysis failed for {}: {}", symbol, e);
+            Json(json!({
+                "success": false,
+                "error": format!("AI analysis failed: {}", e)
+            }))
+        }
+    }
+}
+
+/// Get AI system status
+async fn get_ai_status(State(state): State<AppState>) -> impl IntoResponse {
+    let enabled = state.openrouter_client.is_enabled();
+    let current_model = if enabled {
+        Some(state.openrouter_client.current_model())
+    } else {
+        None
+    };
+
+    Json(json!({
+        "enabled": enabled,
+        "current_model": current_model,
+        "available_models_count": crate::openrouter::FREE_MODELS.len(),
+    }))
+}
+
+/// Get list of available AI models
+async fn get_ai_models() -> impl IntoResponse {
+    Json(json!({
+        "models": crate::openrouter::FREE_MODELS,
+        "count": crate::openrouter::FREE_MODELS.len(),
+        "description": "Free models available on OpenRouter with automatic fallback on rate limits"
+    }))
 }
 
 async fn websocket_handler(

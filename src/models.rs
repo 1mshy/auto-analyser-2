@@ -31,6 +31,10 @@ pub struct StockAnalysis {
     pub is_oversold: bool,
     pub is_overbought: bool,
     pub analyzed_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub technicals: Option<NasdaqTechnicals>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub news: Option<Vec<NasdaqNewsItem>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +75,48 @@ pub struct AnalysisProgress {
     pub current_symbol: Option<String>,
     pub cycle_start: DateTime<Utc>,
     pub errors: usize,
+}
+
+// NASDAQ Technicals (from /api/quote/{symbol}/info endpoint)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NasdaqTechnicals {
+    pub exchange: Option<String>,
+    pub sector: Option<String>,
+    pub industry: Option<String>,
+    pub one_year_target: Option<f64>,
+    pub todays_high: Option<f64>,
+    pub todays_low: Option<f64>,
+    pub share_volume: Option<f64>,
+    pub average_volume: Option<f64>,
+    pub previous_close: Option<f64>,
+    pub fifty_two_week_high: Option<f64>,
+    pub fifty_two_week_low: Option<f64>,
+    pub pe_ratio: Option<f64>,
+    pub forward_pe: Option<f64>,
+    pub eps: Option<f64>,
+    pub annualized_dividend: Option<f64>,
+    pub ex_dividend_date: Option<String>,
+    pub dividend_pay_date: Option<String>,
+    pub current_yield: Option<f64>,
+}
+
+// NASDAQ News Item
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NasdaqNewsItem {
+    pub title: String,
+    pub url: String,
+    pub publisher: Option<String>,
+    pub created: Option<String>,
+    pub ago: Option<String>,
+}
+
+// AI Analysis Response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AIAnalysisResponse {
+    pub symbol: String,
+    pub analysis: String,
+    pub model_used: String,
+    pub generated_at: DateTime<Utc>,
 }
 
 // NASDAQ API response structures
@@ -143,6 +189,8 @@ mod tests {
             is_oversold: false,
             is_overbought: false,
             analyzed_at: Utc::now(),
+            technicals: None,
+            news: None,
         };
 
         let json = serde_json::to_string(&analysis).unwrap();
@@ -237,6 +285,8 @@ mod tests {
             is_oversold: true,
             is_overbought: false,
             analyzed_at: Utc::now(),
+            technicals: None,
+            news: None,
         };
 
         assert!(analysis.is_oversold);

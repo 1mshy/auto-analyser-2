@@ -5,6 +5,8 @@ mod config;
 mod db;
 mod indicators;
 mod models;
+mod nasdaq;
+mod openrouter;
 mod yahoo;
 
 use analysis::AnalysisEngine;
@@ -12,6 +14,7 @@ use api::{create_router, AppState};
 use cache::CacheLayer;
 use config::Config;
 use db::MongoDB;
+use openrouter::OpenRouterClient;
 use yahoo::YahooFinanceClient;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -39,12 +42,25 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("✅ Connected to MongoDB database: {}", config.database_name);
 
     // Initialize cache
-    let cache = CacheLayer::new(config.cache_ttl_secs);
-    tracing::info!("Cache layer initialized with TTL: {}s", config.cache_ttl_secs);
+    let cache = CacheLayer::new(config.cache_ttl_secs, config.news_cache_ttl_secs);
+    tracing::info!("Cache layer initialized with TTL: {}s (news: {}s)", 
+        config.cache_ttl_secs, config.news_cache_ttl_secs);
 
     // Initialize Yahoo Finance client
     let yahoo_client = YahooFinanceClient::new();
     tracing::info!("Yahoo Finance client initialized");
+
+    // Initialize OpenRouter client
+    let openrouter_client = OpenRouterClient::new(
+        config.openrouter_api_key.clone(),
+        config.openrouter_enabled,
+    );
+    if openrouter_client.is_enabled() {
+        tracing::info!("🤖 OpenRouter AI client enabled with {} free models", 
+            openrouter::FREE_MODELS.len());
+    } else {
+        tracing::info!("🤖 OpenRouter AI disabled (set OPENROUTER_API_KEY to enable)");
+    }
 
     // Create analysis engine
     let analysis_engine = AnalysisEngine::new(
@@ -52,8 +68,10 @@ async fn main() -> anyhow::Result<()> {
         cache.clone(),
         config.analysis_interval_secs,
         config.yahoo_request_delay_ms,
+        config.nasdaq_request_delay_ms,
     );
     let progress = analysis_engine.get_progress();
+    tracing::info!("NASDAQ request delay: {}ms", config.nasdaq_request_delay_ms);
 
     // Load existing data from MongoDB and populate cache
     tracing::info!("📥 Loading existing stock data from database...");
@@ -84,6 +102,7 @@ async fn main() -> anyhow::Result<()> {
         cache: cache.clone(),
         progress,
         yahoo_client,
+        openrouter_client,
     };
 
     // Build API router with CORS

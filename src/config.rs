@@ -10,11 +10,22 @@ pub struct Config {
     pub analysis_interval_secs: u64,
     pub cache_ttl_secs: u64,
     pub yahoo_request_delay_ms: u64,
+    pub nasdaq_request_delay_ms: u64,
+    pub news_cache_ttl_secs: u64,
+    pub openrouter_api_key: Option<String>,
+    pub openrouter_enabled: bool,
 }
 
 impl Config {
     pub fn from_env() -> Result<Self> {
         dotenv::dotenv().ok();
+
+        let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
+        let openrouter_enabled = openrouter_api_key.is_some() 
+            && env::var("OPENROUTER_ENABLED")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true);
 
         Ok(Config {
             mongodb_uri: env::var("MONGODB_URI")
@@ -35,6 +46,14 @@ impl Config {
             yahoo_request_delay_ms: env::var("YAHOO_REQUEST_DELAY_MS")
                 .unwrap_or_else(|_| "8000".to_string())
                 .parse()?,
+            nasdaq_request_delay_ms: env::var("NASDAQ_REQUEST_DELAY_MS")
+                .unwrap_or_else(|_| "2000".to_string())
+                .parse()?,
+            news_cache_ttl_secs: env::var("NEWS_CACHE_TTL_SECS")
+                .unwrap_or_else(|_| "900".to_string()) // 15 minutes
+                .parse()?,
+            openrouter_api_key,
+            openrouter_enabled,
         })
     }
 }

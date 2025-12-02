@@ -3,6 +3,7 @@ use crate::{
     db::MongoDB,
     indicators::TechnicalIndicators,
     models::{AnalysisProgress, NasdaqResponse, StockAnalysis},
+    nasdaq::NasdaqClient,
     yahoo::YahooFinanceClient,
 };
 use chrono::Utc;
@@ -10,16 +11,18 @@ use rand::Rng;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 pub struct AnalysisEngine {
     db: MongoDB,
     yahoo_client: YahooFinanceClient,
+    nasdaq_client: NasdaqClient,
     http_client: reqwest::Client,
     cache: CacheLayer,
     progress: Arc<RwLock<AnalysisProgress>>,
     interval_secs: u64,
     yahoo_delay_ms: u64,
+    nasdaq_delay_ms: u64,
     cached_symbols: Arc<RwLock<Vec<(String, Option<f64>)>>>,
 }
 
@@ -29,6 +32,7 @@ impl AnalysisEngine {
         cache: CacheLayer,
         interval_secs: u64,
         yahoo_delay_ms: u64,
+        nasdaq_delay_ms: u64,
     ) -> Self {
         let progress = Arc::new(RwLock::new(AnalysisProgress {
             total_stocks: 0,
@@ -44,14 +48,18 @@ impl AnalysisEngine {
             .build()
             .expect("Failed to create HTTP client");
 
+        let nasdaq_client = NasdaqClient::new(nasdaq_delay_ms);
+
         AnalysisEngine {
             db,
             yahoo_client: YahooFinanceClient::new(),
+            nasdaq_client,
             http_client,
             cache,
             progress,
             interval_secs,
             yahoo_delay_ms,
+            nasdaq_delay_ms,
             cached_symbols: Arc::new(RwLock::new(Vec::new())),
         }
     }
@@ -180,7 +188,7 @@ impl AnalysisEngine {
                 // Rate limiting with jitter based on config
                 let base_delay = self.yahoo_delay_ms;
                 let jitter = rand::thread_rng().gen_range(0..2000); // Add 0-2 seconds jitter
-                let delay_ms = base_delay + jitter;
+                let _delay_ms = base_delay + jitter;
                 // info!("⏱️  Waiting {}ms before next request", delay_ms);
                 // info!("Sike doing it rn!")
                 // sleep(Duration::from_millis(delay_ms)).await;
@@ -220,6 +228,47 @@ impl AnalysisEngine {
 
         let latest_price = historical_prices.last().unwrap();
 
+        // Fetch NASDAQ technicals (with rate limiting)
+        let technicals = match self.nasdaq_client.get_technicals(symbol).await {
+            Ok(t) => {
+                debug!("Fetched NASDAQ technicals for {}", symbol);
+                Some(t)
+            }
+            Err(e) => {
+                debug!("Could not fetch NASDAQ technicals for {}: {}", symbol, e);
+                None
+            }
+        };
+
+        // Apply NASDAQ delay
+        self.nasdaq_client.apply_delay().await;
+
+        // Fetch NASDAQ news (check cache first)
+        let news = if let Some(cached_news) = self.cache.get_news(symbol).await {
+            debug!("Using cached news for {}", symbol);
+            Some(cached_news)
+        } else {
+            match self.nasdaq_client.get_news(symbol, 10).await {
+                Ok(n) if !n.is_empty() => {
+                    debug!("Fetched {} news items for {}", n.len(), symbol);
+                    // Cache the news
+                    self.cache.set_news(symbol.to_string(), n.clone()).await;
+                    Some(n)
+                }
+                Ok(_) => None,
+                Err(e) => {
+                    debug!("Could not fetch news for {}: {}", symbol, e);
+                    None
+                }
+            }
+        };
+
+        // Apply NASDAQ delay again after news fetch
+        self.nasdaq_client.apply_delay().await;
+
+        // Get sector from technicals if available
+        let sector = technicals.as_ref().and_then(|t| t.sector.clone());
+
         let analysis = StockAnalysis {
             id: None,
             symbol: symbol.to_string(),
@@ -230,10 +279,12 @@ impl AnalysisEngine {
             macd,
             volume: Some(latest_price.volume),
             market_cap,
-            sector: None, // Not provided by NASDAQ API
+            sector,
             is_oversold: TechnicalIndicators::is_oversold(rsi),
             is_overbought: TechnicalIndicators::is_overbought(rsi),
             analyzed_at: Utc::now(),
+            technicals,
+            news,
         };
 
         Ok(analysis)
