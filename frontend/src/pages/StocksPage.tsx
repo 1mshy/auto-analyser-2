@@ -45,8 +45,8 @@ const StockTableRow: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
       </Table.Cell>
       <Table.Cell>
         <Text color={changeColor === 'green' ? 'green.400' : 'red.400'} fontWeight="semibold">
-          {stock.price_change_percent !== undefined 
-            ? `${stock.price_change_percent >= 0 ? '+' : ''}${stock.price_change_percent.toFixed(2)}%`
+          {stock.price_change_percent !== undefined && !isNaN(stock.price_change_percent as any)
+            ? `${stock.price_change_percent >= 0 ? '+' : ''}${Number(stock.price_change_percent).toFixed(2)}%`
             : '-'}
         </Text>
       </Table.Cell>

@@ -38,6 +38,8 @@ services:
       - CACHE_TTL_SECS=300
       - YAHOO_REQUEST_DELAY_MS=10000
       - RUST_LOG=info
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_ENABLED=${OPENROUTER_ENABLED:-true}
     depends_on:
       mongodb:
         condition: service_healthy
