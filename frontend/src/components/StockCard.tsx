@@ -96,7 +96,7 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
 
         {/* Indicators Grid */}
         <Grid templateColumns="repeat(2, 1fr)" gap={3}>
-          {stock.rsi !== undefined && stock.rsi !== null && (
+          {stock.rsi != null && typeof stock.rsi === 'number' && (
             <GridItem>
               <Box>
                 <Text fontSize="xs" color="fg.muted" mb={1}>RSI</Text>
@@ -134,7 +134,7 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
             </GridItem>
           )}
 
-          {stock.volume !== undefined && stock.volume !== null && (
+          {stock.volume != null && typeof stock.volume === 'number' && (
             <GridItem colSpan={2}>
               <Box>
                 <Text fontSize="xs" color="fg.muted" mb={1}>Volume</Text>

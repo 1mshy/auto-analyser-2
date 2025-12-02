@@ -45,13 +45,13 @@ const CompactStockRow: React.FC<{
           <VStack align="start" gap={0}>
             <Text fontWeight="bold" color="white">{stock.symbol}</Text>
             <Text fontSize="xs" color="gray.400">
-              ${stock.price?.toFixed(2)}
+              ${stock.price != null && typeof stock.price === 'number' ? stock.price.toFixed(2) : '-'}
             </Text>
           </VStack>
         </HStack>
 
         <HStack gap={4}>
-          {showRSI && stock.rsi !== undefined && (
+          {showRSI && stock.rsi != null && typeof stock.rsi === 'number' && (
             <Badge 
               colorPalette={stock.rsi < 30 ? 'green' : stock.rsi > 70 ? 'red' : 'gray'}
               size="sm"
@@ -59,7 +59,7 @@ const CompactStockRow: React.FC<{
               RSI: {stock.rsi.toFixed(1)}
             </Badge>
           )}
-          {showChange && stock.price_change_percent !== undefined && (
+          {showChange && stock.price_change_percent != null && typeof stock.price_change_percent === 'number' && (
             <Text 
               fontWeight="bold" 
               color={changeColor === 'green' ? 'green.400' : 'red.400'}
@@ -91,7 +91,7 @@ const AIAnalysisCard: React.FC<{
             <Badge colorPalette={tierColor}>{tier.toUpperCase()}</Badge>
             <Heading size="md" color="white">{stock.symbol}</Heading>
           </HStack>
-          <Text color="gray.400">${stock.price?.toFixed(2)}</Text>
+          <Text color="gray.400">${stock.price != null && typeof stock.price === 'number' ? stock.price.toFixed(2) : '-'}</Text>
         </Flex>
       </Card.Header>
       <Card.Body>

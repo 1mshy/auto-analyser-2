@@ -234,7 +234,7 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
                     </Box>
                   </GridItem>
 
-                  {stock.volume && (
+                  {stock.volume != null && typeof stock.volume === 'number' && (
                     <GridItem>
                       <Box p={3} bg="bg.muted" borderRadius="md">
                         <Text fontSize="sm" color="fg.muted" mb={1}>Volume</Text>
@@ -278,7 +278,7 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
             <Tabs.Content value="technicals">
               <VStack align="stretch" gap={4} py={4}>
                 {/* RSI */}
-                {stock.rsi !== undefined && (
+                {stock.rsi != null && typeof stock.rsi === 'number' && (
                   <Box p={4} bg="bg.muted" borderRadius="md">
                     <HStack justify="space-between" mb={2}>
                       <Text fontSize="md" fontWeight="semibold">RSI (Relative Strength Index)</Text>
@@ -327,16 +327,16 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
                     <VStack align="stretch" gap={2}>
                       <HStack justify="space-between">
                         <Text fontSize="sm">MACD Line</Text>
-                        <Text fontSize="md" fontWeight="semibold">{stock.macd.macd_line.toFixed(4)}</Text>
+                        <Text fontSize="md" fontWeight="semibold">{stock.macd.macd_line != null && typeof stock.macd.macd_line === 'number' ? stock.macd.macd_line.toFixed(4) : '-'}</Text>
                       </HStack>
                       <HStack justify="space-between">
                         <Text fontSize="sm">Signal Line</Text>
-                        <Text fontSize="md" fontWeight="semibold">{stock.macd.signal_line.toFixed(4)}</Text>
+                        <Text fontSize="md" fontWeight="semibold">{stock.macd.signal_line != null && typeof stock.macd.signal_line === 'number' ? stock.macd.signal_line.toFixed(4) : '-'}</Text>
                       </HStack>
                       <HStack justify="space-between">
                         <Text fontSize="sm">Histogram</Text>
-                        <Badge colorScheme={stock.macd.histogram > 0 ? 'green' : 'red'}>
-                          {stock.macd.histogram.toFixed(4)}
+                        <Badge colorScheme={stock.macd.histogram != null && stock.macd.histogram > 0 ? 'green' : 'red'}>
+                          {stock.macd.histogram != null && typeof stock.macd.histogram === 'number' ? stock.macd.histogram.toFixed(4) : '-'}
                         </Badge>
                       </HStack>
                     </VStack>

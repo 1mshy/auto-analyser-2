@@ -209,11 +209,11 @@ export const StockDetailPage: React.FC = () => {
 
         <VStack align="end" gap={1}>
           <Text fontSize="3xl" fontWeight="bold" color="white">
-            ${stock.price?.toFixed(2)}
+            ${stock.price != null && typeof stock.price === 'number' ? stock.price.toFixed(2) : '-'}
           </Text>
           <HStack>
             <Box color={changeColor === 'green' ? 'green.400' : 'red.400'}>
-              {stock.price_change_percent && stock.price_change_percent >= 0 
+              {stock.price_change_percent != null && stock.price_change_percent >= 0 
                 ? <TrendingUp size={20} /> 
                 : <TrendingDown size={20} />
               }
@@ -223,12 +223,12 @@ export const StockDetailPage: React.FC = () => {
               fontWeight="semibold"
               color={changeColor === 'green' ? 'green.400' : 'red.400'}
             >
-              {stock.price_change !== undefined && (
+              {stock.price_change != null && typeof stock.price_change === 'number' && (
                 <>
                   {stock.price_change >= 0 ? '+' : ''}${stock.price_change.toFixed(2)}
                 </>
               )}
-              {stock.price_change_percent !== undefined && (
+              {stock.price_change_percent != null && typeof stock.price_change_percent === 'number' && (
                 <> ({stock.price_change_percent >= 0 ? '+' : ''}{stock.price_change_percent.toFixed(2)}%)</>
               )}
             </Text>
@@ -288,25 +288,25 @@ export const StockDetailPage: React.FC = () => {
           <SimpleGrid columns={{ base: 2, md: 4 }} gap={4} mb={6}>
             <StatCard 
               label="RSI (14)" 
-              value={stock.rsi?.toFixed(1) || '-'} 
+              value={stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'} 
               color={rsiColor === 'green' ? 'green.400' : rsiColor === 'red' ? 'red.400' : 'white'} 
             />
-            <StatCard label="SMA 20" value={stock.sma_20 ? `$${stock.sma_20.toFixed(2)}` : '-'} />
-            <StatCard label="SMA 50" value={stock.sma_50 ? `$${stock.sma_50.toFixed(2)}` : '-'} />
+            <StatCard label="SMA 20" value={stock.sma_20 != null && typeof stock.sma_20 === 'number' ? `$${stock.sma_20.toFixed(2)}` : '-'} />
+            <StatCard label="SMA 50" value={stock.sma_50 != null && typeof stock.sma_50 === 'number' ? `$${stock.sma_50.toFixed(2)}` : '-'} />
             <StatCard 
               label="MACD" 
               value={stock.macd ? (stock.macd.histogram > 0 ? 'Bullish' : 'Bearish') : '-'} 
-              color={stock.macd?.histogram && stock.macd.histogram > 0 ? 'green.400' : 'red.400'}
+              color={stock.macd?.histogram != null && stock.macd.histogram > 0 ? 'green.400' : 'red.400'}
             />
           </SimpleGrid>
 
           <SimpleGrid columns={{ base: 2, md: 4 }} gap={4}>
-            <StatCard label="Market Cap" value={stock.market_cap ? `$${(stock.market_cap / 1_000_000_000).toFixed(1)}B` : '-'} />
-            <StatCard label="Volume" value={stock.volume ? `${(stock.volume / 1_000_000).toFixed(1)}M` : '-'} />
-            {stock.technicals?.pe_ratio && (
+            <StatCard label="Market Cap" value={stock.market_cap != null && typeof stock.market_cap === 'number' ? `$${(stock.market_cap / 1_000_000_000).toFixed(1)}B` : '-'} />
+            <StatCard label="Volume" value={stock.volume != null && typeof stock.volume === 'number' ? `${(stock.volume / 1_000_000).toFixed(1)}M` : '-'} />
+            {stock.technicals?.pe_ratio != null && typeof stock.technicals.pe_ratio === 'number' && (
               <StatCard label="P/E Ratio" value={stock.technicals.pe_ratio.toFixed(2)} />
             )}
-            {stock.technicals?.eps && (
+            {stock.technicals?.eps != null && typeof stock.technicals.eps === 'number' && (
               <StatCard label="EPS" value={`$${stock.technicals.eps.toFixed(2)}`} />
             )}
           </SimpleGrid>
@@ -326,16 +326,16 @@ export const StockDetailPage: React.FC = () => {
                 <VStack align="start" gap={2}>
                   <HStack justify="space-between" w="100%">
                     <Text color="gray.400">MACD Line</Text>
-                    <Text color="white">{stock.macd.macd_line.toFixed(4)}</Text>
+                    <Text color="white">{stock.macd.macd_line != null && typeof stock.macd.macd_line === 'number' ? stock.macd.macd_line.toFixed(4) : '-'}</Text>
                   </HStack>
                   <HStack justify="space-between" w="100%">
                     <Text color="gray.400">Signal Line</Text>
-                    <Text color="white">{stock.macd.signal_line.toFixed(4)}</Text>
+                    <Text color="white">{stock.macd.signal_line != null && typeof stock.macd.signal_line === 'number' ? stock.macd.signal_line.toFixed(4) : '-'}</Text>
                   </HStack>
                   <HStack justify="space-between" w="100%">
                     <Text color="gray.400">Histogram</Text>
-                    <Text color={stock.macd.histogram > 0 ? 'green.400' : 'red.400'}>
-                      {stock.macd.histogram.toFixed(4)}
+                    <Text color={stock.macd.histogram != null && stock.macd.histogram > 0 ? 'green.400' : 'red.400'}>
+                      {stock.macd.histogram != null && typeof stock.macd.histogram === 'number' ? stock.macd.histogram.toFixed(4) : '-'}
                     </Text>
                   </HStack>
                   <Separator my={2} />
@@ -358,18 +358,18 @@ export const StockDetailPage: React.FC = () => {
               <VStack align="start" gap={2}>
                 <HStack justify="space-between" w="100%">
                   <Text color="gray.400">Price</Text>
-                  <Text color="white">${stock.price?.toFixed(2)}</Text>
+                  <Text color="white">${stock.price != null && typeof stock.price === 'number' ? stock.price.toFixed(2) : '-'}</Text>
                 </HStack>
                 <HStack justify="space-between" w="100%">
                   <Text color="gray.400">SMA 20</Text>
-                  <Text color={stock.sma_20 && stock.price && stock.price > stock.sma_20 ? 'green.400' : 'red.400'}>
-                    ${stock.sma_20?.toFixed(2) || '-'}
+                  <Text color={stock.sma_20 != null && stock.price != null && stock.price > stock.sma_20 ? 'green.400' : 'red.400'}>
+                    ${stock.sma_20 != null && typeof stock.sma_20 === 'number' ? stock.sma_20.toFixed(2) : '-'}
                   </Text>
                 </HStack>
                 <HStack justify="space-between" w="100%">
                   <Text color="gray.400">SMA 50</Text>
-                  <Text color={stock.sma_50 && stock.price && stock.price > stock.sma_50 ? 'green.400' : 'red.400'}>
-                    ${stock.sma_50?.toFixed(2) || '-'}
+                  <Text color={stock.sma_50 != null && stock.price != null && stock.price > stock.sma_50 ? 'green.400' : 'red.400'}>
+                    ${stock.sma_50 != null && typeof stock.sma_50 === 'number' ? stock.sma_50.toFixed(2) : '-'}
                   </Text>
                 </HStack>
                 <Separator my={2} />
@@ -392,15 +392,15 @@ export const StockDetailPage: React.FC = () => {
                 <VStack align="start" gap={2}>
                   <HStack justify="space-between" w="100%">
                     <Text color="gray.400">52-Week High</Text>
-                    <Text color="white">${stock.technicals.fifty_two_week_high?.toFixed(2) || '-'}</Text>
+                  <Text color="white">${stock.technicals.fifty_two_week_high != null && typeof stock.technicals.fifty_two_week_high === 'number' ? stock.technicals.fifty_two_week_high.toFixed(2) : '-'}</Text>
                   </HStack>
                   <HStack justify="space-between" w="100%">
                     <Text color="gray.400">52-Week Low</Text>
-                    <Text color="white">${stock.technicals.fifty_two_week_low?.toFixed(2) || '-'}</Text>
-                  </HStack>
-                  <HStack justify="space-between" w="100%">
-                    <Text color="gray.400">Previous Close</Text>
-                    <Text color="white">${stock.technicals.previous_close?.toFixed(2) || '-'}</Text>
+                  <Text color="white">${stock.technicals.fifty_two_week_low != null && typeof stock.technicals.fifty_two_week_low === 'number' ? stock.technicals.fifty_two_week_low.toFixed(2) : '-'}</Text>
+                </HStack>
+                <HStack justify="space-between" w="100%">
+                  <Text color="gray.400">Previous Close</Text>
+                  <Text color="white">${stock.technicals.previous_close != null && typeof stock.technicals.previous_close === 'number' ? stock.technicals.previous_close.toFixed(2) : '-'}</Text>
                   </HStack>
                 </VStack>
               </Card.Body>
@@ -417,11 +417,11 @@ export const StockDetailPage: React.FC = () => {
                 <VStack align="start" gap={2}>
                   <HStack justify="space-between" w="100%">
                     <Text color="gray.400">Annual Dividend</Text>
-                    <Text color="white">${stock.technicals.annualized_dividend?.toFixed(2)}</Text>
+                    <Text color="white">${stock.technicals.annualized_dividend != null && typeof stock.technicals.annualized_dividend === 'number' ? stock.technicals.annualized_dividend.toFixed(2) : '-'}</Text>
                   </HStack>
                   <HStack justify="space-between" w="100%">
                     <Text color="gray.400">Yield</Text>
-                    <Text color="green.400">{stock.technicals.current_yield?.toFixed(2)}%</Text>
+                    <Text color="green.400">{stock.technicals.current_yield != null && typeof stock.technicals.current_yield === 'number' ? stock.technicals.current_yield.toFixed(2) : '-'}%</Text>
                   </HStack>
                   {stock.technicals.ex_dividend_date && (
                     <HStack justify="space-between" w="100%">

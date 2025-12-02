@@ -69,12 +69,12 @@ const OpportunityCard: React.FC<{
             </Link>
           </VStack>
           <VStack align="end" gap={0}>
-            <Text fontWeight="bold" color="white">${stock.price?.toFixed(2)}</Text>
+            <Text fontWeight="bold" color="white">${stock.price != null ? stock.price.toFixed(2) : '-'}</Text>
             <Text 
               fontSize="sm" 
               color={changeColor === 'green' ? 'green.400' : 'red.400'}
             >
-              {stock.price_change_percent !== undefined
+              {stock.price_change_percent != null && typeof stock.price_change_percent === 'number'
                 ? `${stock.price_change_percent >= 0 ? '+' : ''}${stock.price_change_percent.toFixed(2)}%`
                 : ''}
             </Text>
@@ -86,10 +86,10 @@ const OpportunityCard: React.FC<{
         {/* Technical Indicators */}
         <HStack gap={2} mb={4} wrap="wrap">
           <Badge 
-            colorPalette={stock.rsi && stock.rsi < 30 ? 'green' : 'gray'}
+            colorPalette={stock.rsi != null && stock.rsi < 30 ? 'green' : 'gray'}
             size="lg"
           >
-            RSI: {stock.rsi?.toFixed(1) || '-'}
+            RSI: {stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'}
           </Badge>
           {stock.macd && (
             <Badge colorPalette={stock.macd.histogram > 0 ? 'blue' : 'orange'}>
@@ -143,7 +143,7 @@ const OpportunityCard: React.FC<{
         {/* Market Info */}
         <Flex justify="space-between" mt={3}>
           <Text color="gray.500" fontSize="xs">
-            Market Cap: {stock.market_cap ? `$${(stock.market_cap / 1_000_000_000).toFixed(1)}B` : '-'}
+            Market Cap: {stock.market_cap != null && typeof stock.market_cap === 'number' ? `$${(stock.market_cap / 1_000_000_000).toFixed(1)}B` : '-'}
           </Text>
           <Text color="gray.500" fontSize="xs">
             {stock.sector || 'Unknown Sector'}

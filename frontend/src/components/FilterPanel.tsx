@@ -305,7 +305,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                       type="number"
                       min={0}
                       step="0.01"
-                      value={filter.min_market_cap && filter.min_market_cap > 0 ? (filter.min_market_cap / 1e9).toFixed(2) : ''}
+                      value={filter.min_market_cap != null && typeof filter.min_market_cap === 'number' && filter.min_market_cap > 0 ? (filter.min_market_cap / 1e9).toFixed(2) : ''}
                       onChange={(e) => handleNumberInput('min_market_cap', e.target.value, 1e9)}
                       placeholder="0"
                     />
@@ -316,7 +316,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                       type="number"
                       min={0}
                       step="0.01"
-                      value={filter.max_market_cap && filter.max_market_cap > 0 ? (filter.max_market_cap / 1e9).toFixed(2) : ''}
+                      value={filter.max_market_cap != null && typeof filter.max_market_cap === 'number' && filter.max_market_cap > 0 ? (filter.max_market_cap / 1e9).toFixed(2) : ''}
                       onChange={(e) => handleNumberInput('max_market_cap', e.target.value, 1e9)}
                       placeholder="5000"
                     />
@@ -331,7 +331,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                   type="number"
                   min={0}
                   step="0.01"
-                  value={filter.min_volume && filter.min_volume > 0 ? (filter.min_volume / 1e6).toFixed(2) : ''}
+                  value={filter.min_volume != null && typeof filter.min_volume === 'number' && filter.min_volume > 0 ? (filter.min_volume / 1e6).toFixed(2) : ''}
                   onChange={(e) => handleNumberInput('min_volume', e.target.value, 1e6)}
                   placeholder="0"
                 />

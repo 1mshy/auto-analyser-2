@@ -40,7 +40,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
             Analysis Progress
           </Text>
           <Badge colorScheme={percentage === 100 ? 'green' : 'blue'} fontSize="md" px={3} py={1}>
-            {percentage.toFixed(1)}%
+            {typeof percentage === 'number' && !isNaN(percentage) ? percentage.toFixed(1) : '0.0'}%
           </Badge>
         </HStack>
 

@@ -41,23 +41,23 @@ const StockTableRow: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
         </Link>
       </Table.Cell>
       <Table.Cell>
-        <Text color="white">${stock.price?.toFixed(2)}</Text>
+        <Text color="white">${stock.price != null && typeof stock.price === 'number' ? stock.price.toFixed(2) : '-'}</Text>
       </Table.Cell>
       <Table.Cell>
         <Text color={changeColor === 'green' ? 'green.400' : 'red.400'} fontWeight="semibold">
-          {stock.price_change_percent !== undefined && !isNaN(stock.price_change_percent as any)
-            ? `${stock.price_change_percent >= 0 ? '+' : ''}${Number(stock.price_change_percent).toFixed(2)}%`
+          {stock.price_change_percent != null && typeof stock.price_change_percent === 'number' && !isNaN(stock.price_change_percent)
+            ? `${stock.price_change_percent >= 0 ? '+' : ''}${stock.price_change_percent.toFixed(2)}%`
             : '-'}
         </Text>
       </Table.Cell>
       <Table.Cell>
         <Badge colorPalette={rsiColor}>
-          {stock.rsi?.toFixed(1) || '-'}
+          {stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'}
         </Badge>
       </Table.Cell>
       <Table.Cell>
         <Text color="gray.300" fontSize="sm">
-          {stock.market_cap
+          {stock.market_cap != null && typeof stock.market_cap === 'number'
             ? `$${(stock.market_cap / 1_000_000_000).toFixed(1)}B`
             : '-'}
         </Text>
@@ -104,13 +104,13 @@ const StockCardCompact: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
               <Text fontWeight="bold" fontSize="lg" color="white">{stock.symbol}</Text>
             </VStack>
             <VStack align="end" gap={0}>
-              <Text fontWeight="bold" color="white">${stock.price?.toFixed(2)}</Text>
+              <Text fontWeight="bold" color="white">${stock.price != null && typeof stock.price === 'number' ? stock.price.toFixed(2) : '-'}</Text>
               <Text 
                 fontSize="sm" 
                 fontWeight="semibold"
                 color={changeColor === 'green' ? 'green.400' : 'red.400'}
               >
-                {stock.price_change_percent !== undefined
+                {stock.price_change_percent != null && typeof stock.price_change_percent === 'number'
                   ? `${stock.price_change_percent >= 0 ? '+' : ''}${stock.price_change_percent.toFixed(2)}%`
                   : '-'}
               </Text>
@@ -120,9 +120,9 @@ const StockCardCompact: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
           <Flex justify="space-between" align="center">
             <HStack gap={2}>
               <Badge 
-                colorPalette={stock.rsi && stock.rsi < 30 ? 'green' : stock.rsi && stock.rsi > 70 ? 'red' : 'gray'}
+                colorPalette={stock.rsi != null && stock.rsi < 30 ? 'green' : stock.rsi != null && stock.rsi > 70 ? 'red' : 'gray'}
               >
-                RSI: {stock.rsi?.toFixed(1) || '-'}
+                RSI: {stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'}
               </Badge>
               {stock.macd && (
                 <Badge colorPalette={stock.macd.histogram > 0 ? 'blue' : 'orange'}>
@@ -131,7 +131,7 @@ const StockCardCompact: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
               )}
             </HStack>
             <Text color="gray.500" fontSize="xs">
-              {stock.market_cap ? `$${(stock.market_cap / 1_000_000_000).toFixed(1)}B` : ''}
+              {stock.market_cap != null && typeof stock.market_cap === 'number' ? `$${(stock.market_cap / 1_000_000_000).toFixed(1)}B` : ''}
             </Text>
           </Flex>
         </Card.Body>
