@@ -12,8 +12,10 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 
 # Create dummy main to cache dependencies
+# Remove and regenerate lock file to avoid checksum mismatches
 RUN mkdir src && \
     echo "fn main() {}" > src/main.rs && \
+    rm -f Cargo.lock && \
     cargo build --release && \
     rm -rf src
 
@@ -43,10 +45,10 @@ COPY --from=builder /app/target/release/auto_analyser_2 .
 ENV MONGODB_URI=mongodb://mongodb:27017
 ENV DATABASE_NAME=stock_analyzer
 ENV SERVER_HOST=0.0.0.0
-ENV SERVER_PORT=3030
+ENV SERVER_PORT=3333
 ENV ANALYSIS_INTERVAL_SECS=3600
 ENV CACHE_TTL_SECS=300
 
-EXPOSE 3030
+EXPOSE 3333
 
 CMD ["./auto_analyser_2"]

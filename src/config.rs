@@ -12,7 +12,7 @@ pub struct Config {
     pub yahoo_request_delay_ms: u64,
     pub nasdaq_request_delay_ms: u64,
     pub news_cache_ttl_secs: u64,
-    pub openrouter_api_key: Option<String>,
+    pub OPENROUTER_API_KEY_STOCKS: Option<String>,
     pub openrouter_enabled: bool,
 }
 
@@ -20,8 +20,8 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         dotenv::dotenv().ok();
 
-        let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
-        let openrouter_enabled = openrouter_api_key.is_some() 
+        let OPENROUTER_API_KEY_STOCKS = env::var("OPENROUTER_API_KEY_STOCKS").ok();
+        let openrouter_enabled = OPENROUTER_API_KEY_STOCKS.is_some() 
             && env::var("OPENROUTER_ENABLED")
                 .unwrap_or_else(|_| "true".to_string())
                 .parse()
@@ -52,7 +52,7 @@ impl Config {
             news_cache_ttl_secs: env::var("NEWS_CACHE_TTL_SECS")
                 .unwrap_or_else(|_| "900".to_string()) // 15 minutes
                 .parse()?,
-            openrouter_api_key,
+            OPENROUTER_API_KEY_STOCKS,
             openrouter_enabled,
         })
     }

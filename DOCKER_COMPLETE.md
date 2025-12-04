@@ -64,7 +64,7 @@ make up
 │                ▼                        │
 │  📦 Container: stock_analyzer_backend   │
 │     ├── Image: debian:bookworm-slim    │
-│     ├── Port: 3030                     │
+│     ├── Port: 3333                     │
 │     └── Runs: Rust binary              │
 │                ▼                        │
 │  📦 Container: stock_analyzer_db        │
@@ -80,8 +80,8 @@ make up
 | Service   | URL                              | Purpose                    |
 |-----------|----------------------------------|----------------------------|
 | Frontend  | http://localhost                 | Web UI                     |
-| Backend   | http://localhost:3030/api        | REST API                   |
-| WebSocket | ws://localhost:3030/ws           | Real-time updates          |
+| Backend   | http://localhost:3333/api        | REST API                   |
+| WebSocket | ws://localhost:3333/ws           | Real-time updates          |
 | MongoDB   | mongodb://localhost:27017        | Database (internal)        |
 
 ## Commands Reference
@@ -182,7 +182,7 @@ DATABASE_NAME=stock_analyzer
 
 # Server
 SERVER_HOST=0.0.0.0
-SERVER_PORT=3030
+SERVER_PORT=3333
 
 # Analysis
 ANALYSIS_INTERVAL_SECS=3600
@@ -223,7 +223,7 @@ Internet
 ┌──────────────────────────────────────┐
 │  Host Machine                        │
 │  ├── Port 80 → Frontend Container   │
-│  ├── Port 3030 → Backend Container   │
+│  ├── Port 3333 → Backend Container   │
 │  └── Port 27017 → MongoDB Container  │
 └──────────────────────────────────────┘
    │
@@ -280,14 +280,14 @@ docker compose up -d
 docker compose ps
 
 # 4. Test endpoints
-curl http://localhost:3030/api/progress
+curl http://localhost:3333/api/progress
 curl http://localhost
 
 # 5. View logs
 docker compose logs
 
 # 6. Check health
-docker compose exec backend curl -f http://localhost:3030/api/progress
+docker compose exec backend curl -f http://localhost:3333/api/progress
 docker compose exec mongodb mongosh --eval "db.runCommand('ping')"
 
 # 7. Cleanup
@@ -304,8 +304,8 @@ Or simply run: `./docker-test.sh`
 | Restart service        | `docker compose restart <service>`    |
 | Rebuild image          | `docker compose build --no-cache`     |
 | Reset everything       | `docker compose down -v`              |
-| Check ports            | `lsof -i :80,3030,27017`             |
-| Test endpoint          | `curl http://localhost:3030/api/progress` |
+| Check ports            | `lsof -i :80,3333,27017`             |
+| Test endpoint          | `curl http://localhost:3333/api/progress` |
 
 ## Next Steps
 

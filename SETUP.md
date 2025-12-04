@@ -86,9 +86,9 @@ cargo build --release
 ### 5. Verify Installation
 
 Open your browser and check:
-- API Root: http://localhost:3030/
-- Health Check: http://localhost:3030/health
-- Progress: http://localhost:3030/api/progress
+- API Root: http://localhost:3333/
+- Health Check: http://localhost:3333/health
+- Progress: http://localhost:3333/api/progress
 
 ## Testing the Setup
 
@@ -110,16 +110,16 @@ show collections
 ### Test API Endpoints
 ```bash
 # Health check
-curl http://localhost:3030/health
+curl http://localhost:3333/health
 
 # Get progress
-curl http://localhost:3030/api/progress
+curl http://localhost:3333/api/progress
 
 # Get all stocks
-curl http://localhost:3030/api/stocks
+curl http://localhost:3333/api/stocks
 
 # Filter stocks
-curl -X POST http://localhost:3030/api/stocks/filter \
+curl -X POST http://localhost:3333/api/stocks/filter \
   -H "Content-Type: application/json" \
   -d '{"min_price": 100, "max_price": 200}'
 ```

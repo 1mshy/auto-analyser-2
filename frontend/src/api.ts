@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse } from './types';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3030';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3333';
 
 export interface FilterResponse {
   stocks: StockAnalysis[];
@@ -68,7 +68,7 @@ export const api = {
   // WebSocket URL
   getWebSocketUrl: (): string => {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = process.env.REACT_APP_WS_URL || 'localhost:3030';
+    const host = process.env.REACT_APP_WS_URL || 'localhost:3333';
     return `${wsProtocol}//${host}/ws`;
   }
 };

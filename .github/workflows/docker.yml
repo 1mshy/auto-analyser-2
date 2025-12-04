@@ -52,7 +52,7 @@ jobs:
         max_retries=12
         count=0
         while [ $count -lt $max_retries ]; do
-          if curl -f http://localhost:3030/api/progress; then
+          if curl -f http://localhost:3333/api/progress; then
             echo "Backend is responding"
             exit 0
           fi

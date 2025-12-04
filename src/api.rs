@@ -229,7 +229,7 @@ async fn get_ai_analysis(
     if !state.openrouter_client.is_enabled() {
         return Json(json!({
             "success": false,
-            "error": "AI analysis is not enabled. Set OPENROUTER_API_KEY environment variable."
+            "error": "AI analysis is not enabled. Set OPENROUTER_API_KEY_STOCKS environment variable."
         }));
     }
 

@@ -90,7 +90,7 @@ Complete Docker Compose setup for the Auto Stock Analyzer application, enabling 
 │  │                                            │ │
 │  │  ┌──────────────┐  ┌──────────────┐      │ │
 │  │  │   MongoDB    │  │   Backend    │      │ │
-│  │  │   (27017)    │◄─┤   (3030)     │      │ │
+│  │  │   (27017)    │◄─┤   (3333)     │      │ │
 │  │  │              │  │   Rust API   │      │ │
 │  │  └──────────────┘  └──────▲───────┘      │ │
 │  │                            │              │ │
@@ -104,7 +104,7 @@ Complete Docker Compose setup for the Auto Stock Analyzer application, enabling 
 │                                                  │
 │  Exposed Ports:                                 │
 │  • 80 → Frontend                                │
-│  • 3030 → Backend API                           │
+│  • 3333 → Backend API                           │
 │  • 27017 → MongoDB                              │
 └─────────────────────────────────────────────────┘
 ```
@@ -136,8 +136,8 @@ make rebuild
 ### Access Points
 
 - **Frontend**: http://localhost
-- **Backend API**: http://localhost:3030/api
-- **WebSocket**: ws://localhost:3030/ws
+- **Backend API**: http://localhost:3333/api
+- **WebSocket**: ws://localhost:3333/ws
 - **MongoDB**: localhost:27017
 
 ### Development Workflow

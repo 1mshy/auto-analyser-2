@@ -250,13 +250,13 @@ User clicks stock → Modal opens → API call → Backend
 
 ### Environment Variables
 No new environment variables required. Uses existing:
-- `REACT_APP_API_URL`: Backend API URL (default: `http://localhost:3030`)
-- `REACT_APP_WS_URL`: WebSocket URL (default: `localhost:3030`)
+- `REACT_APP_API_URL`: Backend API URL (default: `http://localhost:3333`)
+- `REACT_APP_WS_URL`: WebSocket URL (default: `localhost:3333`)
 
 ### Backend Port Configuration
 Ensure backend port matches frontend proxy:
-- Backend: Set `SERVER_PORT=3030` in `.env`
-- Frontend: Proxy configured in `package.json` to `http://localhost:3030`
+- Backend: Set `SERVER_PORT=3333` in `.env`
+- Frontend: Proxy configured in `package.json` to `http://localhost:3333`
 
 ---
 
@@ -293,7 +293,7 @@ Ensure backend port matches frontend proxy:
 ### API Testing
 ```bash
 # Test historical data endpoint
-curl http://localhost:3030/api/stocks/AAPL/history
+curl http://localhost:3333/api/stocks/AAPL/history
 
 # Expected: JSON with 90 days of OHLC data
 ```
@@ -348,7 +348,7 @@ curl http://localhost:3030/api/stocks/AAPL/history
 ### Historical Data Not Loading
 - Check backend logs for Yahoo Finance errors
 - Verify symbol is valid
-- Test endpoint directly: `curl http://localhost:3030/api/stocks/AAPL/history`
+- Test endpoint directly: `curl http://localhost:3333/api/stocks/AAPL/history`
 
 ### Saved Filters Not Persisting
 - Check browser's localStorage is enabled

@@ -10,19 +10,23 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tracing::{info, warn};
 
-/// Top 10 free models on OpenRouter (as of Dec 2025)
-/// These models are free to use and will be cycled through when rate limits are hit
+/// Top free models on OpenRouter (as of Dec 2025)
+/// These models are free to use and will be cycled through when rate limits or parsing errors occur
+/// Ordered by reliability and response quality
 pub const FREE_MODELS: &[&str] = &[
-    "x-ai/grok-4.1-fast:free",                    // xAI Grok 4.1 Fast - 2M context
-    "qwen/qwen3-coder:free",                      // Qwen3 Coder 480B - 262K context
+    "qwen/qwen3-coder:free",
+    "qwen/qwen3-4b:free",
+    // "alibaba/tongyi-deepresearch-30b-a3b:free",
+    "amazon/nova-2-lite-v1:free",
+    "google/gemma-2-9b-it:free",                  // Google Gemma 2 9B - reliable
+    "meta-llama/llama-3.2-3b-instruct:free",      // Meta Llama 3.2 3B - reliable
+    "nvidia/nemotron-nano-12b-v2-vl:free",        // NVIDIA Nemotron Nano - 128K context
     "tngtech/deepseek-r1t2-chimera:free",         // DeepSeek R1T2 Chimera - 164K context
     "tngtech/deepseek-r1t-chimera:free",          // DeepSeek R1T Chimera - 164K context
     "tngtech/tng-r1t-chimera:free",               // TNG R1T Chimera - 164K context
     "z-ai/glm-4.5-air:free",                      // Z.AI GLM 4.5 Air - 131K context
     "kwaipilot/kat-coder-pro:free",               // KAT-Coder-Pro - 256K context
-    "nvidia/nemotron-nano-12b-v2-vl:free",        // NVIDIA Nemotron Nano - 128K context
-    "meta-llama/llama-3.2-3b-instruct:free",      // Meta Llama 3.2 3B
-    "google/gemma-2-9b-it:free",                  // Google Gemma 2 9B
+    // x-ai/grok models removed due to response parsing issues with openrouter-rs
 ];
 
 /// OpenRouter client wrapper with model fallback support
@@ -87,18 +91,23 @@ impl OpenRouterClient {
                 Err(e) => {
                     let err_msg = e.to_string().to_lowercase();
                     
-                    // Check for rate limit or quota errors
+                    // Check for rate limit, quota errors, or parsing errors
+                    // Parsing errors can occur when model response format is incompatible
                     if err_msg.contains("rate") 
                         || err_msg.contains("limit") 
                         || err_msg.contains("429")
                         || err_msg.contains("quota")
                         || err_msg.contains("exceeded")
+                        || err_msg.contains("did not match")
+                        || err_msg.contains("untagged enum")
+                        || err_msg.contains("parse")
+                        || err_msg.contains("deserialize")
                     {
-                        warn!("Rate limited on model {}: {}. Switching to next model.", model, e);
+                        warn!("Error on model {} (will try next): {}", model, e);
                         self.next_model();
                         attempts += 1;
                     } else {
-                        // Non-rate-limit error, return immediately
+                        // Non-recoverable error, return immediately
                         return Err(anyhow!("OpenRouter API error with {}: {}", model, e));
                     }
                 }
@@ -238,7 +247,7 @@ mod tests {
 
     #[test]
     fn test_free_models_list() {
-        assert_eq!(FREE_MODELS.len(), 10);
+        assert_eq!(FREE_MODELS.len(), 9);
         assert!(FREE_MODELS.iter().all(|m| m.ends_with(":free")));
     }
 
@@ -296,6 +305,8 @@ mod tests {
             id: None,
             symbol: "AAPL".to_string(),
             price: 175.50,
+            price_change: Some(2.50),
+            price_change_percent: Some(1.45),
             rsi: Some(45.0),
             sma_20: Some(172.0),
             sma_50: Some(168.0),

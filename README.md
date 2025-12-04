@@ -43,7 +43,7 @@ docker compose up -d
 
 # Access the application
 # Frontend: http://localhost
-# Backend API: http://localhost:3030/api
+# Backend API: http://localhost:3333/api
 
 # View logs
 docker compose logs -f

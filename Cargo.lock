@@ -4091,7 +4091,7 @@ checksum = "8f55c233f70c4b27f66c523580f78f1004e8b5a8b659e05a4eb49d4166cca406"
 name = "windows_i686_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "240948bc05c5e7c6dabba28bf89d89ffce3e303022809e73deaefe4f6ec56c66"
+checksum = "240948bc05c5e7c6dabba28bf89d89ffce3e333322809e73deaefe4f6ec56c66"
 
 [[package]]
 name = "windows_i686_msvc"

@@ -34,9 +34,9 @@ make help        # Show all commands
 ## Service URLs
 
 - **Frontend**: http://localhost
-- **Backend API**: http://localhost:3030/api
+- **Backend API**: http://localhost:3333/api
 - **MongoDB**: localhost:27017
-- **WebSocket**: ws://localhost:3030/ws
+- **WebSocket**: ws://localhost:3333/ws
 
 ## Common Tasks
 
@@ -92,8 +92,8 @@ docker compose restart backend
 # Check what's using port 80
 lsof -i :80
 
-# Check what's using port 3030
-lsof -i :3030
+# Check what's using port 3333
+lsof -i :3333
 
 # Or change ports in docker compose.yml
 ```
@@ -164,7 +164,7 @@ docker system prune -a
 docker compose ps
 
 # Test backend API
-curl http://localhost:3030/api/progress
+curl http://localhost:3333/api/progress
 
 # Test frontend
 curl http://localhost
@@ -199,7 +199,7 @@ docker image prune -a
 
 Default values in `docker compose.yml`:
 - `MONGODB_URI=mongodb://mongodb:27017`
-- `SERVER_PORT=3030`
+- `SERVER_PORT=3333`
 - `ANALYSIS_INTERVAL_SECS=3600`
 - `CACHE_TTL_SECS=300`
 

@@ -466,7 +466,7 @@ export const StockDetailPage: React.FC = () => {
             {!aiEnabled ? (
               <Box bg="yellow.900" p={4} borderRadius="md">
                 <Text color="yellow.200">
-                  AI analysis is not enabled. Set the OPENROUTER_API_KEY environment variable to enable AI-powered insights.
+                  AI analysis is not enabled. Set the OPENROUTER_API_KEY_STOCKS environment variable to enable AI-powered insights.
                 </Text>
               </Box>
             ) : aiLoading ? (

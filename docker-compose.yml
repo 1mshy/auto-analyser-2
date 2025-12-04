@@ -28,17 +28,17 @@ services:
     container_name: stock_analyzer_backend
     restart: unless-stopped
     ports:
-      - "3030:3030"
+      - "3333:3333"
     environment:
       - MONGODB_URI=mongodb://mongodb:27017
       - DATABASE_NAME=stock_analyzer
       - SERVER_HOST=0.0.0.0
-      - SERVER_PORT=3030
+      - SERVER_PORT=3333
       - ANALYSIS_INTERVAL_SECS=3600
       - CACHE_TTL_SECS=300
       - YAHOO_REQUEST_DELAY_MS=10000
       - RUST_LOG=info
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_API_KEY_STOCKS=${OPENROUTER_API_KEY_STOCKS}
       - OPENROUTER_ENABLED=${OPENROUTER_ENABLED:-true}
     depends_on:
       mongodb:
@@ -46,7 +46,7 @@ services:
     networks:
       - stock_analyzer_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3030/api/progress"]
+      test: ["CMD", "curl", "-f", "http://localhost:3333/api/progress"]
       interval: 30s
       timeout: 10s
       retries: 3

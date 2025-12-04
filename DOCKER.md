@@ -24,7 +24,7 @@ This command will:
 ### 2. Access the Application
 
 - **Frontend**: http://localhost
-- **Backend API**: http://localhost:3030/api
+- **Backend API**: http://localhost:3333/api
 - **MongoDB**: localhost:27017
 
 ### 3. View Logs
@@ -110,7 +110,7 @@ The Docker setup includes three services:
 
 ### Backend (Rust)
 - **Image**: Built from multi-stage Dockerfile
-- **Port**: 3030
+- **Port**: 3333
 - **Dependencies**: MongoDB
 - **Health Check**: Polls `/api/progress` endpoint
 
@@ -134,7 +134,7 @@ Default environment variables are set in `docker compose.yml`:
 MONGODB_URI=mongodb://mongodb:27017
 DATABASE_NAME=stock_analyzer
 SERVER_HOST=0.0.0.0
-SERVER_PORT=3030
+SERVER_PORT=3333
 ANALYSIS_INTERVAL_SECS=3600
 CACHE_TTL_SECS=300
 ```
@@ -161,7 +161,7 @@ docker compose down -v
 ## Networking
 
 All services communicate via the `stock_analyzer_network` bridge network:
-- Frontend → Backend: `http://backend:3030`
+- Frontend → Backend: `http://backend:3333`
 - Backend → MongoDB: `mongodb://mongodb:27017`
 - Host → Frontend: `http://localhost:80`
 
@@ -182,7 +182,7 @@ docker compose restart backend
 ### Frontend shows connection errors
 ```bash
 # Verify backend is running
-curl http://localhost:3030/api/progress
+curl http://localhost:3333/api/progress
 
 # Check nginx logs
 docker compose logs frontend
@@ -198,12 +198,12 @@ docker compose exec mongodb mongosh --eval "db.runCommand('ping')"
 ```
 
 ### Port conflicts
-If ports 80, 3030, or 27017 are already in use, modify `docker compose.yml`:
+If ports 80, 3333, or 27017 are already in use, modify `docker compose.yml`:
 
 ```yaml
 ports:
   - "8080:80"      # Frontend
-  - "3031:3030"    # Backend
+  - "3031:3333"    # Backend
   - "27018:27017"  # MongoDB
 ```
 

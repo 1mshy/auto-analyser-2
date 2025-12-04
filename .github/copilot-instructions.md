@@ -40,7 +40,7 @@ RUST_LOG=debug cargo run          # With verbose logging
 cargo build --release             # Production build
 
 # Frontend (from frontend/)
-npm start                         # Dev server on port 3001, proxies to backend:3030
+npm start                         # Dev server on port 3001, proxies to backend:3333
 npm run build                     # Production build
 npm test                          # Run tests
 
@@ -52,9 +52,9 @@ cargo fmt                         # Formatting
 ```
 
 ### Environment Configuration
-Copy `.env.example` to `.env` and modify as needed. **Critical**: Backend runs on port 3000 by default (configurable via `SERVER_PORT`), but frontend proxy expects port 3030 (see `frontend/package.json` proxy setting).
+Copy `.env.example` to `.env` and modify as needed. **Critical**: Backend runs on port 3000 by default (configurable via `SERVER_PORT`), but frontend proxy expects port 3333 (see `frontend/package.json` proxy setting).
 
-**Port Mismatch**: Set `SERVER_PORT=3030` in `.env` to match frontend proxy, or update `frontend/package.json` proxy to `http://localhost:3000`.
+**Port Mismatch**: Set `SERVER_PORT=3333` in `.env` to match frontend proxy, or update `frontend/package.json` proxy to `http://localhost:3000`.
 
 ### Database Setup
 ```bash
@@ -117,7 +117,7 @@ Two-tier in `cache.rs`:
 
 ## Common Pitfalls
 
-1. **Port conflicts**: Backend defaults to 3000, but tests/docs often reference 3030. Check `.env` and `frontend/package.json` proxy.
+1. **Port conflicts**: Backend defaults to 3000, but tests/docs often reference 3333. Check `.env` and `frontend/package.json` proxy.
 2. **MongoDB connection**: Ensure MongoDB is running before starting backend. Connection string format matters (Atlas vs local).
 3. **Yahoo Finance failures**: Some symbols fail (delisted, invalid). This is expected; check logs with `RUST_LOG=debug`.
 4. **Analysis cycle**: First cycle takes ~4 minutes (60 stocks × 4s). WebSocket shows progress; wait before expecting data.

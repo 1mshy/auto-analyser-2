@@ -85,13 +85,13 @@ RUST_LOG=info cargo run --release
 ### Verify
 ```bash
 # Check health
-curl http://localhost:3030/health
+curl http://localhost:3333/health
 
 # View progress
-curl http://localhost:3030/api/progress
+curl http://localhost:3333/api/progress
 
 # Get analyzed stocks (after a few minutes)
-curl http://localhost:3030/api/stocks
+curl http://localhost:3333/api/stocks
 ```
 
 ---
@@ -210,7 +210,7 @@ cargo check
 cargo test
 
 # Check API
-curl -X POST http://localhost:3030/api/stocks/filter \
+curl -X POST http://localhost:3333/api/stocks/filter \
   -H "Content-Type: application/json" \
   -d '{"min_price": 100, "max_rsi": 40}'
 
@@ -224,21 +224,21 @@ websocat ws://localhost:3000/ws
 
 ### Find Oversold Stocks
 ```bash
-curl -X POST http://localhost:3030/api/stocks/filter \
+curl -X POST http://localhost:3333/api/stocks/filter \
   -H "Content-Type: application/json" \
   -d '{"only_oversold": true}' | jq .
 ```
 
 ### Find Stocks in Price Range
 ```bash
-curl -X POST http://localhost:3030/api/stocks/filter \
+curl -X POST http://localhost:3333/api/stocks/filter \
   -H "Content-Type: application/json" \
   -d '{"min_price": 50, "max_price": 150}' | jq .
 ```
 
 ### Find High Volume Stocks
 ```bash
-curl -X POST http://localhost:3030/api/stocks/filter \
+curl -X POST http://localhost:3333/api/stocks/filter \
   -H "Content-Type: application/json" \
   -d '{"min_volume": 10000000}' | jq .
 ```

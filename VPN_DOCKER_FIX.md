@@ -16,7 +16,7 @@ backend:
     - MONGODB_URI=mongodb://localhost:27017  # Changed from 'mongodb'
     - DATABASE_NAME=stock_analyzer
     - SERVER_HOST=127.0.0.1
-    - SERVER_PORT=3030
+    - SERVER_PORT=3333
     - ANALYSIS_INTERVAL_SECS=3600
     - CACHE_TTL_SECS=300
     - YAHOO_REQUEST_DELAY_MS=8000  # Can reduce since using VPN
@@ -166,7 +166,7 @@ services:
       - MONGODB_URI=mongodb://127.0.0.1:27017
       - DATABASE_NAME=stock_analyzer
       - SERVER_HOST=127.0.0.1
-      - SERVER_PORT=3030
+      - SERVER_PORT=3333
       - ANALYSIS_INTERVAL_SECS=3600
       - CACHE_TTL_SECS=300
       - YAHOO_REQUEST_DELAY_MS=6000
@@ -204,7 +204,7 @@ docker logs -f stock_analyzer_backend
 
 3. **Access**:
 - Frontend: http://localhost:80
-- Backend API: http://localhost:3030
+- Backend API: http://localhost:3333
 - MongoDB: localhost:27017
 
 ### Expected Result:
@@ -249,10 +249,10 @@ MONGODB_URI=mongodb://127.0.0.1:27017
 ```
 
 ### Issue: Port conflicts
-**Solution**: Check what's using port 3030/27017
+**Solution**: Check what's using port 3333/27017
 
 ```bash
-lsof -i :3030
+lsof -i :3333
 lsof -i :27017
 
 # Kill conflicting processes

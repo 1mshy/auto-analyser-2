@@ -52,14 +52,14 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize OpenRouter client
     let openrouter_client = OpenRouterClient::new(
-        config.openrouter_api_key.clone(),
+        config.OPENROUTER_API_KEY_STOCKS.clone(),
         config.openrouter_enabled,
     );
     if openrouter_client.is_enabled() {
         tracing::info!("🤖 OpenRouter AI client enabled with {} free models", 
             openrouter::FREE_MODELS.len());
     } else {
-        tracing::info!("🤖 OpenRouter AI disabled (set OPENROUTER_API_KEY to enable)");
+        tracing::info!("🤖 OpenRouter AI disabled (set OPENROUTER_API_KEY_STOCKS to enable)");
     }
 
     // Create analysis engine

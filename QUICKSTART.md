@@ -14,7 +14,7 @@ docker compose up -d
 
 # Access the application
 # Frontend: http://localhost
-# Backend: http://localhost:3030/api
+# Backend: http://localhost:3333/api
 ```
 
 That's it! Skip to [Test It Out](#-test-it-out) below.
@@ -85,7 +85,7 @@ You should see:
 
 ### 1. Check API Health
 ```bash
-curl http://localhost:3030/health
+curl http://localhost:3333/health
 ```
 
 Expected response:
@@ -99,7 +99,7 @@ Expected response:
 
 ### 2. View Analysis Progress
 ```bash
-curl http://localhost:3030/api/progress
+curl http://localhost:3333/api/progress
 ```
 
 Expected response:
@@ -117,18 +117,18 @@ Expected response:
 ### 3. Get All Analyzed Stocks
 ```bash
 # Wait a few minutes for some stocks to be analyzed
-curl http://localhost:3030/api/stocks | jq .
+curl http://localhost:3333/api/stocks | jq .
 ```
 
 ### 4. Filter Stocks by Criteria
 ```bash
 # Find oversold stocks (RSI < 30)
-curl -X POST http://localhost:3030/api/stocks/filter \
+curl -X POST http://localhost:3333/api/stocks/filter \
   -H "Content-Type: application/json" \
   -d '{"max_rsi": 30}' | jq .
 
 # Find stocks in price range
-curl -X POST http://localhost:3030/api/stocks/filter \
+curl -X POST http://localhost:3333/api/stocks/filter \
   -H "Content-Type: application/json" \
   -d '{"min_price": 100, "max_price": 200}' | jq .
 ```

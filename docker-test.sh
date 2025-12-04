@@ -88,7 +88,7 @@ echo "Testing Backend API..."
 MAX_RETRIES=12
 RETRY_COUNT=0
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if curl -s http://localhost:3030/api/progress > /dev/null 2>&1; then
+    if curl -s http://localhost:3333/api/progress > /dev/null 2>&1; then
         print_status "Backend API is responding"
         break
     else
@@ -129,7 +129,7 @@ echo "✅ Docker Compose setup is working!"
 echo ""
 echo "Access the application at:"
 echo "  Frontend: http://localhost"
-echo "  Backend:  http://localhost:3030/api"
+echo "  Backend:  http://localhost:3333/api"
 echo ""
 echo "To view logs: docker compose logs -f"
 echo "To stop:      docker compose down"
