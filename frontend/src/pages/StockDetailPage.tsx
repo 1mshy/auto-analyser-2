@@ -19,7 +19,6 @@ import { ArrowLeft, TrendingUp, TrendingDown, Zap, RefreshCw, ExternalLink } fro
 import { api } from '../api';
 import { 
   StockAnalysis, 
-  StockFilter, 
   AIAnalysisResponse, 
   getMarketCapTier, 
   getMarketCapTierColor, 
@@ -100,17 +99,12 @@ export const StockDetailPage: React.FC = () => {
     
     try {
       setLoading(true);
+      setStock(null);
       
-      // Fetch stock data via filter
-      const filter: StockFilter = {
-        page: 1,
-        page_size: 5000,
-      };
-      
-      const response = await api.filterStocks(filter);
-      const found = response.stocks.find(s => s.symbol.toUpperCase() === symbol.toUpperCase());
-      if (found) {
-        setStock(found);
+      // Fetch stock data directly by symbol
+      const result = await api.getStock(symbol.toUpperCase());
+      if (result.stock) {
+        setStock(result.stock);
       }
 
     } catch (err) {
@@ -170,7 +164,15 @@ export const StockDetailPage: React.FC = () => {
       <Container maxW="container.xl" py={8}>
         <VStack py={12}>
           <Heading color="gray.500">Stock Not Found</Heading>
-          <Text color="gray.600">The symbol "{symbol}" was not found in our database.</Text>
+          <Text color="gray.600" textAlign="center" maxW="md">
+            The symbol "{symbol}" was not found in our database. 
+            This may happen if:
+          </Text>
+          <VStack align="start" color="gray.500" fontSize="sm" mt={2}>
+            <Text>• The stock hasn't been analyzed yet (check progress)</Text>
+            <Text>• Yahoo Finance doesn't have data for this symbol</Text>
+            <Text>• It's a warrant, unit, or special security type</Text>
+          </VStack>
           <Link to="/stocks">
             <Button colorPalette="blue" mt={4}>
               <ArrowLeft size={16} /> Back to Stocks

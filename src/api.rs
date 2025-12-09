@@ -36,6 +36,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/api/stocks", get(get_stocks))
         .route("/api/stocks/filter", post(filter_stocks))
+        .route("/api/stocks/:symbol", get(get_stock_by_symbol))
         .route("/api/stocks/:symbol/history", get(get_stock_history))
         .route("/api/stocks/:symbol/ai-analysis", get(get_ai_analysis))
         .route("/api/market-summary", get(get_market_summary))
@@ -193,6 +194,42 @@ async fn get_market_summary(State(state): State<AppState>) -> impl IntoResponse 
             "success": true,
             "summary": summary
         })),
+        Err(e) => Json(json!({
+            "success": false,
+            "error": e.to_string()
+        })),
+    }
+}
+
+/// Get a single stock by symbol
+async fn get_stock_by_symbol(
+    State(state): State<AppState>,
+    Path(symbol): Path<String>,
+) -> impl IntoResponse {
+    // Try cache first
+    if let Some(cached) = state.cache.get_stock(&symbol).await {
+        return Json(json!({
+            "success": true,
+            "stock": cached,
+            "cached": true
+        }));
+    }
+
+    // Fetch from database
+    match state.db.get_analysis_by_symbol(&symbol).await {
+        Ok(Some(analysis)) => {
+            Json(json!({
+                "success": true,
+                "stock": analysis,
+                "cached": false
+            }))
+        }
+        Ok(None) => {
+            Json(json!({
+                "success": false,
+                "error": format!("Stock '{}' not found. It may not have been analyzed yet or failed during analysis.", symbol)
+            }))
+        }
         Err(e) => Json(json!({
             "success": false,
             "error": e.to_string()

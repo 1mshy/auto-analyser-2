@@ -16,6 +16,15 @@ export const api = {
     return response.data.stocks || response.data;
   },
 
+  // Get a single stock by symbol
+  getStock: async (symbol: string): Promise<{ stock: StockAnalysis | null; cached: boolean }> => {
+    const response = await axios.get(`${API_BASE_URL}/api/stocks/${symbol}`);
+    if (response.data.success) {
+      return { stock: response.data.stock, cached: response.data.cached };
+    }
+    return { stock: null, cached: false };
+  },
+
   // Filter stocks with pagination
   filterStocks: async (filter: StockFilter): Promise<FilterResponse> => {
     const response = await axios.post(`${API_BASE_URL}/api/stocks/filter`, filter);
