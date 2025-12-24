@@ -117,6 +117,10 @@ pub struct NasdaqTechnicals {
     pub ex_dividend_date: Option<String>,
     pub dividend_pay_date: Option<String>,
     pub current_yield: Option<f64>,
+    // Primary data from NASDAQ API (more reliable for price changes)
+    pub last_sale_price: Option<f64>,
+    pub net_change: Option<f64>,
+    pub percentage_change: Option<f64>,
 }
 
 // NASDAQ News Item

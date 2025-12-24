@@ -269,12 +269,20 @@ impl AnalysisEngine {
         // Get sector from technicals if available
         let sector = technicals.as_ref().and_then(|t| t.sector.clone());
 
-        // Calculate price change from previous close
+        // Calculate price change - prefer NASDAQ primaryData (most accurate),
+        // then calculate from previous_close, then fall back to historical data
         let (price_change, price_change_percent) = if let Some(ref tech) = technicals {
-            if let Some(prev_close) = tech.previous_close {
+            // First priority: Use NASDAQ primaryData fields (always accurate)
+            if let (Some(change), Some(pct)) = (tech.net_change, tech.percentage_change) {
+                debug!("Using NASDAQ primaryData for {}: change={}, pct={}", symbol, change, pct);
+                (Some(change), Some(pct))
+            }
+            // Second priority: Calculate from previous_close
+            else if let Some(prev_close) = tech.previous_close {
                 if prev_close > 0.0 {
                     let change = latest_price.close - prev_close;
                     let change_percent = (change / prev_close) * 100.0;
+                    debug!("Calculated from previous_close for {}: change={}, pct={}", symbol, change, change_percent);
                     (Some(change), Some(change_percent))
                 } else {
                     (None, None)
@@ -284,13 +292,18 @@ impl AnalysisEngine {
             }
         } else {
             // Fallback: calculate from historical data if we have at least 2 days
+            // Only use if previous day had trading activity (volume > 0)
             if historical_prices.len() >= 2 {
-                let prev_close = historical_prices[historical_prices.len() - 2].close;
-                if prev_close > 0.0 {
-                    let change = latest_price.close - prev_close;
-                    let change_percent = (change / prev_close) * 100.0;
+                let prev_idx = historical_prices.len() - 2;
+                let prev = &historical_prices[prev_idx];
+                if prev.close > 0.0 && prev.volume > 0.0 {
+                    let change = latest_price.close - prev.close;
+                    let change_percent = (change / prev.close) * 100.0;
+                    debug!("Calculated from historical for {}: change={}, pct={}", symbol, change, change_percent);
                     (Some(change), Some(change_percent))
                 } else {
+                    // Previous day had no volume - likely stale data
+                    warn!("Skipping price change calc for {} - previous day had no volume (stale data)", symbol);
                     (None, None)
                 }
             } else {

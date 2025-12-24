@@ -23,8 +23,20 @@ struct NasdaqTechnicalsResponse {
 #[derive(Debug, Deserialize)]
 struct NasdaqTechnicalsData {
     symbol: Option<String>,
+    #[serde(rename = "primaryData")]
+    primary_data: Option<PrimaryData>,
     #[serde(rename = "summaryData")]
     summary_data: Option<SummaryData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PrimaryData {
+    #[serde(rename = "lastSalePrice")]
+    last_sale_price: Option<String>,
+    #[serde(rename = "netChange")]
+    net_change: Option<String>,
+    #[serde(rename = "percentageChange")]
+    percentage_change: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -168,48 +180,64 @@ impl NasdaqClient {
             .data
             .ok_or_else(|| anyhow!("No data in NASDAQ technicals response for {}", symbol))?;
 
-        let summary = data
-            .summary_data
-            .ok_or_else(|| anyhow!("No summary data for {}", symbol))?;
+        // Extract primaryData (always available, even for warrants)
+        let primary = data.primary_data.as_ref();
+        let last_sale_price = primary.and_then(|p| Self::parse_dollar_value(&p.last_sale_price));
+        let net_change = primary.and_then(|p| Self::parse_signed_number(&p.net_change));
+        let percentage_change = primary.and_then(|p| Self::parse_percentage(&p.percentage_change));
+
+        // summaryData may not be present for all securities (e.g., warrants)
+        let summary = data.summary_data;
 
         // Parse high/low from "227.07/225.91" format
-        let (todays_high, todays_low) = Self::parse_high_low(&summary.today_high_low);
-        let (fifty_two_week_high, fifty_two_week_low) =
-            Self::parse_high_low(&summary.fifty_two_week_high_low);
+        let (todays_high, todays_low) = summary.as_ref()
+            .map(|s| Self::parse_high_low(&s.today_high_low))
+            .unwrap_or((None, None));
+        let (fifty_two_week_high, fifty_two_week_low) = summary.as_ref()
+            .map(|s| Self::parse_high_low(&s.fifty_two_week_high_low))
+            .unwrap_or((None, None));
 
         Ok(NasdaqTechnicals {
-            exchange: summary.exchange.and_then(|v| v.value),
-            sector: summary.sector.and_then(|v| v.value),
-            industry: summary.industry.and_then(|v| v.value),
-            one_year_target: summary
-                .one_yr_target
+            exchange: summary.as_ref().and_then(|s| s.exchange.as_ref().and_then(|v| v.value.clone())),
+            sector: summary.as_ref().and_then(|s| s.sector.as_ref().and_then(|v| v.value.clone())),
+            industry: summary.as_ref().and_then(|s| s.industry.as_ref().and_then(|v| v.value.clone())),
+            one_year_target: summary.as_ref()
+                .and_then(|s| s.one_yr_target.as_ref())
                 .and_then(|v| Self::parse_dollar_value(&v.value)),
             todays_high,
             todays_low,
-            share_volume: summary
-                .share_volume
+            share_volume: summary.as_ref()
+                .and_then(|s| s.share_volume.as_ref())
                 .and_then(|v| Self::parse_number_with_commas(&v.value)),
-            average_volume: summary
-                .average_volume
+            average_volume: summary.as_ref()
+                .and_then(|s| s.average_volume.as_ref())
                 .and_then(|v| Self::parse_number_with_commas(&v.value)),
-            previous_close: summary
-                .previous_close
+            previous_close: summary.as_ref()
+                .and_then(|s| s.previous_close.as_ref())
                 .and_then(|v| Self::parse_dollar_value(&v.value)),
             fifty_two_week_high,
             fifty_two_week_low,
-            pe_ratio: summary.pe_ratio.and_then(|v| Self::parse_json_number(&v.value)),
-            forward_pe: summary
-                .forward_pe
+            pe_ratio: summary.as_ref()
+                .and_then(|s| s.pe_ratio.as_ref())
+                .and_then(|v| Self::parse_json_number(&v.value)),
+            forward_pe: summary.as_ref()
+                .and_then(|s| s.forward_pe.as_ref())
                 .and_then(|v| Self::parse_dollar_value(&v.value)),
-            eps: summary.eps.and_then(|v| Self::parse_dollar_value(&v.value)),
-            annualized_dividend: summary
-                .annualized_dividend
+            eps: summary.as_ref()
+                .and_then(|s| s.eps.as_ref())
                 .and_then(|v| Self::parse_dollar_value(&v.value)),
-            ex_dividend_date: summary.ex_dividend_date.and_then(|v| v.value),
-            dividend_pay_date: summary.dividend_pay_date.and_then(|v| v.value),
-            current_yield: summary
-                .current_yield
+            annualized_dividend: summary.as_ref()
+                .and_then(|s| s.annualized_dividend.as_ref())
+                .and_then(|v| Self::parse_dollar_value(&v.value)),
+            ex_dividend_date: summary.as_ref().and_then(|s| s.ex_dividend_date.as_ref().and_then(|v| v.value.clone())),
+            dividend_pay_date: summary.as_ref().and_then(|s| s.dividend_pay_date.as_ref().and_then(|v| v.value.clone())),
+            current_yield: summary.as_ref()
+                .and_then(|s| s.current_yield.as_ref())
                 .and_then(|v| Self::parse_percentage(&v.value)),
+            // Primary data fields (more reliable for price changes)
+            last_sale_price,
+            net_change,
+            percentage_change,
         })
     }
 
@@ -295,6 +323,15 @@ impl NasdaqClient {
         })
     }
 
+    fn parse_signed_number(value: &Option<String>) -> Option<f64> {
+        value.as_ref().and_then(|v| {
+            v.replace(',', "")
+                .trim()
+                .parse::<f64>()
+                .ok()
+        })
+    }
+
     fn parse_number_with_commas(value: &Option<String>) -> Option<f64> {
         value.as_ref().and_then(|v| {
             v.replace(',', "").trim().parse::<f64>().ok()
@@ -357,6 +394,26 @@ mod tests {
         assert_eq!(
             NasdaqClient::parse_percentage(&Some("0.44%".to_string())),
             Some(0.44)
+        );
+        assert_eq!(
+            NasdaqClient::parse_percentage(&Some("-6.30%".to_string())),
+            Some(-6.30)
+        );
+    }
+
+    #[test]
+    fn test_parse_signed_number() {
+        assert_eq!(
+            NasdaqClient::parse_signed_number(&Some("-0.23".to_string())),
+            Some(-0.23)
+        );
+        assert_eq!(
+            NasdaqClient::parse_signed_number(&Some("1.45".to_string())),
+            Some(1.45)
+        );
+        assert_eq!(
+            NasdaqClient::parse_signed_number(&Some("-1,234.56".to_string())),
+            Some(-1234.56)
         );
     }
 }
