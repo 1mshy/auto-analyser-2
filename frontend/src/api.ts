@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings } from './types';
+import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile } from './types';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3333';
 
@@ -45,12 +45,12 @@ export const api = {
     if (settings?.maxPriceChangePercent) {
       params.append('max_price_change_percent', settings.maxPriceChangePercent.toString());
     }
-    
+
     const queryString = params.toString();
-    const url = queryString 
+    const url = queryString
       ? `${API_BASE_URL}/api/market-summary?${queryString}`
       : `${API_BASE_URL}/api/market-summary`;
-    
+
     const response = await axios.get(url);
     if (response.data.success) {
       return response.data.summary;
@@ -74,6 +74,19 @@ export const api = {
   getStockHistory: async (symbol: string): Promise<HistoricalDataPoint[]> => {
     const response = await axios.get(`${API_BASE_URL}/api/stocks/${symbol}/history`);
     return response.data.history || [];
+  },
+
+  // Get company profile (description, industry, website, etc.)
+  getCompanyProfile: async (symbol: string): Promise<CompanyProfile | null> => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/stocks/${symbol}/profile`);
+      if (response.data.success) {
+        return response.data.profile;
+      }
+      return null;
+    } catch {
+      return null;
+    }
   },
 
   // Get analysis progress

@@ -17,7 +17,6 @@ pub const FREE_MODELS: &[&str] = &[
     "qwen/qwen3-coder:free",
     "qwen/qwen3-4b:free",
     // "alibaba/tongyi-deepresearch-30b-a3b:free",
-    "amazon/nova-2-lite-v1:free",
     "google/gemma-2-9b-it:free",                  // Google Gemma 2 9B - reliable
     "meta-llama/llama-3.2-3b-instruct:free",      // Meta Llama 3.2 3B - reliable
     "nvidia/nemotron-nano-12b-v2-vl:free",        // NVIDIA Nemotron Nano - 128K context

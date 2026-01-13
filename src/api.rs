@@ -46,6 +46,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/stocks/:symbol", get(get_stock_by_symbol))
         .route("/api/stocks/:symbol/history", get(get_stock_history))
         .route("/api/stocks/:symbol/ai-analysis", get(get_ai_analysis))
+        .route("/api/stocks/:symbol/profile", get(get_stock_profile))
         .route("/api/market-summary", get(get_market_summary))
         .route("/api/progress", get(get_progress))
         .route("/api/ai/status", get(get_ai_status))
@@ -268,6 +269,29 @@ async fn get_stock_history(
             "success": false,
             "error": e.to_string()
         })),
+    }
+}
+
+/// Get company profile from Yahoo Finance (description, industry, website, etc.)
+async fn get_stock_profile(
+    State(state): State<AppState>,
+    Path(symbol): Path<String>,
+) -> impl IntoResponse {
+    match state.yahoo_client.get_company_profile(&symbol).await {
+        Ok(profile) => {
+            Json(json!({
+                "success": true,
+                "symbol": symbol,
+                "profile": profile,
+            }))
+        }
+        Err(e) => {
+            warn!("Failed to fetch company profile for {}: {}", symbol, e);
+            Json(json!({
+                "success": false,
+                "error": e.to_string()
+            }))
+        }
     }
 }
 

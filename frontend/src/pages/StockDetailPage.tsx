@@ -17,12 +17,13 @@ import {
 } from '@chakra-ui/react';
 import { ArrowLeft, TrendingUp, TrendingDown, Zap, RefreshCw, ExternalLink } from 'lucide-react';
 import { api } from '../api';
-import { 
-  StockAnalysis, 
-  AIAnalysisResponse, 
-  getMarketCapTier, 
-  getMarketCapTierColor, 
-  getMarketCapTierLabel 
+import {
+  StockAnalysis,
+  AIAnalysisResponse,
+  CompanyProfile,
+  getMarketCapTier,
+  getMarketCapTierColor,
+  getMarketCapTierLabel
 } from '../types';
 
 // TradingView widget integration
@@ -72,10 +73,10 @@ const TradingViewWidget: React.FC<{ symbol: string }> = ({ symbol }) => {
 };
 
 // Stat Card component
-const StatCard: React.FC<{ label: string; value: string | number; color?: string }> = ({ 
-  label, 
-  value, 
-  color = 'white' 
+const StatCard: React.FC<{ label: string; value: string | number; color?: string }> = ({
+  label,
+  value,
+  color = 'white'
 }) => (
   <Card.Root bg="gray.800" borderColor="gray.700">
     <Card.Body p={4}>
@@ -92,15 +93,17 @@ export const StockDetailPage: React.FC = () => {
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResponse | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'technicals' | 'chart' | 'ai' | 'news'>('overview');
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'overview' | 'about' | 'technicals' | 'chart' | 'ai' | 'news'>('overview');
 
   const fetchStock = useCallback(async () => {
     if (!symbol) return;
-    
+
     try {
       setLoading(true);
       setStock(null);
-      
+
       // Fetch stock data directly by symbol
       const result = await api.getStock(symbol.toUpperCase());
       if (result.stock) {
@@ -124,7 +127,7 @@ export const StockDetailPage: React.FC = () => {
   }, []);
 
   const fetchAIAnalysis = useCallback(async () => {
-    if (!symbol || aiLoading) return;
+    if (!symbol) return;
 
     setAiLoading(true);
     try {
@@ -135,12 +138,27 @@ export const StockDetailPage: React.FC = () => {
     } finally {
       setAiLoading(false);
     }
-  }, [symbol, aiLoading]);
+  }, [symbol]);
+
+  const fetchCompanyProfile = useCallback(async () => {
+    if (!symbol) return;
+
+    setProfileLoading(true);
+    try {
+      const profile = await api.getCompanyProfile(symbol);
+      setCompanyProfile(profile);
+    } catch (err) {
+      console.error('Failed to fetch company profile:', err);
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [symbol]);
 
   useEffect(() => {
     fetchStock();
     checkAIStatus();
-  }, [fetchStock, checkAIStatus]);
+    fetchCompanyProfile();
+  }, [fetchStock, checkAIStatus, fetchCompanyProfile]);
 
   // Auto-trigger AI analysis when enabled
   useEffect(() => {
@@ -165,7 +183,7 @@ export const StockDetailPage: React.FC = () => {
         <VStack py={12}>
           <Heading color="gray.500">Stock Not Found</Heading>
           <Text color="gray.600" textAlign="center" maxW="md">
-            The symbol "{symbol}" was not found in our database. 
+            The symbol "{symbol}" was not found in our database.
             This may happen if:
           </Text>
           <VStack align="start" color="gray.500" fontSize="sm" mt={2}>
@@ -215,13 +233,13 @@ export const StockDetailPage: React.FC = () => {
           </Text>
           <HStack>
             <Box color={changeColor === 'green' ? 'green.400' : 'red.400'}>
-              {stock.price_change_percent != null && stock.price_change_percent >= 0 
-                ? <TrendingUp size={20} /> 
+              {stock.price_change_percent != null && stock.price_change_percent >= 0
+                ? <TrendingUp size={20} />
                 : <TrendingDown size={20} />
               }
             </Box>
-            <Text 
-              fontSize="lg" 
+            <Text
+              fontSize="lg"
               fontWeight="semibold"
               color={changeColor === 'green' ? 'green.400' : 'red.400'}
             >
@@ -247,6 +265,14 @@ export const StockDetailPage: React.FC = () => {
           onClick={() => setActiveTab('overview')}
         >
           Overview
+        </Button>
+        <Button
+          size="sm"
+          variant={activeTab === 'about' ? 'solid' : 'outline'}
+          colorPalette={activeTab === 'about' ? 'teal' : 'gray'}
+          onClick={() => setActiveTab('about')}
+        >
+          About
         </Button>
         <Button
           size="sm"
@@ -288,16 +314,16 @@ export const StockDetailPage: React.FC = () => {
       {activeTab === 'overview' && (
         <>
           <SimpleGrid columns={{ base: 2, md: 4 }} gap={4} mb={6}>
-            <StatCard 
-              label="RSI (14)" 
-              value={stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'} 
-              color={rsiColor === 'green' ? 'green.400' : rsiColor === 'red' ? 'red.400' : 'white'} 
+            <StatCard
+              label="RSI (14)"
+              value={stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'}
+              color={rsiColor === 'green' ? 'green.400' : rsiColor === 'red' ? 'red.400' : 'white'}
             />
             <StatCard label="SMA 20" value={stock.sma_20 != null && typeof stock.sma_20 === 'number' ? `$${stock.sma_20.toFixed(2)}` : '-'} />
             <StatCard label="SMA 50" value={stock.sma_50 != null && typeof stock.sma_50 === 'number' ? `$${stock.sma_50.toFixed(2)}` : '-'} />
-            <StatCard 
-              label="MACD" 
-              value={stock.macd ? (stock.macd.histogram > 0 ? 'Bullish' : 'Bearish') : '-'} 
+            <StatCard
+              label="MACD"
+              value={stock.macd ? (stock.macd.histogram > 0 ? 'Bullish' : 'Bearish') : '-'}
               color={stock.macd?.histogram != null && stock.macd.histogram > 0 ? 'green.400' : 'red.400'}
             />
           </SimpleGrid>
@@ -313,6 +339,101 @@ export const StockDetailPage: React.FC = () => {
             )}
           </SimpleGrid>
         </>
+      )}
+
+      {/* About Tab */}
+      {activeTab === 'about' && (
+        <Card.Root bg="gray.800" borderColor="gray.700">
+          <Card.Header>
+            <Heading size="md" color="white">About {stock.symbol}</Heading>
+          </Card.Header>
+          <Card.Body>
+            {profileLoading ? (
+              <Flex justify="center" py={8}>
+                <Spinner size="lg" color="teal.400" />
+                <Text ml={3} color="gray.400">Loading company info...</Text>
+              </Flex>
+            ) : companyProfile ? (
+              <VStack align="start" gap={4}>
+                {/* Business Description */}
+                {companyProfile.long_business_summary && (
+                  <Box>
+                    <Text color="gray.400" fontSize="sm" mb={2}>Description</Text>
+                    <Text color="gray.200" lineHeight="tall">
+                      {companyProfile.long_business_summary}
+                    </Text>
+                  </Box>
+                )}
+
+                <Separator />
+
+                {/* Key Info Grid */}
+                <SimpleGrid columns={{ base: 1, md: 2 }} gap={4} w="100%">
+                  {(companyProfile.industry || companyProfile.sector) && (
+                    <Box>
+                      <Text color="gray.400" fontSize="sm">Industry / Sector</Text>
+                      <HStack mt={1}>
+                        {companyProfile.industry && (
+                          <Badge colorPalette="blue">{companyProfile.industry}</Badge>
+                        )}
+                        {companyProfile.sector && (
+                          <Badge colorPalette="purple">{companyProfile.sector}</Badge>
+                        )}
+                      </HStack>
+                    </Box>
+                  )}
+
+                  {companyProfile.website && (
+                    <Box>
+                      <Text color="gray.400" fontSize="sm">Website</Text>
+                      <a
+                        href={companyProfile.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <HStack color="blue.400" _hover={{ color: 'blue.300' }} mt={1}>
+                          <Text>{companyProfile.website.replace(/^https?:\/\//, '')}</Text>
+                          <ExternalLink size={14} />
+                        </HStack>
+                      </a>
+                    </Box>
+                  )}
+
+                  {companyProfile.full_time_employees && (
+                    <Box>
+                      <Text color="gray.400" fontSize="sm">Employees</Text>
+                      <Text color="white" fontWeight="semibold" mt={1}>
+                        {companyProfile.full_time_employees.toLocaleString()}
+                      </Text>
+                    </Box>
+                  )}
+
+                  {(companyProfile.city || companyProfile.state || companyProfile.country) && (
+                    <Box>
+                      <Text color="gray.400" fontSize="sm">Headquarters</Text>
+                      <Text color="white" mt={1}>
+                        {[companyProfile.city, companyProfile.state, companyProfile.country]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </Text>
+                    </Box>
+                  )}
+
+                  {companyProfile.phone && (
+                    <Box>
+                      <Text color="gray.400" fontSize="sm">Phone</Text>
+                      <Text color="white" mt={1}>{companyProfile.phone}</Text>
+                    </Box>
+                  )}
+                </SimpleGrid>
+              </VStack>
+            ) : (
+              <Text color="gray.500">
+                Company profile information is not available for this stock.
+              </Text>
+            )}
+          </Card.Body>
+        </Card.Root>
       )}
 
       {/* Technicals Tab */}
@@ -394,15 +515,15 @@ export const StockDetailPage: React.FC = () => {
                 <VStack align="start" gap={2}>
                   <HStack justify="space-between" w="100%">
                     <Text color="gray.400">52-Week High</Text>
-                  <Text color="white">${stock.technicals.fifty_two_week_high != null && typeof stock.technicals.fifty_two_week_high === 'number' ? stock.technicals.fifty_two_week_high.toFixed(2) : '-'}</Text>
+                    <Text color="white">${stock.technicals.fifty_two_week_high != null && typeof stock.technicals.fifty_two_week_high === 'number' ? stock.technicals.fifty_two_week_high.toFixed(2) : '-'}</Text>
                   </HStack>
                   <HStack justify="space-between" w="100%">
                     <Text color="gray.400">52-Week Low</Text>
-                  <Text color="white">${stock.technicals.fifty_two_week_low != null && typeof stock.technicals.fifty_two_week_low === 'number' ? stock.technicals.fifty_two_week_low.toFixed(2) : '-'}</Text>
-                </HStack>
-                <HStack justify="space-between" w="100%">
-                  <Text color="gray.400">Previous Close</Text>
-                  <Text color="white">${stock.technicals.previous_close != null && typeof stock.technicals.previous_close === 'number' ? stock.technicals.previous_close.toFixed(2) : '-'}</Text>
+                    <Text color="white">${stock.technicals.fifty_two_week_low != null && typeof stock.technicals.fifty_two_week_low === 'number' ? stock.technicals.fifty_two_week_low.toFixed(2) : '-'}</Text>
+                  </HStack>
+                  <HStack justify="space-between" w="100%">
+                    <Text color="gray.400">Previous Close</Text>
+                    <Text color="white">${stock.technicals.previous_close != null && typeof stock.technicals.previous_close === 'number' ? stock.technicals.previous_close.toFixed(2) : '-'}</Text>
                   </HStack>
                 </VStack>
               </Card.Body>
@@ -452,9 +573,9 @@ export const StockDetailPage: React.FC = () => {
                 <Box color="purple.400"><Zap size={20} /></Box>
                 <Heading size="md" color="white">AI Analysis</Heading>
               </HStack>
-              <Button 
-                size="sm" 
-                colorPalette="purple" 
+              <Button
+                size="sm"
+                colorPalette="purple"
                 onClick={fetchAIAnalysis}
                 loading={aiLoading}
                 disabled={!aiEnabled}

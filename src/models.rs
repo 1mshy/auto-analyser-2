@@ -133,6 +133,20 @@ pub struct NasdaqNewsItem {
     pub ago: Option<String>,
 }
 
+// Company Profile from Yahoo Finance quoteSummary/assetProfile
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompanyProfile {
+    pub long_business_summary: Option<String>,
+    pub industry: Option<String>,
+    pub sector: Option<String>,
+    pub website: Option<String>,
+    pub full_time_employees: Option<i64>,
+    pub city: Option<String>,
+    pub state: Option<String>,
+    pub country: Option<String>,
+    pub phone: Option<String>,
+}
+
 // AI Analysis Response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIAnalysisResponse {

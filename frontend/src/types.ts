@@ -53,6 +53,18 @@ export interface NasdaqNewsItem {
   ago?: string;
 }
 
+export interface CompanyProfile {
+  long_business_summary?: string;
+  industry?: string;
+  sector?: string;
+  website?: string;
+  full_time_employees?: number;
+  city?: string;
+  state?: string;
+  country?: string;
+  phone?: string;
+}
+
 export interface StockFilter {
   min_price?: number;
   max_price?: number;
