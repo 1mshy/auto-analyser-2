@@ -2,7 +2,7 @@ use crate::{
     cache::CacheLayer,
     db::MongoDB,
     models::StockFilter,
-    openrouter::OpenRouterClient,
+    openrouter::{OpenRouterClient, StreamEvent},
     yahoo::YahooFinanceClient,
 };
 use axum::{
@@ -10,10 +10,14 @@ use axum::{
         ws::{Message, WebSocket},
         Path, Query, State, WebSocketUpgrade,
     },
-    response::{IntoResponse, Json},
+    response::{
+        sse::{Event, KeepAlive, Sse},
+        IntoResponse, Json,
+    },
     routing::{get, post},
     Router,
 };
+use std::convert::Infallible;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -46,6 +50,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/stocks/:symbol", get(get_stock_by_symbol))
         .route("/api/stocks/:symbol/history", get(get_stock_history))
         .route("/api/stocks/:symbol/ai-analysis", get(get_ai_analysis))
+        .route("/api/stocks/:symbol/ai-analysis/stream", get(stream_ai_analysis))
         .route("/api/stocks/:symbol/profile", get(get_stock_profile))
         .route("/api/market-summary", get(get_market_summary))
         .route("/api/progress", get(get_progress))
@@ -354,6 +359,67 @@ async fn get_ai_analysis(
                 "success": false,
                 "error": format!("AI analysis failed: {}", e)
             }))
+        }
+    }
+}
+
+/// Stream AI analysis via Server-Sent Events for real-time updates
+async fn stream_ai_analysis(
+    State(state): State<AppState>,
+    Path(symbol): Path<String>,
+) -> Sse<std::pin::Pin<Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>>> {
+    use futures::stream::StreamExt;
+
+    // Helper to create error stream
+    fn error_stream(msg: String) -> std::pin::Pin<Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>> {
+        Box::pin(futures::stream::once(async move {
+            Ok::<_, Infallible>(Event::default()
+                .event("error")
+                .data(format!(r#"{{"type":"error","message":"{}"}}"#, msg)))
+        }))
+    }
+
+    // Check if OpenRouter is enabled
+    if !state.openrouter_client.is_enabled() {
+        return Sse::new(error_stream("AI analysis is not enabled. Set OPENROUTER_API_KEY_STOCKS environment variable.".to_string()))
+            .keep_alive(KeepAlive::default());
+    }
+
+    // First, get the stock analysis from cache or database
+    let analysis = if let Some(cached) = state.cache.get_stock(&symbol).await {
+        Some(cached)
+    } else {
+        match state.db.get_analysis_by_symbol(&symbol).await {
+            Ok(Some(db_analysis)) => Some(db_analysis),
+            _ => None,
+        }
+    };
+
+    let Some(analysis) = analysis else {
+        return Sse::new(error_stream(format!("No analysis found for {}. Wait for the analysis cycle to complete.", symbol)))
+            .keep_alive(KeepAlive::default());
+    };
+
+    // Create the streaming response
+    match state.openrouter_client.analyze_stock_streaming(&analysis).await {
+        Ok(event_stream) => {
+            let sse_stream = event_stream.map(|event: StreamEvent| {
+                let data = serde_json::to_string(&event).unwrap_or_default();
+                let event_type = match &event {
+                    StreamEvent::Status { .. } => "status",
+                    StreamEvent::ModelInfo { .. } => "model_info",
+                    StreamEvent::Content { .. } => "content",
+                    StreamEvent::Done { .. } => "done",
+                    StreamEvent::Error { .. } => "error",
+                };
+                Ok::<_, Infallible>(Event::default().event(event_type).data(data))
+            });
+            let boxed: std::pin::Pin<Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>> = Box::pin(sse_stream);
+            Sse::new(boxed).keep_alive(KeepAlive::default())
+        }
+        Err(e) => {
+            Sse::new(error_stream(format!("Failed to start streaming: {}", e)))
+                .keep_alive(KeepAlive::default())
         }
     }
 }

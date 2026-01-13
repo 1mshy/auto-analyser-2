@@ -124,6 +124,42 @@ export interface AnalysisProgress {
   errors: number;
 }
 
+// Streaming AI Analysis Event Types
+export type StreamEventType = 'status' | 'model_info' | 'content' | 'done' | 'error';
+
+export interface StreamEventStatus {
+  type: 'status';
+  stage: string;
+  message: string;
+}
+
+export interface StreamEventModelInfo {
+  type: 'model_info';
+  model: string;
+}
+
+export interface StreamEventContent {
+  type: 'content';
+  delta: string;
+}
+
+export interface StreamEventDone {
+  type: 'done';
+  symbol: string;
+}
+
+export interface StreamEventError {
+  type: 'error';
+  message: string;
+}
+
+export type StreamEvent =
+  | StreamEventStatus
+  | StreamEventModelInfo
+  | StreamEventContent
+  | StreamEventDone
+  | StreamEventError;
+
 export interface SavedFilter {
   id: string;
   name: string;

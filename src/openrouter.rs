@@ -327,6 +327,176 @@ impl OpenRouterClient {
     pub async fn available_models() -> Vec<String> {
         get_free_models().await
     }
+
+    /// Stream AI analysis response for real-time token display
+    /// Yields StreamEvent variants for status updates and content chunks
+    pub async fn analyze_stock_streaming(
+        &self,
+        analysis: &StockAnalysis,
+    ) -> Result<impl futures::Stream<Item = StreamEvent>> {
+        use async_stream::stream;
+
+        if !self.is_enabled() {
+            return Err(anyhow!("OpenRouter is not enabled or API key not configured"));
+        }
+
+        let free_models = get_free_models().await;
+        if free_models.is_empty() {
+            return Err(anyhow!("No free models available"));
+        }
+
+        let prompt = self.build_analysis_prompt(analysis);
+        let api_key = self.api_key.clone();
+        let symbol = analysis.symbol.clone();
+        let current_idx = self.current_model_index();
+        let model = free_models[current_idx % free_models.len()].clone();
+
+        Ok(stream! {
+            // Status: Connecting to AI
+            yield StreamEvent::Status {
+                stage: "connecting".to_string(),
+                message: format!("Connecting to AI model: {}", model),
+            };
+
+            // Build the streaming request manually since openrouter-rs doesn't support streaming
+            let client = reqwest::Client::new();
+            
+            yield StreamEvent::Status {
+                stage: "analyzing".to_string(),
+                message: format!("Analyzing {} with {}", symbol, model),
+            };
+
+            let request_body = serde_json::json!({
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are an expert stock analyst. Provide concise, actionable analysis based on technical indicators. Be objective and mention both opportunities and risks."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "max_tokens": 1000,
+                "temperature": 0.7,
+                "stream": true
+            });
+
+            let response = client
+                .post("https://openrouter.ai/api/v1/chat/completions")
+                .header("Authorization", format!("Bearer {}", api_key))
+                .header("HTTP-Referer", "https://github.com/1mshy/auto-analyser-2")
+                .header("X-Title", "Auto Stock Analyser")
+                .header("Content-Type", "application/json")
+                .json(&request_body)
+                .send()
+                .await;
+
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    yield StreamEvent::Status {
+                        stage: "streaming".to_string(),
+                        message: "Receiving analysis...".to_string(),
+                    };
+
+                    yield StreamEvent::ModelInfo {
+                        model: model.clone(),
+                    };
+
+                    // Process SSE stream from OpenRouter
+                    let mut stream = resp.bytes_stream();
+                    let mut buffer = String::new();
+                    
+                    use futures::StreamExt;
+                    while let Some(chunk_result) = stream.next().await {
+                        match chunk_result {
+                            Ok(bytes) => {
+                                let text = String::from_utf8_lossy(&bytes);
+                                buffer.push_str(&text);
+                                
+                                // Process complete SSE lines
+                                while let Some(line_end) = buffer.find('\n') {
+                                    let line = buffer[..line_end].trim().to_string();
+                                    buffer = buffer[line_end + 1..].to_string();
+                                    
+                                    if line.starts_with("data: ") {
+                                        let data = &line[6..];
+                                        if data == "[DONE]" {
+                                            yield StreamEvent::Done {
+                                                symbol: symbol.clone(),
+                                            };
+                                            return;
+                                        }
+                                        
+                                        // Parse the SSE data as JSON
+                                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                                            if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
+                                                if !content.is_empty() {
+                                                    yield StreamEvent::Content {
+                                                        delta: content.to_string(),
+                                                    };
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                yield StreamEvent::Error {
+                                    message: format!("Stream error: {}", e),
+                                };
+                                return;
+                            }
+                        }
+                    }
+
+                    yield StreamEvent::Done {
+                        symbol: symbol.clone(),
+                    };
+                }
+                Ok(resp) => {
+                    let status = resp.status();
+                    let body = resp.text().await.unwrap_or_default();
+                    yield StreamEvent::Error {
+                        message: format!("API error ({}): {}", status, body),
+                    };
+                }
+                Err(e) => {
+                    yield StreamEvent::Error {
+                        message: format!("Request failed: {}", e),
+                    };
+                }
+            }
+        })
+    }
+}
+
+/// Events emitted during streaming AI analysis
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StreamEvent {
+    /// Status update about current processing stage
+    Status {
+        stage: String,
+        message: String,
+    },
+    /// Information about which AI model is being used
+    ModelInfo {
+        model: String,
+    },
+    /// A chunk of the AI response content
+    Content {
+        delta: String,
+    },
+    /// Analysis is complete
+    Done {
+        symbol: String,
+    },
+    /// An error occurred
+    Error {
+        message: String,
+    },
 }
 
 #[cfg(test)]

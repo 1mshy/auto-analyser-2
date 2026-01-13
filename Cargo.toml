@@ -9,8 +9,11 @@ tokio = { version = "1.40", features = ["full"] }
 
 # Web framework
 axum = { version = "0.7", features = ["ws", "macros"] }
+axum-extra = { version = "0.9", features = ["typed-header"] }
 tower = { version = "0.4", features = ["full"] }
 tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
+async-stream = "0.3"
+tokio-stream = "0.1"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -21,7 +24,7 @@ mongodb = "3.1"
 bson = { version = "2.13", features = ["chrono-0_4"] }
 
 # HTTP client for stock data
-reqwest = { version = "0.12", features = ["blocking", "json"] }
+reqwest = { version = "0.12", features = ["blocking", "json", "stream"] }
 
 # Caching
 moka = { version = "0.12", features = ["future"] }

@@ -64,6 +64,56 @@ export const api = {
     return response.data;
   },
 
+  // Stream AI analysis for a stock with real-time updates
+  streamAIAnalysis: (
+    symbol: string,
+    callbacks: {
+      onStatus?: (stage: string, message: string) => void;
+      onModelInfo?: (model: string) => void;
+      onContent?: (delta: string) => void;
+      onDone?: (symbol: string) => void;
+      onError?: (message: string) => void;
+    }
+  ): (() => void) => {
+    const eventSource = new EventSource(`${API_BASE_URL}/api/stocks/${symbol}/ai-analysis/stream`);
+
+    eventSource.addEventListener('status', (event) => {
+      const data = JSON.parse(event.data);
+      callbacks.onStatus?.(data.stage, data.message);
+    });
+
+    eventSource.addEventListener('model_info', (event) => {
+      const data = JSON.parse(event.data);
+      callbacks.onModelInfo?.(data.model);
+    });
+
+    eventSource.addEventListener('content', (event) => {
+      const data = JSON.parse(event.data);
+      callbacks.onContent?.(data.delta);
+    });
+
+    eventSource.addEventListener('done', (event) => {
+      const data = JSON.parse(event.data);
+      callbacks.onDone?.(data.symbol);
+      eventSource.close();
+    });
+
+    eventSource.addEventListener('error', (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        callbacks.onError?.(data.message);
+      } catch {
+        callbacks.onError?.('Connection error');
+      }
+      eventSource.close();
+    });
+
+    // Return cleanup function
+    return () => {
+      eventSource.close();
+    };
+  },
+
   // Get AI status
   getAIStatus: async (): Promise<{ enabled: boolean; current_model?: string; available_models_count: number }> => {
     const response = await axios.get(`${API_BASE_URL}/api/ai/status`);
