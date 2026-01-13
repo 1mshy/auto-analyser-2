@@ -133,9 +133,10 @@ pub struct NasdaqNewsItem {
     pub ago: Option<String>,
 }
 
-// Company Profile from Yahoo Finance quoteSummary/assetProfile
+// Company Profile from Yahoo Finance quoteSummary (assetProfile + financialData)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompanyProfile {
+    // Asset Profile fields
     pub long_business_summary: Option<String>,
     pub industry: Option<String>,
     pub sector: Option<String>,
@@ -145,6 +146,20 @@ pub struct CompanyProfile {
     pub state: Option<String>,
     pub country: Option<String>,
     pub phone: Option<String>,
+    // Financial Data fields
+    pub current_price: Option<f64>,
+    pub target_high_price: Option<f64>,
+    pub target_low_price: Option<f64>,
+    pub target_mean_price: Option<f64>,
+    pub recommendation_key: Option<String>,
+    pub number_of_analyst_opinions: Option<i64>,
+    pub total_revenue: Option<f64>,
+    pub revenue_per_share: Option<f64>,
+    pub profit_margins: Option<f64>,
+    pub gross_margins: Option<f64>,
+    pub operating_margins: Option<f64>,
+    pub return_on_equity: Option<f64>,
+    pub free_cash_flow: Option<f64>,
 }
 
 // AI Analysis Response

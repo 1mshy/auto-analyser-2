@@ -54,6 +54,7 @@ export interface NasdaqNewsItem {
 }
 
 export interface CompanyProfile {
+  // Asset Profile fields
   long_business_summary?: string;
   industry?: string;
   sector?: string;
@@ -63,6 +64,20 @@ export interface CompanyProfile {
   state?: string;
   country?: string;
   phone?: string;
+  // Financial Data fields
+  current_price?: number;
+  target_high_price?: number;
+  target_low_price?: number;
+  target_mean_price?: number;
+  recommendation_key?: string;
+  number_of_analyst_opinions?: number;
+  total_revenue?: number;
+  revenue_per_share?: number;
+  profit_margins?: number;
+  gross_margins?: number;
+  operating_margins?: number;
+  return_on_equity?: number;
+  free_cash_flow?: number;
 }
 
 export interface StockFilter {

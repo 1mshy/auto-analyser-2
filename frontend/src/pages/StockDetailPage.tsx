@@ -408,6 +408,77 @@ export const StockDetailPage: React.FC = () => {
               </Flex>
             ) : companyProfile ? (
               <VStack align="start" gap={4}>
+                {/* Analyst Recommendation Badge */}
+                {companyProfile.recommendation_key && (
+                  <Flex align="center" gap={3}>
+                    <Badge
+                      size="lg"
+                      colorPalette={
+                        companyProfile.recommendation_key === 'strong_buy' || companyProfile.recommendation_key === 'buy' ? 'green' :
+                          companyProfile.recommendation_key === 'hold' ? 'yellow' :
+                            companyProfile.recommendation_key === 'sell' || companyProfile.recommendation_key === 'strong_sell' ? 'red' : 'gray'
+                      }
+                      px={3}
+                      py={1}
+                      fontSize="md"
+                    >
+                      {companyProfile.recommendation_key.replace('_', ' ').toUpperCase()}
+                    </Badge>
+                    {companyProfile.number_of_analyst_opinions && (
+                      <Text color="gray.400" fontSize="sm">
+                        Based on {companyProfile.number_of_analyst_opinions} analyst{companyProfile.number_of_analyst_opinions > 1 ? 's' : ''}
+                      </Text>
+                    )}
+                  </Flex>
+                )}
+
+                {/* Price Targets Section */}
+                {(companyProfile.target_mean_price || companyProfile.target_high_price || companyProfile.target_low_price) && (
+                  <Box w="100%" p={4} bg="gray.900" borderRadius="md">
+                    <Text color="gray.400" fontSize="sm" mb={3}>Analyst Price Targets</Text>
+                    <SimpleGrid columns={{ base: 2, md: 4 }} gap={4}>
+                      {companyProfile.current_price && (
+                        <Box>
+                          <Text color="gray.500" fontSize="xs">Current</Text>
+                          <Text color="white" fontSize="lg" fontWeight="bold">
+                            ${companyProfile.current_price.toFixed(2)}
+                          </Text>
+                        </Box>
+                      )}
+                      {companyProfile.target_low_price && (
+                        <Box>
+                          <Text color="gray.500" fontSize="xs">Target Low</Text>
+                          <Text color="red.400" fontSize="lg" fontWeight="bold">
+                            ${companyProfile.target_low_price.toFixed(2)}
+                          </Text>
+                        </Box>
+                      )}
+                      {companyProfile.target_mean_price && (
+                        <Box>
+                          <Text color="gray.500" fontSize="xs">Target Mean</Text>
+                          <Text color="blue.400" fontSize="lg" fontWeight="bold">
+                            ${companyProfile.target_mean_price.toFixed(2)}
+                            {companyProfile.current_price && (
+                              <Text as="span" fontSize="sm" ml={2} color={companyProfile.target_mean_price > companyProfile.current_price ? 'green.400' : 'red.400'}>
+                                ({companyProfile.target_mean_price > companyProfile.current_price ? '+' : ''}
+                                {(((companyProfile.target_mean_price - companyProfile.current_price) / companyProfile.current_price) * 100).toFixed(1)}%)
+                              </Text>
+                            )}
+                          </Text>
+                        </Box>
+                      )}
+                      {companyProfile.target_high_price && (
+                        <Box>
+                          <Text color="gray.500" fontSize="xs">Target High</Text>
+                          <Text color="green.400" fontSize="lg" fontWeight="bold">
+                            ${companyProfile.target_high_price.toFixed(2)}
+                          </Text>
+                        </Box>
+                      )}
+                    </SimpleGrid>
+                  </Box>
+                )}
+
                 {/* Business Description */}
                 {companyProfile.long_business_summary && (
                   <Box>
@@ -419,6 +490,73 @@ export const StockDetailPage: React.FC = () => {
                 )}
 
                 <Separator />
+
+                {/* Financial Metrics Grid */}
+                {(companyProfile.profit_margins || companyProfile.gross_margins || companyProfile.return_on_equity || companyProfile.total_revenue) && (
+                  <>
+                    <Text color="gray.400" fontSize="sm">Financial Metrics</Text>
+                    <SimpleGrid columns={{ base: 2, md: 4 }} gap={4} w="100%">
+                      {companyProfile.profit_margins != null && (
+                        <Box p={3} bg="gray.900" borderRadius="md">
+                          <Text color="gray.500" fontSize="xs">Profit Margin</Text>
+                          <Text color={companyProfile.profit_margins > 0 ? 'green.400' : 'red.400'} fontSize="lg" fontWeight="bold">
+                            {(companyProfile.profit_margins * 100).toFixed(1)}%
+                          </Text>
+                        </Box>
+                      )}
+                      {companyProfile.gross_margins != null && (
+                        <Box p={3} bg="gray.900" borderRadius="md">
+                          <Text color="gray.500" fontSize="xs">Gross Margin</Text>
+                          <Text color="white" fontSize="lg" fontWeight="bold">
+                            {(companyProfile.gross_margins * 100).toFixed(1)}%
+                          </Text>
+                        </Box>
+                      )}
+                      {companyProfile.operating_margins != null && (
+                        <Box p={3} bg="gray.900" borderRadius="md">
+                          <Text color="gray.500" fontSize="xs">Operating Margin</Text>
+                          <Text color={companyProfile.operating_margins > 0 ? 'green.400' : 'red.400'} fontSize="lg" fontWeight="bold">
+                            {(companyProfile.operating_margins * 100).toFixed(1)}%
+                          </Text>
+                        </Box>
+                      )}
+                      {companyProfile.return_on_equity != null && (
+                        <Box p={3} bg="gray.900" borderRadius="md">
+                          <Text color="gray.500" fontSize="xs">Return on Equity</Text>
+                          <Text color={companyProfile.return_on_equity > 0 ? 'green.400' : 'red.400'} fontSize="lg" fontWeight="bold">
+                            {(companyProfile.return_on_equity * 100).toFixed(1)}%
+                          </Text>
+                        </Box>
+                      )}
+                      {companyProfile.total_revenue != null && (
+                        <Box p={3} bg="gray.900" borderRadius="md">
+                          <Text color="gray.500" fontSize="xs">Total Revenue</Text>
+                          <Text color="white" fontSize="lg" fontWeight="bold">
+                            ${(companyProfile.total_revenue / 1_000_000_000).toFixed(1)}B
+                          </Text>
+                        </Box>
+                      )}
+                      {companyProfile.revenue_per_share != null && (
+                        <Box p={3} bg="gray.900" borderRadius="md">
+                          <Text color="gray.500" fontSize="xs">Revenue/Share</Text>
+                          <Text color="white" fontSize="lg" fontWeight="bold">
+                            ${companyProfile.revenue_per_share.toFixed(2)}
+                          </Text>
+                        </Box>
+                      )}
+                      {companyProfile.free_cash_flow != null && (
+                        <Box p={3} bg="gray.900" borderRadius="md">
+                          <Text color="gray.500" fontSize="xs">Free Cash Flow</Text>
+                          <Text color={companyProfile.free_cash_flow > 0 ? 'green.400' : 'red.400'} fontSize="lg" fontWeight="bold">
+                            ${companyProfile.free_cash_flow > 0 ? '' : '-'}
+                            {(Math.abs(companyProfile.free_cash_flow) / 1_000_000_000).toFixed(1)}B
+                          </Text>
+                        </Box>
+                      )}
+                    </SimpleGrid>
+                    <Separator />
+                  </>
+                )}
 
                 {/* Key Info Grid */}
                 <SimpleGrid columns={{ base: 1, md: 2 }} gap={4} w="100%">

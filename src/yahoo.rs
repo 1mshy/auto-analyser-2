@@ -5,7 +5,9 @@ use rand::Rng;
 use reqwest;
 use reqwest::header::ACCEPT;
 use serde::Deserialize;
-use std::time::Duration as StdDuration;
+use std::sync::Arc;
+use std::time::{Duration as StdDuration, Instant};
+use tokio::sync::RwLock;
 use tokio::time::sleep;
 
 // Response structs for quoteSummary/assetProfile endpoint
@@ -25,6 +27,8 @@ struct QuoteSummaryResult {
 struct QuoteSummaryData {
     #[serde(rename = "assetProfile")]
     asset_profile: Option<AssetProfile>,
+    #[serde(rename = "financialData")]
+    financial_data: Option<FinancialDataResponse>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -40,6 +44,55 @@ struct AssetProfile {
     state: Option<String>,
     country: Option<String>,
     phone: Option<String>,
+}
+
+// Financial data response structures
+#[derive(Debug, Deserialize)]
+struct FinancialDataResponse {
+    #[serde(rename = "currentPrice")]
+    current_price: Option<YahooValue>,
+    #[serde(rename = "targetHighPrice")]
+    target_high_price: Option<YahooValue>,
+    #[serde(rename = "targetLowPrice")]
+    target_low_price: Option<YahooValue>,
+    #[serde(rename = "targetMeanPrice")]
+    target_mean_price: Option<YahooValue>,
+    #[serde(rename = "recommendationKey")]
+    recommendation_key: Option<String>,
+    #[serde(rename = "numberOfAnalystOpinions")]
+    number_of_analyst_opinions: Option<YahooValue>,
+    #[serde(rename = "totalRevenue")]
+    total_revenue: Option<YahooValue>,
+    #[serde(rename = "revenuePerShare")]
+    revenue_per_share: Option<YahooValue>,
+    #[serde(rename = "profitMargins")]
+    profit_margins: Option<YahooValue>,
+    #[serde(rename = "grossMargins")]
+    gross_margins: Option<YahooValue>,
+    #[serde(rename = "operatingMargins")]
+    operating_margins: Option<YahooValue>,
+    #[serde(rename = "returnOnEquity")]
+    return_on_equity: Option<YahooValue>,
+    #[serde(rename = "freeCashflow")]
+    free_cash_flow: Option<YahooValue>,
+}
+
+// Yahoo's value format: { raw: f64, fmt: String }
+#[derive(Debug, Deserialize)]
+struct YahooValue {
+    raw: Option<f64>,
+    #[allow(dead_code)]
+    fmt: Option<String>,
+}
+
+impl YahooValue {
+    fn to_f64(&self) -> Option<f64> {
+        self.raw
+    }
+    
+    fn to_i64(&self) -> Option<i64> {
+        self.raw.map(|v| v as i64)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -79,57 +132,155 @@ struct YahooError {
     description: String,
 }
 
+/// Yahoo Finance client with crumb-based authentication for reliable API access
 #[derive(Clone)]
 pub struct YahooFinanceClient {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
+    crumb: Arc<RwLock<Option<String>>>,
+    last_refresh: Arc<RwLock<Option<Instant>>>,
     max_retries: u32,
 }
 
 impl YahooFinanceClient {
     pub fn new() -> Self {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            reqwest::header::ACCEPT,
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
-                .parse()
-                .unwrap(),
-        );
-        headers.insert(
-            reqwest::header::ACCEPT_LANGUAGE,
-            "en-GB,en-US;q=0.9,en;q=0.8".parse().unwrap(),
-        );
-        headers.insert(
-            reqwest::header::CACHE_CONTROL,
-            "max-age=0".parse().unwrap(),
-        );
-        headers.insert(
-            "sec-ch-ua",
-            "\"Chromium\";v=\"142\", \"Google Chrome\";v=\"142\", \"Not_A Brand\";v=\"99\""
-                .parse()
-                .unwrap(),
-        );
-        headers.insert("sec-ch-ua-mobile", "?0".parse().unwrap());
-        headers.insert("sec-ch-ua-platform", "\"macOS\"".parse().unwrap());
-        headers.insert("sec-fetch-dest", "document".parse().unwrap());
-        headers.insert("sec-fetch-mode", "navigate".parse().unwrap());
-        headers.insert("sec-fetch-site", "none".parse().unwrap());
-        headers.insert("sec-fetch-user", "?1".parse().unwrap());
-        headers.insert(
-            "upgrade-insecure-requests",
-            "1".parse().unwrap(),
-        );
-
+        // Build client with cookie store enabled for session management
         let client = reqwest::Client::builder()
+            .cookie_store(true)
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .default_headers(headers)
             .timeout(StdDuration::from_secs(30))
             .build()
             .expect("Failed to create HTTP client");
 
         YahooFinanceClient {
-            client,
+            client: Arc::new(client),
+            crumb: Arc::new(RwLock::new(None)),
+            last_refresh: Arc::new(RwLock::new(None)),
             max_retries: 3,
         }
+    }
+
+    /// Refresh the crumb token by visiting Yahoo and getting a new one
+    async fn refresh_crumb(&self) -> Result<()> {
+        tracing::debug!("Refreshing Yahoo Finance crumb token...");
+        
+        // First, hit fc.yahoo.com to get cookies established
+        self.client
+            .get("https://fc.yahoo.com")
+            .send()
+            .await
+            .map_err(|e| anyhow!("Failed to establish Yahoo session: {}", e))?;
+
+        // Now get the crumb from the getcrumb endpoint
+        let crumb_response = self.client
+            .get("https://query1.finance.yahoo.com/v1/test/getcrumb")
+            .send()
+            .await
+            .map_err(|e| anyhow!("Failed to get crumb: {}", e))?;
+
+        if !crumb_response.status().is_success() {
+            return Err(anyhow!("Crumb endpoint returned status: {}", crumb_response.status()));
+        }
+
+        let crumb_text = crumb_response.text().await
+            .map_err(|e| anyhow!("Failed to read crumb response: {}", e))?;
+
+        if crumb_text.is_empty() || crumb_text.contains("error") {
+            return Err(anyhow!("Invalid crumb response: {}", crumb_text));
+        }
+
+        // Store the crumb and update refresh time
+        {
+            let mut crumb_lock = self.crumb.write().await;
+            *crumb_lock = Some(crumb_text.clone());
+        }
+        {
+            let mut refresh_lock = self.last_refresh.write().await;
+            *refresh_lock = Some(Instant::now());
+        }
+
+        tracing::info!("✅ Yahoo Finance crumb refreshed successfully");
+        Ok(())
+    }
+
+    /// Ensure crumb is valid, refreshing if necessary (15 minute TTL)
+    async fn ensure_crumb_valid(&self) -> Result<()> {
+        let crumb_ttl = StdDuration::from_secs(15 * 60); // 15 minutes
+        
+        let needs_refresh = {
+            let crumb = self.crumb.read().await;
+            let last_refresh = self.last_refresh.read().await;
+            
+            match (crumb.as_ref(), last_refresh.as_ref()) {
+                (Some(_), Some(t)) if t.elapsed() < crumb_ttl => false,
+                _ => true,
+            }
+        };
+
+        if needs_refresh {
+            self.refresh_crumb().await?;
+        }
+
+        Ok(())
+    }
+
+    /// Get the current crumb, ensuring it's valid first
+    async fn get_crumb(&self) -> Result<String> {
+        self.ensure_crumb_valid().await?;
+        
+        let crumb = self.crumb.read().await;
+        crumb.clone().ok_or_else(|| anyhow!("Crumb not available"))
+    }
+
+    /// Make an authenticated request to Yahoo Finance
+    async fn fetch_with_crumb(&self, base_url: &str) -> Result<String> {
+        let crumb = self.get_crumb().await?;
+        
+        // Add crumb to URL (append with & if URL already has params, otherwise ?)
+        let separator = if base_url.contains('?') { "&" } else { "?" };
+        let full_url = format!("{}{}crumb={}", base_url, separator, crumb);
+
+        let response = self.client
+            .get(&full_url)
+            .header(ACCEPT, "application/json")
+            .send()
+            .await
+            .map_err(|e| anyhow!("HTTP request failed: {}", e))?;
+
+        let status = response.status();
+
+        // If we get a 403, try refreshing the crumb and retry once
+        if status == reqwest::StatusCode::FORBIDDEN {
+            tracing::warn!("Got 403, refreshing crumb and retrying...");
+            self.refresh_crumb().await?;
+            
+            let crumb = self.get_crumb().await?;
+            let full_url = format!("{}{}crumb={}", base_url, separator, crumb);
+            
+            let retry_response = self.client
+                .get(&full_url)
+                .header(ACCEPT, "application/json")
+                .send()
+                .await
+                .map_err(|e| anyhow!("HTTP retry request failed: {}", e))?;
+
+            if !retry_response.status().is_success() {
+                return Err(anyhow!("Request failed after crumb refresh: {}", retry_response.status()));
+            }
+
+            return retry_response.text().await
+                .map_err(|e| anyhow!("Failed to read response: {}", e));
+        }
+
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(anyhow!("Rate limited by Yahoo Finance (429)"));
+        }
+
+        if !status.is_success() {
+            return Err(anyhow!("Yahoo Finance returned status {}", status));
+        }
+
+        response.text().await
+            .map_err(|e| anyhow!("Failed to read response: {}", e))
     }
 
     pub async fn get_historical_prices(
@@ -185,30 +336,9 @@ impl YahooFinanceClient {
 
         tracing::debug!("Fetching {} from Yahoo Finance (query2): {}", symbol, url);
         
-        let response = self
-            .client
-            .get(&url)
-            .header(ACCEPT, "application/json")
-            .send()
-            .await
-            .map_err(|e| anyhow!("HTTP request failed for {}: {}", symbol, e))?;
-
-        let status = response.status();
-        tracing::debug!("Response status for {}: {}", symbol, status);
+        let text = self.fetch_with_crumb(&url).await?;
         
-        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            return Err(anyhow!("Rate limited by Yahoo Finance (429)"));
-        }
-
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_else(|_| "Unable to read response".to_string());
-            tracing::warn!("Yahoo Finance error for {}: status={}, body={}", symbol, status, body);
-            return Err(anyhow!("Yahoo Finance returned status {}", status));
-        }
-
-        let yahoo_response: YahooResponse = response
-            .json()
-            .await
+        let yahoo_response: YahooResponse = serde_json::from_str(&text)
             .map_err(|e| anyhow!("Failed to parse JSON for {}: {}", symbol, e))?;
 
         if let Some(error) = yahoo_response.chart.error {
@@ -294,38 +424,19 @@ impl YahooFinanceClient {
         self.get_historical_prices(symbol, days).await
     }
 
-    /// Fetch company profile from Yahoo Finance quoteSummary endpoint
+    /// Fetch company profile with financial data from Yahoo Finance quoteSummary endpoint
     pub async fn get_company_profile(&self, symbol: &str) -> Result<CompanyProfile> {
+        // Use both assetProfile and financialData modules
         let url = format!(
-            "https://query1.finance.yahoo.com/v10/finance/quoteSummary/{}?modules=assetProfile",
+            "https://query1.finance.yahoo.com/v10/finance/quoteSummary/{}?modules=assetProfile,financialData",
             symbol.replace("/", "-")
         );
 
         tracing::debug!("Fetching company profile for {} from Yahoo Finance: {}", symbol, url);
 
-        let response = self
-            .client
-            .get(&url)
-            .header(ACCEPT, "application/json")
-            .send()
-            .await
-            .map_err(|e| anyhow!("HTTP request failed for {}: {}", symbol, e))?;
+        let text = self.fetch_with_crumb(&url).await?;
 
-        let status = response.status();
-
-        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            return Err(anyhow!("Rate limited by Yahoo Finance (429)"));
-        }
-
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_else(|_| "Unable to read response".to_string());
-            tracing::warn!("Yahoo Finance profile error for {}: status={}, body={}", symbol, status, body);
-            return Err(anyhow!("Yahoo Finance returned status {}", status));
-        }
-
-        let summary_response: QuoteSummaryResponse = response
-            .json()
-            .await
+        let summary_response: QuoteSummaryResponse = serde_json::from_str(&text)
             .map_err(|e| anyhow!("Failed to parse quoteSummary JSON for {}: {}", symbol, e))?;
 
         if let Some(error) = summary_response.quote_summary.error {
@@ -337,23 +448,41 @@ impl YahooFinanceClient {
             ));
         }
 
-        let asset_profile = summary_response
+        let data = summary_response
             .quote_summary
             .result
             .and_then(|r| r.into_iter().next())
-            .and_then(|d| d.asset_profile)
-            .ok_or_else(|| anyhow!("No asset profile data returned for {}", symbol))?;
+            .ok_or_else(|| anyhow!("No data returned for {}", symbol))?;
 
+        let asset_profile = data.asset_profile;
+        let financial_data = data.financial_data;
+
+        // Build CompanyProfile from both assetProfile and financialData
         Ok(CompanyProfile {
-            long_business_summary: asset_profile.long_business_summary,
-            industry: asset_profile.industry,
-            sector: asset_profile.sector,
-            website: asset_profile.website,
-            full_time_employees: asset_profile.full_time_employees,
-            city: asset_profile.city,
-            state: asset_profile.state,
-            country: asset_profile.country,
-            phone: asset_profile.phone,
+            // Asset Profile fields
+            long_business_summary: asset_profile.as_ref().and_then(|p| p.long_business_summary.clone()),
+            industry: asset_profile.as_ref().and_then(|p| p.industry.clone()),
+            sector: asset_profile.as_ref().and_then(|p| p.sector.clone()),
+            website: asset_profile.as_ref().and_then(|p| p.website.clone()),
+            full_time_employees: asset_profile.as_ref().and_then(|p| p.full_time_employees),
+            city: asset_profile.as_ref().and_then(|p| p.city.clone()),
+            state: asset_profile.as_ref().and_then(|p| p.state.clone()),
+            country: asset_profile.as_ref().and_then(|p| p.country.clone()),
+            phone: asset_profile.as_ref().and_then(|p| p.phone.clone()),
+            // Financial Data fields
+            current_price: financial_data.as_ref().and_then(|f| f.current_price.as_ref().and_then(|v| v.to_f64())),
+            target_high_price: financial_data.as_ref().and_then(|f| f.target_high_price.as_ref().and_then(|v| v.to_f64())),
+            target_low_price: financial_data.as_ref().and_then(|f| f.target_low_price.as_ref().and_then(|v| v.to_f64())),
+            target_mean_price: financial_data.as_ref().and_then(|f| f.target_mean_price.as_ref().and_then(|v| v.to_f64())),
+            recommendation_key: financial_data.as_ref().and_then(|f| f.recommendation_key.clone()),
+            number_of_analyst_opinions: financial_data.as_ref().and_then(|f| f.number_of_analyst_opinions.as_ref().and_then(|v| v.to_i64())),
+            total_revenue: financial_data.as_ref().and_then(|f| f.total_revenue.as_ref().and_then(|v| v.to_f64())),
+            revenue_per_share: financial_data.as_ref().and_then(|f| f.revenue_per_share.as_ref().and_then(|v| v.to_f64())),
+            profit_margins: financial_data.as_ref().and_then(|f| f.profit_margins.as_ref().and_then(|v| v.to_f64())),
+            gross_margins: financial_data.as_ref().and_then(|f| f.gross_margins.as_ref().and_then(|v| v.to_f64())),
+            operating_margins: financial_data.as_ref().and_then(|f| f.operating_margins.as_ref().and_then(|v| v.to_f64())),
+            return_on_equity: financial_data.as_ref().and_then(|f| f.return_on_equity.as_ref().and_then(|v| v.to_f64())),
+            free_cash_flow: financial_data.as_ref().and_then(|f| f.free_cash_flow.as_ref().and_then(|v| v.to_f64())),
         })
     }
 }
