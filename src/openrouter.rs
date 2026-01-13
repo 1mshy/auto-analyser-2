@@ -22,19 +22,21 @@ struct ModelsResponse {
 #[derive(Debug, Deserialize)]
 struct ModelInfo {
     id: String,
+    /// Context length in tokens - higher is better
+    context_length: Option<u64>,
 }
 
 /// Cached list of free models fetched from OpenRouter API
 static FREE_MODELS_CACHE: Lazy<RwLock<Vec<String>>> = Lazy::new(|| RwLock::new(Vec::new()));
 
-/// Fallback models in case API fetch fails
+/// Fallback models in case API fetch fails (ordered by quality)
 const FALLBACK_FREE_MODELS: &[&str] = &[
     "qwen/qwen3-coder:free",
     "google/gemma-2-9b-it:free",
     "meta-llama/llama-3.2-3b-instruct:free",
 ];
 
-/// Fetch free models from OpenRouter API
+/// Fetch free models from OpenRouter API, sorted by context length (largest first)
 async fn fetch_free_models() -> Result<Vec<String>> {
     info!("Fetching available free models from OpenRouter API...");
     
@@ -55,17 +57,22 @@ async fn fetch_free_models() -> Result<Vec<String>> {
         .await
         .map_err(|e| anyhow!("Failed to parse models response: {}", e))?;
 
-    // Filter for models with :free suffix
-    let free_models: Vec<String> = models_response
+    // Filter for models with :free suffix and sort by context_length (descending)
+    let mut free_models: Vec<(String, u64)> = models_response
         .data
         .into_iter()
         .filter(|m| m.id.ends_with(":free"))
-        .map(|m| m.id)
+        .map(|m| (m.id, m.context_length.unwrap_or(0)))
         .collect();
 
-    info!("Found {} free models from OpenRouter API", free_models.len());
+    // Sort by context_length descending (bigger models first)
+    free_models.sort_by(|a, b| b.1.cmp(&a.1));
+
+    let sorted_models: Vec<String> = free_models.into_iter().map(|(id, _)| id).collect();
+
+    info!("Found {} free models from OpenRouter API (sorted by context length)", sorted_models.len());
     
-    Ok(free_models)
+    Ok(sorted_models)
 }
 
 /// Get the list of free models, fetching from API if not cached
