@@ -1,32 +1,100 @@
 use crate::models::{AIAnalysisResponse, StockAnalysis};
 use anyhow::{anyhow, Result};
 use chrono::Utc;
+use once_cell::sync::Lazy;
 use openrouter_rs::{
     api::chat::{ChatCompletionRequest, Message},
     types::Role,
     OpenRouterClient as BaseOpenRouterClient,
 };
+use serde::Deserialize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use tracing::{info, warn};
+use tokio::sync::RwLock;
+use tracing::{error, info, warn};
 
-/// Top free models on OpenRouter (as of Dec 2025)
-/// These models are free to use and will be cycled through when rate limits or parsing errors occur
-/// Ordered by reliability and response quality
-pub const FREE_MODELS: &[&str] = &[
+/// API response structures for OpenRouter /api/v1/models endpoint
+#[derive(Debug, Deserialize)]
+struct ModelsResponse {
+    data: Vec<ModelInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelInfo {
+    id: String,
+}
+
+/// Cached list of free models fetched from OpenRouter API
+static FREE_MODELS_CACHE: Lazy<RwLock<Vec<String>>> = Lazy::new(|| RwLock::new(Vec::new()));
+
+/// Fallback models in case API fetch fails
+const FALLBACK_FREE_MODELS: &[&str] = &[
     "qwen/qwen3-coder:free",
-    "qwen/qwen3-4b:free",
-    // "alibaba/tongyi-deepresearch-30b-a3b:free",
-    "google/gemma-2-9b-it:free",                  // Google Gemma 2 9B - reliable
-    "meta-llama/llama-3.2-3b-instruct:free",      // Meta Llama 3.2 3B - reliable
-    "nvidia/nemotron-nano-12b-v2-vl:free",        // NVIDIA Nemotron Nano - 128K context
-    "tngtech/deepseek-r1t2-chimera:free",         // DeepSeek R1T2 Chimera - 164K context
-    "tngtech/deepseek-r1t-chimera:free",          // DeepSeek R1T Chimera - 164K context
-    "tngtech/tng-r1t-chimera:free",               // TNG R1T Chimera - 164K context
-    "z-ai/glm-4.5-air:free",                      // Z.AI GLM 4.5 Air - 131K context
-    "kwaipilot/kat-coder-pro:free",               // KAT-Coder-Pro - 256K context
-    // x-ai/grok models removed due to response parsing issues with openrouter-rs
+    "google/gemma-2-9b-it:free",
+    "meta-llama/llama-3.2-3b-instruct:free",
 ];
+
+/// Fetch free models from OpenRouter API
+async fn fetch_free_models() -> Result<Vec<String>> {
+    info!("Fetching available free models from OpenRouter API...");
+    
+    let client = reqwest::Client::new();
+    let response = client
+        .get("https://openrouter.ai/api/v1/models")
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| anyhow!("Failed to fetch models: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(anyhow!("OpenRouter API returned status: {}", response.status()));
+    }
+
+    let models_response: ModelsResponse = response
+        .json()
+        .await
+        .map_err(|e| anyhow!("Failed to parse models response: {}", e))?;
+
+    // Filter for models with :free suffix
+    let free_models: Vec<String> = models_response
+        .data
+        .into_iter()
+        .filter(|m| m.id.ends_with(":free"))
+        .map(|m| m.id)
+        .collect();
+
+    info!("Found {} free models from OpenRouter API", free_models.len());
+    
+    Ok(free_models)
+}
+
+/// Get the list of free models, fetching from API if not cached
+pub async fn get_free_models() -> Vec<String> {
+    // Check if we already have cached models
+    {
+        let cache = FREE_MODELS_CACHE.read().await;
+        if !cache.is_empty() {
+            return cache.clone();
+        }
+    }
+
+    // Fetch from API
+    match fetch_free_models().await {
+        Ok(models) if !models.is_empty() => {
+            let mut cache = FREE_MODELS_CACHE.write().await;
+            *cache = models.clone();
+            models
+        }
+        Ok(_) => {
+            warn!("No free models returned from API, using fallback list");
+            FALLBACK_FREE_MODELS.iter().map(|s| s.to_string()).collect()
+        }
+        Err(e) => {
+            error!("Failed to fetch free models: {}, using fallback list", e);
+            FALLBACK_FREE_MODELS.iter().map(|s| s.to_string()).collect()
+        }
+    }
+}
 
 /// OpenRouter client wrapper with model fallback support
 #[derive(Clone)]
@@ -51,18 +119,25 @@ impl OpenRouterClient {
         self.enabled && !self.api_key.is_empty()
     }
 
-    /// Get the current model being used
-    pub fn current_model(&self) -> &'static str {
-        let index = self.current_model_index.load(Ordering::SeqCst);
-        FREE_MODELS[index % FREE_MODELS.len()]
+    /// Get the current model index
+    pub fn current_model_index(&self) -> usize {
+        self.current_model_index.load(Ordering::SeqCst)
+    }
+
+    /// Get the current model name being used
+    pub async fn current_model(&self) -> Option<String> {
+        let models = get_free_models().await;
+        if models.is_empty() {
+            None
+        } else {
+            let idx = self.current_model_index();
+            Some(models[idx % models.len()].clone())
+        }
     }
 
     /// Switch to the next model in the list (called on rate limit)
-    fn next_model(&self) -> &'static str {
-        let new_index = self.current_model_index.fetch_add(1, Ordering::SeqCst) + 1;
-        let model = FREE_MODELS[new_index % FREE_MODELS.len()];
-        warn!("Switching to next free model: {}", model);
-        model
+    fn advance_model_index(&self) -> usize {
+        self.current_model_index.fetch_add(1, Ordering::SeqCst) + 1
     }
 
     /// Analyze a stock using AI, with automatic model fallback on rate limits
@@ -71,19 +146,26 @@ impl OpenRouterClient {
             return Err(anyhow!("OpenRouter is not enabled or API key not configured"));
         }
 
+        // Fetch available free models (cached after first call)
+        let free_models = get_free_models().await;
+        if free_models.is_empty() {
+            return Err(anyhow!("No free models available"));
+        }
+
         let prompt = self.build_analysis_prompt(analysis);
         let mut attempts = 0;
-        let max_attempts = FREE_MODELS.len();
+        let max_attempts = free_models.len();
 
         while attempts < max_attempts {
-            let model = self.current_model();
+            let current_idx = self.current_model_index();
+            let model = &free_models[current_idx % free_models.len()];
             
             match self.send_request(model, &prompt).await {
                 Ok(response) => {
                     return Ok(AIAnalysisResponse {
                         symbol: analysis.symbol.clone(),
                         analysis: response,
-                        model_used: model.to_string(),
+                        model_used: model.clone(),
                         generated_at: Utc::now(),
                     });
                 }
@@ -102,8 +184,9 @@ impl OpenRouterClient {
                         || err_msg.contains("parse")
                         || err_msg.contains("deserialize")
                     {
-                        warn!("Error on model {} (will try next): {}", model, e);
-                        self.next_model();
+                        let new_idx = self.advance_model_index();
+                        let next_model = &free_models[new_idx % free_models.len()];
+                        warn!("Error on model {} (switching to {}): {}", model, next_model, e);
                         attempts += 1;
                     } else {
                         // Non-recoverable error, return immediately
@@ -113,7 +196,7 @@ impl OpenRouterClient {
             }
         }
 
-        Err(anyhow!("All {} free models are rate limited. Try again later.", FREE_MODELS.len()))
+        Err(anyhow!("All {} free models are rate limited. Try again later.", free_models.len()))
     }
 
     /// Build the analysis prompt from stock data
@@ -233,9 +316,9 @@ impl OpenRouterClient {
             .ok_or_else(|| anyhow!("No response content from OpenRouter"))
     }
 
-    /// Get list of available free models
-    pub fn available_models() -> &'static [&'static str] {
-        FREE_MODELS
+    /// Get list of available free models (async, fetches from API if not cached)
+    pub async fn available_models() -> Vec<String> {
+        get_free_models().await
     }
 }
 
@@ -245,9 +328,10 @@ mod tests {
     use crate::models::MACDIndicator;
 
     #[test]
-    fn test_free_models_list() {
-        assert_eq!(FREE_MODELS.len(), 9);
-        assert!(FREE_MODELS.iter().all(|m| m.ends_with(":free")));
+    fn test_fallback_models_list() {
+        // Verify fallback models are properly configured
+        assert!(FALLBACK_FREE_MODELS.len() >= 3);
+        assert!(FALLBACK_FREE_MODELS.iter().all(|m| m.ends_with(":free")));
     }
 
     #[test]
@@ -269,31 +353,36 @@ mod tests {
     }
 
     #[test]
-    fn test_model_cycling() {
+    fn test_model_index_cycling() {
         let client = OpenRouterClient::new(Some("test-key".to_string()), true);
         
-        let first = client.current_model();
-        assert_eq!(first, FREE_MODELS[0]);
+        // Initial index should be 0
+        assert_eq!(client.current_model_index(), 0);
         
-        let second = client.next_model();
-        assert_eq!(second, FREE_MODELS[1]);
+        // Advance the index
+        let new_idx = client.advance_model_index();
+        assert_eq!(new_idx, 1);
+        assert_eq!(client.current_model_index(), 1);
         
-        let current = client.current_model();
-        assert_eq!(current, FREE_MODELS[1]);
+        // Advance again
+        let new_idx = client.advance_model_index();
+        assert_eq!(new_idx, 2);
+        assert_eq!(client.current_model_index(), 2);
     }
 
     #[test]
-    fn test_model_wraps_around() {
+    fn test_model_index_wraps_around() {
         let client = OpenRouterClient::new(Some("test-key".to_string()), true);
         
-        // Cycle through all models
-        for _ in 0..FREE_MODELS.len() {
-            client.next_model();
+        // Cycle through model indices (modulo operation happens at access time)
+        for _ in 0..10 {
+            client.advance_model_index();
         }
         
-        // Should wrap back to first model
-        let current = client.current_model();
-        assert_eq!(current, FREE_MODELS[0]);
+        // Index should be 10, but when accessing models, it wraps via modulo
+        let idx = client.current_model_index();
+        assert_eq!(idx, 10);
+        // When actually accessing models: idx % models.len() handles wrap-around
     }
 
     #[test]

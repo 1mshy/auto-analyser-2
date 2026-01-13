@@ -362,23 +362,26 @@ async fn get_ai_analysis(
 async fn get_ai_status(State(state): State<AppState>) -> impl IntoResponse {
     let enabled = state.openrouter_client.is_enabled();
     let current_model = if enabled {
-        Some(state.openrouter_client.current_model())
+        state.openrouter_client.current_model().await
     } else {
         None
     };
+    let available_models = crate::openrouter::get_free_models().await;
 
     Json(json!({
         "enabled": enabled,
         "current_model": current_model,
-        "available_models_count": crate::openrouter::FREE_MODELS.len(),
+        "available_models_count": available_models.len(),
     }))
 }
 
 /// Get list of available AI models
 async fn get_ai_models() -> impl IntoResponse {
+    let models = crate::openrouter::get_free_models().await;
+    let count = models.len();
     Json(json!({
-        "models": crate::openrouter::FREE_MODELS,
-        "count": crate::openrouter::FREE_MODELS.len(),
+        "models": models,
+        "count": count,
         "description": "Free models available on OpenRouter with automatic fallback on rate limits"
     }))
 }

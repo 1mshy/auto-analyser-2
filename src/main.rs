@@ -56,8 +56,9 @@ async fn main() -> anyhow::Result<()> {
         config.openrouter_enabled,
     );
     if openrouter_client.is_enabled() {
+        let models = openrouter::get_free_models().await;
         tracing::info!("🤖 OpenRouter AI client enabled with {} free models", 
-            openrouter::FREE_MODELS.len());
+            models.len());
     } else {
         tracing::info!("🤖 OpenRouter AI disabled (set OPENROUTER_API_KEY_STOCKS to enable)");
     }
