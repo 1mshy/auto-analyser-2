@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Box,
@@ -97,6 +97,13 @@ export const StockDetailPage: React.FC = () => {
   const [profileLoading, setProfileLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'about' | 'technicals' | 'chart' | 'ai' | 'news'>('overview');
 
+  // Streaming AI state
+  const [streamingText, setStreamingText] = useState('');
+  const [streamingStatus, setStreamingStatus] = useState<{ stage: string; message: string } | null>(null);
+  const [streamingModel, setStreamingModel] = useState<string | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const streamCleanupRef = useRef<(() => void) | null>(null);
+
   const fetchStock = useCallback(async () => {
     if (!symbol) return;
 
@@ -129,16 +136,53 @@ export const StockDetailPage: React.FC = () => {
   const fetchAIAnalysis = useCallback(async () => {
     if (!symbol) return;
 
-    setAiLoading(true);
-    try {
-      const analysis = await api.getAIAnalysis(symbol);
-      setAiAnalysis(analysis);
-    } catch (err) {
-      setAiAnalysis({ success: false, error: 'Failed to load analysis' });
-    } finally {
-      setAiLoading(false);
+    // Cleanup any existing stream
+    if (streamCleanupRef.current) {
+      streamCleanupRef.current();
     }
-  }, [symbol]);
+
+    // Reset streaming state
+    setStreamingText('');
+    setStreamingStatus(null);
+    setStreamingModel(null);
+    setIsStreaming(true);
+    setAiLoading(true);
+    setAiAnalysis(null);
+
+    // Start streaming
+    const cleanup = api.streamAIAnalysis(symbol, {
+      onStatus: (stage, message) => {
+        setStreamingStatus({ stage, message });
+      },
+      onModelInfo: (model) => {
+        setStreamingModel(model);
+      },
+      onContent: (delta) => {
+        setStreamingText(prev => prev + delta);
+      },
+      onDone: (doneSymbol) => {
+        setIsStreaming(false);
+        setAiLoading(false);
+        setStreamingStatus(null);
+        // Convert streaming result to AIAnalysisResponse format
+        setAiAnalysis({
+          success: true,
+          symbol: doneSymbol,
+          analysis: undefined, // Will use streamingText instead
+          model_used: streamingModel || undefined,
+          generated_at: new Date().toISOString(),
+        });
+      },
+      onError: (message) => {
+        setIsStreaming(false);
+        setAiLoading(false);
+        setStreamingStatus(null);
+        setAiAnalysis({ success: false, error: message });
+      },
+    });
+
+    streamCleanupRef.current = cleanup;
+  }, [symbol, streamingModel]);
 
   const fetchCompanyProfile = useCallback(async () => {
     if (!symbol) return;
@@ -162,10 +206,19 @@ export const StockDetailPage: React.FC = () => {
 
   // Auto-trigger AI analysis when enabled
   useEffect(() => {
-    if (aiEnabled && stock && !aiAnalysis && !aiLoading) {
+    if (aiEnabled && stock && !aiAnalysis && !aiLoading && !streamingText) {
       fetchAIAnalysis();
     }
-  }, [aiEnabled, stock, aiAnalysis, aiLoading, fetchAIAnalysis]);
+  }, [aiEnabled, stock, aiAnalysis, aiLoading, streamingText, fetchAIAnalysis]);
+
+  // Cleanup stream on unmount
+  useEffect(() => {
+    return () => {
+      if (streamCleanupRef.current) {
+        streamCleanupRef.current();
+      }
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -572,16 +625,19 @@ export const StockDetailPage: React.FC = () => {
               <HStack>
                 <Box color="purple.400"><Zap size={20} /></Box>
                 <Heading size="md" color="white">AI Analysis</Heading>
+                {streamingModel && (
+                  <Badge colorPalette="purple" size="sm">{streamingModel}</Badge>
+                )}
               </HStack>
               <Button
                 size="sm"
                 colorPalette="purple"
                 onClick={fetchAIAnalysis}
-                loading={aiLoading}
-                disabled={!aiEnabled}
+                loading={aiLoading && !isStreaming}
+                disabled={!aiEnabled || isStreaming}
               >
                 <RefreshCw size={14} />
-                {aiAnalysis ? 'Refresh' : 'Generate'}
+                {aiAnalysis || streamingText ? 'Refresh' : 'Generate'}
               </Button>
             </Flex>
           </Card.Header>
@@ -592,10 +648,67 @@ export const StockDetailPage: React.FC = () => {
                   AI analysis is not enabled. Set the OPENROUTER_API_KEY_STOCKS environment variable to enable AI-powered insights.
                 </Text>
               </Box>
+            ) : isStreaming || streamingText ? (
+              <Box>
+                {/* Streaming Status Indicator */}
+                {streamingStatus && (
+                  <Flex align="center" mb={4} p={3} bg="purple.900" borderRadius="md">
+                    <Spinner size="sm" color="purple.400" mr={3} />
+                    <VStack align="start" gap={0}>
+                      <Text color="purple.300" fontSize="sm" fontWeight="semibold">
+                        {streamingStatus.stage === 'connecting' && '🔌 Connecting...'}
+                        {streamingStatus.stage === 'analyzing' && '🧠 Analyzing...'}
+                        {streamingStatus.stage === 'streaming' && '✨ Generating...'}
+                      </Text>
+                      <Text color="purple.200" fontSize="xs">
+                        {streamingStatus.message}
+                      </Text>
+                    </VStack>
+                  </Flex>
+                )}
+
+                {/* Streaming Text with Cursor */}
+                <Text color="gray.200" whiteSpace="pre-wrap" lineHeight="tall">
+                  {streamingText}
+                  {isStreaming && (
+                    <Box
+                      as="span"
+                      display="inline-block"
+                      w="2px"
+                      h="1em"
+                      bg="purple.400"
+                      ml="1px"
+                      animation="blink 1s infinite"
+                      verticalAlign="text-bottom"
+                      css={{
+                        '@keyframes blink': {
+                          '0%, 50%': { opacity: 1 },
+                          '51%, 100%': { opacity: 0 },
+                        },
+                      }}
+                    />
+                  )}
+                </Text>
+
+                {/* Completion Info */}
+                {!isStreaming && streamingText && (
+                  <>
+                    <Separator my={4} />
+                    <HStack justify="space-between">
+                      <Text color="gray.500" fontSize="sm">
+                        Model: {streamingModel || aiAnalysis?.model_used || 'Unknown'}
+                      </Text>
+                      <Text color="gray.500" fontSize="sm">
+                        Generated: {aiAnalysis?.generated_at ? new Date(aiAnalysis.generated_at).toLocaleString() : new Date().toLocaleString()}
+                      </Text>
+                    </HStack>
+                  </>
+                )}
+              </Box>
             ) : aiLoading ? (
               <Flex justify="center" py={8}>
                 <Spinner size="lg" color="purple.400" />
-                <Text ml={3} color="gray.400">Generating AI analysis...</Text>
+                <Text ml={3} color="gray.400">Initializing AI analysis...</Text>
               </Flex>
             ) : aiAnalysis?.success ? (
               <Box>
