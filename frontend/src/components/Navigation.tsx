@@ -2,6 +2,8 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Box, Flex, Text, HStack, Container, Badge } from '@chakra-ui/react';
 import { Home, List, TrendingUp, Activity } from 'lucide-react';
+import SettingsPanel from './SettingsPanel';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface NavItemProps {
   to: string;
@@ -35,6 +37,15 @@ interface NavigationProps {
 
 export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCount }) => {
   const location = useLocation();
+  const { isFiltered, settings } = useSettings();
+
+  // Format market cap for display
+  const formatMarketCap = (value: number | null) => {
+    if (!value) return '';
+    if (value >= 1_000_000_000_000) return `$${(value / 1_000_000_000_000).toFixed(0)}T+`;
+    if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(0)}B+`;
+    return `$${(value / 1_000_000).toFixed(0)}M+`;
+  };
 
   return (
     <Box 
@@ -80,14 +91,27 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
             />
           </HStack>
 
-          {/* Status Badge */}
-          {totalStocks !== undefined && (
-            <HStack gap={2}>
+          {/* Right Side: Status + Settings */}
+          <HStack gap={3}>
+            {/* Filter Active Indicator */}
+            {isFiltered && (
+              <Badge colorPalette="orange" size="lg" px={3} py={1}>
+                {settings.minMarketCap && formatMarketCap(settings.minMarketCap)}
+                {settings.minMarketCap && settings.maxPriceChangePercent && ' | '}
+                {settings.maxPriceChangePercent && `±${settings.maxPriceChangePercent}%`}
+              </Badge>
+            )}
+
+            {/* Status Badge */}
+            {totalStocks !== undefined && (
               <Badge colorPalette="green" size="lg" px={3} py={1}>
                 {analyzedCount?.toLocaleString() || 0} / {totalStocks?.toLocaleString()} Analyzed
               </Badge>
-            </HStack>
-          )}
+            )}
+
+            {/* Settings Panel */}
+            <SettingsPanel />
+          </HStack>
         </Flex>
       </Container>
     </Box>

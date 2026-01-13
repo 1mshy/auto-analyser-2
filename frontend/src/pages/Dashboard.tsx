@@ -17,6 +17,7 @@ import {
 import { TrendingUp, TrendingDown, AlertCircle, Target, DollarSign } from 'lucide-react';
 import { api } from '../api';
 import { StockAnalysis, MarketSummary, getMarketCapTier, getMarketCapTierColor, AIAnalysisResponse } from '../types';
+import { useSettings } from '../contexts/SettingsContext';
 
 // Compact stock row for dashboard sections
 const CompactStockRow: React.FC<{
@@ -149,6 +150,7 @@ const SectionCard: React.FC<{
 );
 
 export const Dashboard: React.FC = () => {
+  const { settings } = useSettings();
   const [summary, setSummary] = useState<MarketSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -159,7 +161,7 @@ export const Dashboard: React.FC = () => {
   const fetchMarketSummary = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await api.getMarketSummary();
+      const data = await api.getMarketSummary(settings);
       setSummary(data);
       setError(null);
     } catch (err) {
@@ -168,7 +170,7 @@ export const Dashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [settings]);
 
   const checkAIStatus = useCallback(async () => {
     try {

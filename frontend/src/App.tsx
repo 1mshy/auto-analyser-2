@@ -9,6 +9,7 @@ import { StockDetailPage } from './pages/StockDetailPage';
 import { useWebSocket } from './hooks';
 import { AnalysisProgress } from './types';
 import { api } from './api';
+import { SettingsProvider } from './contexts/SettingsContext';
 
 function App() {
   const { } = useWebSocket(); // WebSocket for real-time updates
@@ -30,20 +31,22 @@ function App() {
   }, []);
 
   return (
-    <Router>
-      <Box bg="gray.900" minH="100vh">
-        <Navigation 
-          totalStocks={progress?.total_stocks} 
-          analyzedCount={progress?.analyzed}
-        />
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/stocks" element={<StocksPage />} />
-          <Route path="/stocks/:symbol" element={<StockDetailPage />} />
-          <Route path="/opportunities" element={<OpportunitiesPage />} />
-        </Routes>
-      </Box>
-    </Router>
+    <SettingsProvider>
+      <Router>
+        <Box bg="gray.900" minH="100vh">
+          <Navigation 
+            totalStocks={progress?.total_stocks} 
+            analyzedCount={progress?.analyzed}
+          />
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/stocks" element={<StocksPage />} />
+            <Route path="/stocks/:symbol" element={<StockDetailPage />} />
+            <Route path="/opportunities" element={<OpportunitiesPage />} />
+          </Routes>
+        </Box>
+      </Router>
+    </SettingsProvider>
   );
 }
 

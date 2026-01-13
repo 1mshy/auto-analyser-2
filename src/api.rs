@@ -16,6 +16,13 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
+
+/// Query parameters for market summary endpoint
+#[derive(Debug, Deserialize)]
+pub struct MarketSummaryQuery {
+    pub min_market_cap: Option<f64>,
+    pub max_price_change_percent: Option<f64>,
+}
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
@@ -188,11 +195,18 @@ async fn filter_stocks(
 }
 
 /// Get market summary with top gainers, losers, and key highlights
-async fn get_market_summary(State(state): State<AppState>) -> impl IntoResponse {
-    match state.db.get_market_summary(10).await {
+async fn get_market_summary(
+    State(state): State<AppState>,
+    Query(query): Query<MarketSummaryQuery>,
+) -> impl IntoResponse {
+    match state.db.get_market_summary(10, query.min_market_cap, query.max_price_change_percent).await {
         Ok(summary) => Json(json!({
             "success": true,
-            "summary": summary
+            "summary": summary,
+            "filters_applied": {
+                "min_market_cap": query.min_market_cap,
+                "max_price_change_percent": query.max_price_change_percent
+            }
         })),
         Err(e) => Json(json!({
             "success": false,

@@ -20,6 +20,7 @@ import {
 import { Grid, List, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { api, FilterResponse } from '../api';
 import { StockAnalysis, StockFilter, PaginationInfo, getMarketCapTier, getMarketCapTierColor, getMarketCapTierLabel } from '../types';
+import { useSettings } from '../contexts/SettingsContext';
 
 // Compact table row component
 const StockTableRow: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
@@ -202,6 +203,7 @@ const Pagination: React.FC<{
 };
 
 export const StocksPage: React.FC = () => {
+  const { settings } = useSettings();
   const [searchParams, setSearchParams] = useSearchParams();
   const [stocks, setStocks] = useState<StockAnalysis[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo>({ page: 1, page_size: 50, total: 0, total_pages: 0 });
@@ -209,39 +211,58 @@ export const StocksPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Parse filter from URL params
+  // Parse filter from URL params and apply global settings
   const getFilterFromParams = useCallback((): StockFilter => {
+    // Get URL-based min market cap or use global settings
+    const urlMinMarketCap = searchParams.get('min_market_cap') ? parseFloat(searchParams.get('min_market_cap')!) : undefined;
+    const globalMinMarketCap = settings.minMarketCap ?? undefined;
+    
+    // Use the larger of the two (URL takes precedence if explicitly higher)
+    const effectiveMinMarketCap = urlMinMarketCap !== undefined && globalMinMarketCap !== undefined
+      ? Math.max(urlMinMarketCap, globalMinMarketCap)
+      : urlMinMarketCap ?? globalMinMarketCap;
+
     return {
       sort_by: searchParams.get('sort_by') || 'market_cap',
       sort_order: searchParams.get('sort_order') || 'desc',
       page: parseInt(searchParams.get('page') || '1'),
       page_size: parseInt(searchParams.get('page_size') || '50'),
-      min_market_cap: searchParams.get('min_market_cap') ? parseFloat(searchParams.get('min_market_cap')!) : undefined,
+      min_market_cap: effectiveMinMarketCap,
       max_market_cap: searchParams.get('max_market_cap') ? parseFloat(searchParams.get('max_market_cap')!) : undefined,
       min_rsi: searchParams.get('min_rsi') ? parseFloat(searchParams.get('min_rsi')!) : undefined,
       max_rsi: searchParams.get('max_rsi') ? parseFloat(searchParams.get('max_rsi')!) : undefined,
       only_oversold: searchParams.get('only_oversold') === 'true',
       only_overbought: searchParams.get('only_overbought') === 'true',
     };
-  }, [searchParams]);
+  }, [searchParams, settings]);
 
   const fetchStocks = useCallback(async () => {
     try {
       setLoading(true);
       const filter = getFilterFromParams();
       const response: FilterResponse = await api.filterStocks(filter);
-      setStocks(response.stocks);
+      
+      // Apply max price change filter client-side if global setting is set
+      let filteredStocks = response.stocks;
+      if (settings.maxPriceChangePercent) {
+        filteredStocks = filteredStocks.filter(s => 
+          s.price_change_percent === undefined || 
+          Math.abs(s.price_change_percent) <= settings.maxPriceChangePercent!
+        );
+      }
+      
+      setStocks(filteredStocks);
       setPagination(response.pagination);
     } catch (err) {
       console.error('Failed to fetch stocks:', err);
     } finally {
       setLoading(false);
     }
-  }, [getFilterFromParams]);
+  }, [getFilterFromParams, settings]);
 
   useEffect(() => {
     fetchStocks();
-  }, [fetchStocks]);
+  }, [fetchStocks, settings]);
 
   const handlePageChange = (newPage: number) => {
     const params = new URLSearchParams(searchParams);

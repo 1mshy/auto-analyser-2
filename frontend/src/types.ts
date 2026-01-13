@@ -128,6 +128,46 @@ export interface HistoricalDataPoint {
   volume: number;
 }
 
+// Global settings for filtering across all views
+export interface GlobalSettings {
+  minMarketCap: number | null;  // In dollars (e.g., 1_000_000_000 for $1B)
+  maxPriceChangePercent: number | null;  // Maximum allowed daily price change (e.g., 50 for 50%)
+  preset: 'all' | 'quality' | 'large_cap' | 'custom';
+}
+
+// Preset configurations for quick settings
+export const SETTINGS_PRESETS = {
+  all: {
+    minMarketCap: null,
+    maxPriceChangePercent: null,
+    preset: 'all' as const,
+  },
+  quality: {
+    minMarketCap: 500_000_000, // $500M - filters out micro-caps but includes quality small caps
+    maxPriceChangePercent: 25, // 25% - filters out extreme penny stock moves
+    preset: 'quality' as const,
+  },
+  large_cap: {
+    minMarketCap: 10_000_000_000, // $10B
+    maxPriceChangePercent: 15, // 15% - more typical for large caps
+    preset: 'large_cap' as const,
+  },
+};
+
+// Default to 'quality' preset so home page shows recognizable stocks, not obscure penny stocks
+export const DEFAULT_SETTINGS: GlobalSettings = SETTINGS_PRESETS.quality;
+
+// Market cap tier thresholds for the settings UI
+export const MARKET_CAP_TIERS = [
+  { value: null, label: 'All Stocks', description: 'No minimum' },
+  { value: 300_000_000, label: 'Small Cap+', description: '$300M+' },
+  { value: 1_000_000_000, label: 'Mid Cap+', description: '$1B+' },
+  { value: 2_000_000_000, label: 'Mid-Large Cap+', description: '$2B+' },
+  { value: 10_000_000_000, label: 'Large Cap+', description: '$10B+' },
+  { value: 50_000_000_000, label: 'Mega Cap+', description: '$50B+' },
+  { value: 200_000_000_000, label: 'Ultra Cap+', description: '$200B+' },
+];
+
 // Market cap tier classification
 export type MarketCapTier = 'mega' | 'large' | 'mid' | 'small' | 'micro';
 

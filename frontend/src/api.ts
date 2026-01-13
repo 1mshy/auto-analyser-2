@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse } from './types';
+import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings } from './types';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3333';
 
@@ -36,8 +36,22 @@ export const api = {
   },
 
   // Get market summary (top gainers, losers, etc.)
-  getMarketSummary: async (): Promise<MarketSummary> => {
-    const response = await axios.get(`${API_BASE_URL}/api/market-summary`);
+  getMarketSummary: async (settings?: GlobalSettings): Promise<MarketSummary> => {
+    // Build query params from settings
+    const params = new URLSearchParams();
+    if (settings?.minMarketCap) {
+      params.append('min_market_cap', settings.minMarketCap.toString());
+    }
+    if (settings?.maxPriceChangePercent) {
+      params.append('max_price_change_percent', settings.maxPriceChangePercent.toString());
+    }
+    
+    const queryString = params.toString();
+    const url = queryString 
+      ? `${API_BASE_URL}/api/market-summary?${queryString}`
+      : `${API_BASE_URL}/api/market-summary`;
+    
+    const response = await axios.get(url);
     if (response.data.success) {
       return response.data.summary;
     }

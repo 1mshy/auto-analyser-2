@@ -17,6 +17,7 @@ import {
 import { Target, TrendingUp, Zap, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { StockAnalysis, StockFilter, AIAnalysisResponse, getMarketCapTier, getMarketCapTierColor, getMarketCapTierLabel } from '../types';
+import { useSettings } from '../contexts/SettingsContext';
 
 // AI Analysis card with auto-trigger
 const OpportunityCard: React.FC<{
@@ -155,6 +156,7 @@ const OpportunityCard: React.FC<{
 };
 
 export const OpportunitiesPage: React.FC = () => {
+  const { settings } = useSettings();
   const [oversoldStocks, setOversoldStocks] = useState<StockAnalysis[]>([]);
   const [macdBullish, setMacdBullish] = useState<StockAnalysis[]>([]);
   const [loading, setLoading] = useState(true);
@@ -167,28 +169,47 @@ export const OpportunitiesPage: React.FC = () => {
     try {
       setLoading(true);
 
-      // Fetch oversold stocks (RSI < 30)
+      // Fetch oversold stocks (RSI < 30) with global market cap filter
       const oversoldFilter: StockFilter = {
         max_rsi: 30,
+        min_market_cap: settings.minMarketCap ?? undefined,
         sort_by: 'market_cap',
         sort_order: 'desc',
         page: 1,
         page_size: 50,
       };
       const oversoldResponse = await api.filterStocks(oversoldFilter);
-      setOversoldStocks(oversoldResponse.stocks);
+      
+      // Apply max price change filter client-side if set
+      let filteredOversold = oversoldResponse.stocks;
+      if (settings.maxPriceChangePercent) {
+        filteredOversold = filteredOversold.filter(s => 
+          s.price_change_percent === undefined || 
+          Math.abs(s.price_change_percent) <= settings.maxPriceChangePercent!
+        );
+      }
+      setOversoldStocks(filteredOversold);
 
-      // Fetch all stocks and filter for MACD bullish
+      // Fetch all stocks and filter for MACD bullish with global market cap filter
       const allFilter: StockFilter = {
+        min_market_cap: settings.minMarketCap ?? undefined,
         sort_by: 'market_cap',
         sort_order: 'desc',
         page: 1,
         page_size: 200,
       };
       const allResponse = await api.filterStocks(allFilter);
-      const bullish = allResponse.stocks.filter(
+      let bullish = allResponse.stocks.filter(
         s => s.macd && s.macd.histogram > 0 && s.rsi && s.rsi < 50
       );
+      
+      // Apply max price change filter client-side if set
+      if (settings.maxPriceChangePercent) {
+        bullish = bullish.filter(s => 
+          s.price_change_percent === undefined || 
+          Math.abs(s.price_change_percent) <= settings.maxPriceChangePercent!
+        );
+      }
       setMacdBullish(bullish.slice(0, 50));
 
     } catch (err) {
@@ -196,7 +217,7 @@ export const OpportunitiesPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [settings]);
 
   const checkAIStatus = useCallback(async () => {
     try {
@@ -224,7 +245,8 @@ export const OpportunitiesPage: React.FC = () => {
   useEffect(() => {
     fetchOpportunities();
     checkAIStatus();
-  }, [fetchOpportunities, checkAIStatus]);
+    // Re-fetch when settings change
+  }, [fetchOpportunities, checkAIStatus, settings]);
 
   // Auto-trigger AI analysis for top priority stocks when AI is enabled
   useEffect(() => {

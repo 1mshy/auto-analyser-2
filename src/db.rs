@@ -205,9 +205,28 @@ impl MongoDB {
     }
 
     /// Get market summary with top gainers, losers, and highlights
-    pub async fn get_market_summary(&self, limit: usize) -> Result<MarketSummary> {
+    /// Accepts optional filters for minimum market cap and maximum price change percent
+    pub async fn get_market_summary(
+        &self, 
+        limit: usize,
+        min_market_cap: Option<f64>,
+        max_price_change_percent: Option<f64>,
+    ) -> Result<MarketSummary> {
         let collection = self.analysis_collection();
         let limit_i64 = limit as i64;
+
+        // Build base filter document with optional market cap filter
+        let mut base_filter = Document::new();
+        if let Some(min_mc) = min_market_cap {
+            base_filter.insert("market_cap", doc! { "$gte": min_mc });
+        }
+
+        // Build filter for gainers (positive change, within max threshold if set)
+        let mut gainers_filter = base_filter.clone();
+        gainers_filter.insert("price_change_percent", doc! { "$exists": true, "$ne": null, "$gt": 0.0 });
+        if let Some(max_pct) = max_price_change_percent {
+            gainers_filter.insert("price_change_percent", doc! { "$gt": 0.0, "$lte": max_pct });
+        }
 
         // Top gainers (sorted by price_change_percent desc)
         let gainers_options = FindOptions::builder()
@@ -215,16 +234,21 @@ impl MongoDB {
             .limit(limit_i64)
             .build();
         let mut gainers_cursor = collection
-            .find(doc! { "price_change_percent": { "$exists": true, "$ne": null } })
+            .find(gainers_filter)
             .with_options(gainers_options)
             .await?;
         let mut top_gainers = Vec::new();
         while let Some(doc) = gainers_cursor.next().await {
             if let Ok(analysis) = doc {
-                if analysis.price_change_percent.unwrap_or(0.0) > 0.0 {
-                    top_gainers.push(analysis);
-                }
+                top_gainers.push(analysis);
             }
+        }
+
+        // Build filter for losers (negative change, within max threshold if set)
+        let mut losers_filter = base_filter.clone();
+        losers_filter.insert("price_change_percent", doc! { "$exists": true, "$ne": null, "$lt": 0.0 });
+        if let Some(max_pct) = max_price_change_percent {
+            losers_filter.insert("price_change_percent", doc! { "$lt": 0.0, "$gte": -max_pct });
         }
 
         // Top losers (sorted by price_change_percent asc)
@@ -233,25 +257,25 @@ impl MongoDB {
             .limit(limit_i64)
             .build();
         let mut losers_cursor = collection
-            .find(doc! { "price_change_percent": { "$exists": true, "$ne": null } })
+            .find(losers_filter)
             .with_options(losers_options)
             .await?;
         let mut top_losers = Vec::new();
         while let Some(doc) = losers_cursor.next().await {
             if let Ok(analysis) = doc {
-                if analysis.price_change_percent.unwrap_or(0.0) < 0.0 {
-                    top_losers.push(analysis);
-                }
+                top_losers.push(analysis);
             }
         }
 
-        // Most oversold (RSI < 30, sorted by RSI asc)
+        // Most oversold (RSI < 30, sorted by RSI asc) - apply market cap filter
+        let mut oversold_filter = base_filter.clone();
+        oversold_filter.insert("rsi", doc! { "$lt": 30.0, "$exists": true });
         let oversold_options = FindOptions::builder()
             .sort(doc! { "rsi": 1 })
             .limit(limit_i64)
             .build();
         let mut oversold_cursor = collection
-            .find(doc! { "rsi": { "$lt": 30.0, "$exists": true } })
+            .find(oversold_filter)
             .with_options(oversold_options)
             .await?;
         let mut most_oversold = Vec::new();
@@ -261,13 +285,15 @@ impl MongoDB {
             }
         }
 
-        // Most overbought (RSI > 70, sorted by RSI desc)
+        // Most overbought (RSI > 70, sorted by RSI desc) - apply market cap filter
+        let mut overbought_filter = base_filter.clone();
+        overbought_filter.insert("rsi", doc! { "$gt": 70.0, "$exists": true });
         let overbought_options = FindOptions::builder()
             .sort(doc! { "rsi": -1 })
             .limit(limit_i64)
             .build();
         let mut overbought_cursor = collection
-            .find(doc! { "rsi": { "$gt": 70.0, "$exists": true } })
+            .find(overbought_filter)
             .with_options(overbought_options)
             .await?;
         let mut most_overbought = Vec::new();
@@ -278,6 +304,7 @@ impl MongoDB {
         }
 
         // Mega cap highlights (>$200B market cap, sorted by market cap desc)
+        // Note: This section ignores the min_market_cap filter since it's specifically for mega caps
         let mega_cap_options = FindOptions::builder()
             .sort(doc! { "market_cap": -1 })
             .limit(limit_i64)
@@ -293,8 +320,12 @@ impl MongoDB {
             }
         }
 
-        // Get total stock count
-        let total_stocks = collection.count_documents(doc! {}).await? as usize;
+        // Get total stock count (with market cap filter if applied)
+        let total_stocks = if min_market_cap.is_some() {
+            collection.count_documents(base_filter).await? as usize
+        } else {
+            collection.count_documents(doc! {}).await? as usize
+        };
 
         Ok(MarketSummary {
             total_stocks,
