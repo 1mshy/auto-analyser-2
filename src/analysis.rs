@@ -116,6 +116,8 @@ impl AnalysisEngine {
     }
 
     async fn run_analysis_cycle(&self) -> anyhow::Result<()> {
+        use crate::async_fetcher::FetchResult;
+        
         // Get list of stocks from NASDAQ API
         let symbols = self.get_stock_symbols().await;
         
@@ -168,8 +170,8 @@ impl AnalysisEngine {
             return Ok(());
         }
         
-        // Phase 1: Fetch all historical data concurrently
-        info!("🚀 Phase 1: Fetching historical data (concurrency={})", self.yahoo_concurrency);
+        // Use streaming fetch to process stocks as they complete
+        info!("🚀 Fetching and processing stocks (concurrency={}, progressive saves enabled)", self.yahoo_concurrency);
         
         let fetcher = AsyncStockFetcher::new(FetcherConfig {
             concurrency: self.yahoo_concurrency,
@@ -177,74 +179,76 @@ impl AnalysisEngine {
             days: 90, // 90 days for technical indicators
         });
         
-        let fetch_result = fetcher.fetch_batch(symbols_to_analyze.clone()).await;
-        
-        info!(
-            "📈 Fetched {}/{} stocks in {:?} (rate limited: {})",
-            fetch_result.successful.len(),
-            total_to_analyze,
-            fetch_result.total_time,
-            fetch_result.rate_limit_errors
-        );
-        
-        // Build map of fetched data
-        let price_data: HashMap<String, Vec<HistoricalPrice>> = fetch_result
-            .successful
-            .into_iter()
-            .collect();
-        
-        // Track failed fetches
-        {
-            let mut progress = self.progress.write().await;
-            progress.errors += fetch_result.failed.len();
-        }
-        
-        // Phase 2: Process each stock (calculate indicators, fetch NASDAQ data, save)
-        let price_data_len = price_data.len();
-        info!("🔧 Phase 2: Processing {} stocks with indicators and NASDAQ data", price_data_len);
+        let (mut rx, fetch_handle) = fetcher.fetch_batch_streaming(symbols_to_analyze.clone());
         
         let mut analyzed_count = 0;
-        for (symbol, historical_prices) in price_data {
-            // Update progress
-            {
-                let mut progress = self.progress.write().await;
-                progress.current_symbol = Some(symbol.clone());
-                progress.analyzed = skipped + analyzed_count;
-            }
-            
-            let market_cap = market_cap_map.get(&symbol).copied().flatten();
-            
-            match self.process_stock_with_prices(&symbol, market_cap, historical_prices).await {
-                Ok(analysis) => {
-                    if let Err(e) = self.db.save_analysis(&analysis).await {
-                        error!("Failed to save analysis for {}: {}", symbol, e);
+        let mut error_count = 0;
+        let mut success_count = 0;
+        
+        // Process results as they arrive
+        while let Some(result) = rx.recv().await {
+            match result {
+                FetchResult::Success { symbol, prices } => {
+                    // Update progress
+                    {
                         let mut progress = self.progress.write().await;
-                        progress.errors += 1;
-                    } else {
-                        self.cache.set_stock(symbol.clone(), analysis).await;
+                        progress.current_symbol = Some(symbol.clone());
+                        progress.analyzed = skipped + analyzed_count;
+                    }
+                    
+                    let market_cap = market_cap_map.get(&symbol).copied().flatten();
+                    
+                    match self.process_stock_with_prices(&symbol, market_cap, prices).await {
+                        Ok(analysis) => {
+                            if let Err(e) = self.db.save_analysis(&analysis).await {
+                                error!("Failed to save analysis for {}: {}", symbol, e);
+                                error_count += 1;
+                            } else {
+                                self.cache.set_stock(symbol.clone(), analysis).await;
+                                success_count += 1;
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to process {}: {}", symbol, e);
+                            error_count += 1;
+                        }
+                    }
+                    
+                    analyzed_count += 1;
+                    if analyzed_count % 50 == 0 {
+                        info!("📊 Progress: {}/{} processed, {} saved to DB", analyzed_count, total_to_analyze, success_count);
                     }
                 }
-                Err(e) => {
-                    warn!("Failed to process {}: {}", symbol, e);
-                    let mut progress = self.progress.write().await;
-                    progress.errors += 1;
+                FetchResult::Failed { symbol, error, is_rate_limited } => {
+                    if is_rate_limited {
+                        debug!("Rate limited fetching {}: {}", symbol, error);
+                    } else {
+                        warn!("Failed to fetch {}: {}", symbol, error);
+                    }
+                    error_count += 1;
+                    analyzed_count += 1;
                 }
             }
             
-            analyzed_count += 1;
-            if analyzed_count % 50 == 0 {
-                info!("Progress: {}/{} processed", analyzed_count, price_data_len);
+            // Update error count in progress
+            {
+                let mut progress = self.progress.write().await;
+                progress.errors = error_count;
             }
         }
+        
+        // Wait for the fetch task to complete
+        let _ = fetch_handle.await;
 
         // Invalidate list caches after cycle
         self.cache.invalidate_all_lists().await;
 
         let progress = self.progress.read().await;
         info!(
-            "✅ Cycle complete. {} total, {} analyzed, {} skipped, {} errors",
+            "✅ Cycle complete. {} total, {} processed, {} saved, {} skipped, {} errors",
             symbols.len(),
             analyzed_count,
+            success_count,
             skipped,
             progress.errors
         );

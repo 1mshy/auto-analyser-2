@@ -8,9 +8,25 @@ use crate::yahoo::YahooFinanceClient;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::Semaphore;
+use tokio::sync::{mpsc, Semaphore};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
+
+/// Result of fetching a single stock
+#[derive(Debug)]
+pub enum FetchResult {
+    /// Successfully fetched a stock with its price data
+    Success {
+        symbol: String,
+        prices: Vec<HistoricalPrice>,
+    },
+    /// Failed to fetch a stock
+    Failed {
+        symbol: String,
+        error: String,
+        is_rate_limited: bool,
+    },
+}
 
 /// Result of a batch fetch operation
 #[derive(Debug)]
@@ -96,7 +112,90 @@ impl AsyncStockFetcher {
         })
     }
 
-    /// Fetch historical prices for multiple symbols concurrently
+    /// Fetch historical prices for multiple symbols with streaming results.
+    /// Returns a channel receiver that yields results as they complete.
+    /// Also returns a handle to wait for completion.
+    pub fn fetch_batch_streaming(
+        &self,
+        symbols: Vec<String>,
+    ) -> (mpsc::Receiver<FetchResult>, tokio::task::JoinHandle<()>) {
+        let (tx, rx) = mpsc::channel(100); // Buffer up to 100 results
+        let client = Arc::clone(&self.client);
+        let config = self.config.clone();
+        let total = symbols.len();
+
+        let handle = tokio::spawn(async move {
+            let semaphore = Arc::new(Semaphore::new(config.concurrency));
+            let completed = Arc::new(AtomicUsize::new(0));
+            let mut handles = Vec::new();
+
+            for (idx, symbol) in symbols.into_iter().enumerate() {
+                let permit = semaphore.clone().acquire_owned().await.unwrap();
+                let client = Arc::clone(&client);
+                let tx = tx.clone();
+                let completed = Arc::clone(&completed);
+                let days = config.days;
+                let delay_ms = config.delay_between_requests_ms;
+
+                let handle = tokio::spawn(async move {
+                    // Stagger requests slightly based on index
+                    if idx > 0 && delay_ms > 0 {
+                        sleep(Duration::from_millis(delay_ms * (idx as u64 % 3))).await;
+                    }
+
+                    let result = client.get_historical_prices(&symbol, days).await;
+
+                    // Release permit immediately after request completes
+                    drop(permit);
+
+                    let fetch_result = match result {
+                        Ok(prices) => {
+                            debug!("✅ Fetched {} prices for {}", prices.len(), symbol);
+                            FetchResult::Success { symbol, prices }
+                        }
+                        Err(e) => {
+                            let error_msg = e.to_string();
+                            let is_rate_limited = error_msg.contains("429") || error_msg.contains("Rate limited");
+                            if is_rate_limited {
+                                warn!("⚠️  Rate limited: {}", symbol);
+                            } else {
+                                warn!("❌ Failed {}: {}", symbol, error_msg);
+                            }
+                            FetchResult::Failed {
+                                symbol,
+                                error: error_msg,
+                                is_rate_limited,
+                            }
+                        }
+                    };
+
+                    // Send result through channel (ignore send errors if receiver dropped)
+                    let _ = tx.send(fetch_result).await;
+
+                    let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
+                    if done % 50 == 0 || done == total {
+                        info!("Fetch progress: {}/{} completed", done, total);
+                    }
+                });
+
+                handles.push(handle);
+
+                // Small delay between spawning tasks
+                if delay_ms > 0 {
+                    sleep(Duration::from_millis(delay_ms)).await;
+                }
+            }
+
+            // Wait for all tasks to complete
+            for handle in handles {
+                let _ = handle.await;
+            }
+        });
+
+        (rx, handle)
+    }
+
+    /// Fetch historical prices for multiple symbols concurrently (blocking until all complete)
     pub async fn fetch_batch(&self, symbols: Vec<String>) -> BatchFetchResult {
         let start_time = Instant::now();
         let semaphore = Arc::new(Semaphore::new(self.config.concurrency));

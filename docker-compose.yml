@@ -36,11 +36,12 @@ services:
       - SERVER_PORT=3333
       - ANALYSIS_INTERVAL_SECS=3600
       - CACHE_TTL_SECS=300
-      - YAHOO_REQUEST_DELAY_MS=10000
+      - YAHOO_REQUEST_DELAY_MS=500
+      - YAHOO_CONCURRENCY=5
+      - NASDAQ_REQUEST_DELAY_MS=2000
       - RUST_LOG=info
       - OPENROUTER_API_KEY_STOCKS=${OPENROUTER_API_KEY_STOCKS}
       - OPENROUTER_ENABLED=${OPENROUTER_ENABLED:-true}
-      - FMP_API=${FMP_API}
     depends_on:
       mongodb:
         condition: service_healthy
