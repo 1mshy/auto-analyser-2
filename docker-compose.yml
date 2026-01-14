@@ -5,7 +5,7 @@ services:
     container_name: stock_analyzer_db
     restart: unless-stopped
     ports:
-     # different computer port for the mongodb instance so it does not interfear with an existing one.
+      # different computer port for the mongodb instance so it does not interfear with an existing one.
       - "27018:27017"
     volumes:
       - mongodb_data:/data/db
@@ -40,13 +40,14 @@ services:
       - RUST_LOG=info
       - OPENROUTER_API_KEY_STOCKS=${OPENROUTER_API_KEY_STOCKS}
       - OPENROUTER_ENABLED=${OPENROUTER_ENABLED:-true}
+      - FMP_API=${FMP_API}
     depends_on:
       mongodb:
         condition: service_healthy
     networks:
       - stock_analyzer_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3333/api/progress"]
+      test: [ "CMD", "curl", "-f", "http://localhost:3333/api/progress" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -66,7 +67,7 @@ services:
     networks:
       - stock_analyzer_network
     healthcheck:
-      test: ["CMD", "test", "-f", "/usr/share/nginx/html/index.html"]
+      test: [ "CMD", "test", "-f", "/usr/share/nginx/html/index.html" ]
       interval: 30s
       timeout: 10s
       retries: 3
