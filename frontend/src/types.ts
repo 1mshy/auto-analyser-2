@@ -262,3 +262,54 @@ export function getMarketCapTierColor(tier: MarketCapTier): string {
     case 'micro': return 'gray';
   }
 }
+
+// Index/Fund Heatmap Types
+export interface IndexInfo {
+  id: string;
+  name: string;
+  description: string;
+  symbol_count: number;
+}
+
+export interface IndexHeatmapData {
+  index_id: string;
+  index_name: string;
+  period: string;
+  index_performance: number;
+  generated_at: string;
+  stocks: StockHeatmapItem[];
+}
+
+export interface StockHeatmapItem {
+  symbol: string;
+  name?: string;
+  price: number;
+  change_percent: number;
+  contribution: number;
+  market_cap?: number;
+  sector?: string;
+}
+
+export interface IndexHeatmapResponse {
+  success: boolean;
+  heatmap?: IndexHeatmapData;
+  stats?: {
+    total_constituents: number;
+    stocks_with_data: number;
+    total_market_cap: number;
+    period: string;
+  };
+  error?: string;
+}
+
+// Time period options for heatmap
+export type HeatmapPeriod = '1d' | '1w' | '1m' | '6m' | '1y';
+
+export const HEATMAP_PERIODS: { value: HeatmapPeriod; label: string }[] = [
+  { value: '1d', label: '1 Day' },
+  { value: '1w', label: '1 Week' },
+  { value: '1m', label: '1 Month' },
+  { value: '6m', label: '6 Months' },
+  { value: '1y', label: '1 Year' },
+];
+

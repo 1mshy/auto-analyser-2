@@ -5,6 +5,7 @@ import { Navigation } from './components/Navigation';
 import { Dashboard } from './pages/Dashboard';
 import { StocksPage } from './pages/StocksPage';
 import { OpportunitiesPage } from './pages/OpportunitiesPage';
+import { FundsPage } from './pages/FundsPage';
 import { StockDetailPage } from './pages/StockDetailPage';
 import { useWebSocket } from './hooks';
 import { AnalysisProgress } from './types';
@@ -34,8 +35,8 @@ function App() {
     <SettingsProvider>
       <Router>
         <Box bg="gray.900" minH="100vh">
-          <Navigation 
-            totalStocks={progress?.total_stocks} 
+          <Navigation
+            totalStocks={progress?.total_stocks}
             analyzedCount={progress?.analyzed}
           />
           <Routes>
@@ -43,6 +44,7 @@ function App() {
             <Route path="/stocks" element={<StocksPage />} />
             <Route path="/stocks/:symbol" element={<StockDetailPage />} />
             <Route path="/opportunities" element={<OpportunitiesPage />} />
+            <Route path="/funds" element={<FundsPage />} />
           </Routes>
         </Box>
       </Router>

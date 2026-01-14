@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile } from './types';
+import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse } from './types';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3333';
 
@@ -156,5 +156,21 @@ export const api = {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = process.env.REACT_APP_WS_URL || 'localhost:3333';
     return `${wsProtocol}//${host}/ws`;
-  }
+  },
+
+  // Get list of available market indexes
+  getIndexes: async (): Promise<IndexInfo[]> => {
+    const response = await axios.get(`${API_BASE_URL}/api/indexes`);
+    if (response.data.success) {
+      return response.data.indexes;
+    }
+    return [];
+  },
+
+  // Get index heatmap data with performance
+  getIndexHeatmap: async (indexId: string, period: string = '1d'): Promise<IndexHeatmapResponse> => {
+    const response = await axios.get(`${API_BASE_URL}/api/indexes/${indexId}/heatmap?period=${period}`);
+    return response.data;
+  },
 };
+

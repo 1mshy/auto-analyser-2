@@ -1,6 +1,7 @@
 use crate::{
     cache::CacheLayer,
     db::MongoDB,
+    indexes::{IndexDataProvider, IndexHeatmapData, StockHeatmapItem},
     models::StockFilter,
     openrouter::{OpenRouterClient, StreamEvent},
     yahoo::YahooFinanceClient,
@@ -56,6 +57,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/progress", get(get_progress))
         .route("/api/ai/status", get(get_ai_status))
         .route("/api/ai/models", get(get_ai_models))
+        // Index/Fund heatmap endpoints
+        .route("/api/indexes", get(get_indexes))
+        .route("/api/indexes/:index_id", get(get_index_detail))
+        .route("/api/indexes/:index_id/heatmap", get(get_index_heatmap))
         .route("/ws", get(websocket_handler))
         .with_state(state)
 }
@@ -483,3 +488,179 @@ async fn websocket_connection(mut socket: WebSocket, state: AppState) {
         }
     }
 }
+
+// ============================================================================
+// Index/Fund Heatmap Endpoints
+// ============================================================================
+
+/// Query parameters for index heatmap endpoint
+#[derive(Debug, Deserialize)]
+pub struct IndexHeatmapQuery {
+    /// Time period: "1d", "1w", "1m", "6m", "1y"
+    pub period: Option<String>,
+}
+
+/// Get list of available indexes
+async fn get_indexes() -> impl IntoResponse {
+    let indexes = IndexDataProvider::get_indexes();
+    Json(json!({
+        "success": true,
+        "indexes": indexes
+    }))
+}
+
+/// Get details for a specific index
+async fn get_index_detail(Path(index_id): Path<String>) -> impl IntoResponse {
+    match IndexDataProvider::get_index_info(&index_id) {
+        Some(info) => {
+            let symbols = IndexDataProvider::get_index_symbols(&index_id).unwrap_or_default();
+            Json(json!({
+                "success": true,
+                "index": {
+                    "id": info.id,
+                    "name": info.name,
+                    "description": info.description,
+                    "symbol_count": info.symbol_count,
+                    "symbols": symbols
+                }
+            }))
+        }
+        None => Json(json!({
+            "success": false,
+            "error": format!("Index '{}' not found. Available indexes: sp500, nasdaq100, dow30, russell2000", index_id)
+        })),
+    }
+}
+
+/// Get heatmap data for an index with performance calculations
+async fn get_index_heatmap(
+    State(state): State<AppState>,
+    Path(index_id): Path<String>,
+    Query(query): Query<IndexHeatmapQuery>,
+) -> impl IntoResponse {
+    let period = query.period.unwrap_or_else(|| "1d".to_string());
+    
+    // Validate period
+    let valid_periods = ["1d", "1w", "1m", "6m", "1y"];
+    if !valid_periods.contains(&period.as_str()) {
+        return Json(json!({
+            "success": false,
+            "error": format!("Invalid period '{}'. Valid periods: 1d, 1w, 1m, 6m, 1y", period)
+        }));
+    }
+
+    // Get index info and symbols
+    let Some(info) = IndexDataProvider::get_index_info(&index_id) else {
+        return Json(json!({
+            "success": false,
+            "error": format!("Index '{}' not found", index_id)
+        }));
+    };
+
+    let Some(symbols) = IndexDataProvider::get_index_symbols(&index_id) else {
+        return Json(json!({
+            "success": false,
+            "error": format!("No symbols found for index '{}'", index_id)
+        }));
+    };
+
+    // Fetch stock data from database
+    let mut stocks: Vec<StockHeatmapItem> = Vec::new();
+    let mut total_market_cap: f64 = 0.0;
+    let mut weighted_change: f64 = 0.0;
+
+    // Get all analyses at once for efficiency
+    let filter = StockFilter {
+        min_price: None,
+        max_price: None,
+        min_volume: None,
+        min_market_cap: None,
+        max_market_cap: None,
+        min_rsi: None,
+        max_rsi: None,
+        sectors: None,
+        only_oversold: None,
+        only_overbought: None,
+        sort_by: Some("market_cap".to_string()),
+        sort_order: Some("desc".to_string()),
+        page: None,
+        page_size: Some(1000), // Get more stocks for index matching
+    };
+
+    let all_stocks = match state.db.get_latest_analyses(filter).await {
+        Ok(s) => s,
+        Err(e) => {
+            return Json(json!({
+                "success": false,
+                "error": format!("Database error: {}", e)
+            }));
+        }
+    };
+
+    // Create a lookup map for quick access
+    let stock_map: std::collections::HashMap<String, _> = all_stocks
+        .into_iter()
+        .map(|s| (s.symbol.clone(), s))
+        .collect();
+
+    // Match index symbols with database stocks
+    let symbol_count = symbols.len();
+    for symbol in &symbols {
+        if let Some(stock) = stock_map.get(&symbol.to_string()) {
+            let market_cap = stock.market_cap.unwrap_or(0.0);
+            let change_percent = stock.price_change_percent.unwrap_or(0.0);
+            
+            total_market_cap += market_cap;
+            
+            stocks.push(StockHeatmapItem {
+                symbol: symbol.to_string(),
+                name: None,
+                price: stock.price,
+                change_percent,
+                contribution: 0.0, // Will be calculated after total is known
+                market_cap: Some(market_cap),
+                sector: stock.sector.clone(),
+            });
+        }
+    }
+
+    // Calculate weighted index performance and individual contributions
+    for stock in &mut stocks {
+        if let Some(market_cap) = stock.market_cap {
+            if total_market_cap > 0.0 {
+                let weight = market_cap / total_market_cap;
+                let contribution = weight * stock.change_percent;
+                stock.contribution = contribution;
+                weighted_change += contribution;
+            }
+        }
+    }
+
+    // Sort by market cap descending for heatmap display
+    stocks.sort_by(|a, b| {
+        b.market_cap.unwrap_or(0.0)
+            .partial_cmp(&a.market_cap.unwrap_or(0.0))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let heatmap_data = IndexHeatmapData {
+        index_id: info.id.clone(),
+        index_name: info.name.clone(),
+        period: period.clone(),
+        index_performance: weighted_change,
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        stocks,
+    };
+
+    Json(json!({
+        "success": true,
+        "heatmap": heatmap_data,
+        "stats": {
+            "total_constituents": symbol_count,
+            "stocks_with_data": heatmap_data.stocks.len(),
+            "total_market_cap": total_market_cap,
+            "period": period
+        }
+    }))
+}
+

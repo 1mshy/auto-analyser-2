@@ -5,6 +5,7 @@ mod cache;
 mod config;
 mod db;
 mod indicators;
+mod indexes;
 mod models;
 mod nasdaq;
 mod openrouter;

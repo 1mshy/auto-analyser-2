@@ -17,3 +17,4 @@ pub mod nasdaq;
 pub mod openrouter;
 pub mod yahoo;
 pub mod async_fetcher;
+pub mod indexes;
