@@ -1,5 +1,6 @@
 mod analysis;
 mod api;
+mod async_fetcher;
 mod cache;
 mod config;
 mod db;
@@ -69,9 +70,11 @@ async fn main() -> anyhow::Result<()> {
         cache.clone(),
         config.analysis_interval_secs,
         config.yahoo_request_delay_ms,
+        config.yahoo_concurrency,
         config.nasdaq_request_delay_ms,
     );
     let progress = analysis_engine.get_progress();
+    tracing::info!("Yahoo Finance: concurrency={}, delay={}ms", config.yahoo_concurrency, config.yahoo_request_delay_ms);
     tracing::info!("NASDAQ request delay: {}ms", config.nasdaq_request_delay_ms);
 
     // Load existing data from MongoDB and populate cache

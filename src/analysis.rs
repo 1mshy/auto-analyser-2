@@ -1,13 +1,13 @@
 use crate::{
+    async_fetcher::{AsyncStockFetcher, FetcherConfig},
     cache::CacheLayer,
     db::MongoDB,
     indicators::TechnicalIndicators,
-    models::{AnalysisProgress, NasdaqResponse, StockAnalysis},
+    models::{AnalysisProgress, HistoricalPrice, NasdaqResponse, StockAnalysis},
     nasdaq::NasdaqClient,
-    yahoo::YahooFinanceClient,
 };
 use chrono::Utc;
-use rand::Rng;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
@@ -15,14 +15,13 @@ use tracing::{debug, error, info, warn};
 
 pub struct AnalysisEngine {
     db: MongoDB,
-    yahoo_client: YahooFinanceClient,
     nasdaq_client: NasdaqClient,
     http_client: reqwest::Client,
     cache: CacheLayer,
     progress: Arc<RwLock<AnalysisProgress>>,
     interval_secs: u64,
     yahoo_delay_ms: u64,
-    nasdaq_delay_ms: u64,
+    yahoo_concurrency: usize,
     cached_symbols: Arc<RwLock<Vec<(String, Option<f64>)>>>,
 }
 
@@ -32,6 +31,7 @@ impl AnalysisEngine {
         cache: CacheLayer,
         interval_secs: u64,
         yahoo_delay_ms: u64,
+        yahoo_concurrency: usize,
         nasdaq_delay_ms: u64,
     ) -> Self {
         let progress = Arc::new(RwLock::new(AnalysisProgress {
@@ -52,14 +52,13 @@ impl AnalysisEngine {
 
         AnalysisEngine {
             db,
-            yahoo_client: YahooFinanceClient::new(),
             nasdaq_client,
             http_client,
             cache,
             progress,
             interval_secs,
             yahoo_delay_ms,
-            nasdaq_delay_ms,
+            yahoo_concurrency,
             cached_symbols: Arc::new(RwLock::new(Vec::new())),
         }
     }
@@ -99,7 +98,7 @@ impl AnalysisEngine {
     pub async fn start_continuous_analysis(&self) {
         info!("Starting continuous analysis engine...");
         info!("Per-ticker caching enabled: {}s threshold", self.interval_secs);
-        info!("Yahoo Finance request delay: {}ms (+ 0-2s jitter)", self.yahoo_delay_ms);
+        info!("Yahoo Finance: concurrency={}, delay={}ms", self.yahoo_concurrency, self.yahoo_delay_ms);
         
         loop {
             info!("Beginning new analysis cycle");
@@ -120,115 +119,156 @@ impl AnalysisEngine {
         // Get list of stocks from NASDAQ API
         let symbols = self.get_stock_symbols().await;
         
-        let mut progress = self.progress.write().await;
-        progress.total_stocks = symbols.len();
-        progress.analyzed = 0;
-        progress.cycle_start = Utc::now();
-        progress.errors = 0;
-        drop(progress);
-
-        info!("Analyzing {} stocks", symbols.len());
+        // Build map of symbol -> market_cap for later use
+        let market_cap_map: HashMap<String, Option<f64>> = symbols
+            .iter()
+            .map(|(s, mc)| (s.clone(), *mc))
+            .collect();
+        
+        // Filter to symbols that need analysis
+        let mut symbols_to_analyze: Vec<String> = Vec::new();
         let mut skipped = 0;
-
-        for (idx, (symbol, market_cap)) in symbols.iter().enumerate() {
-            // Update progress
-            {
-                let mut progress = self.progress.write().await;
-                progress.current_symbol = Some(symbol.clone());
-                progress.analyzed = idx;
-            }
-
-            // Check if this ticker was analyzed recently
-            let should_analyze = match self.db.get_analysis_by_symbol(symbol).await {
+        
+        for (symbol, _) in &symbols {
+            match self.db.get_analysis_by_symbol(symbol).await {
                 Ok(Some(existing)) => {
                     let now = Utc::now();
                     let elapsed = now.signed_duration_since(existing.analyzed_at).num_seconds() as u64;
                     
                     if elapsed < self.interval_secs {
-                        info!("⏭️  Skipping {} - analyzed {}s ago (threshold: {}s)", 
-                            symbol, elapsed, self.interval_secs);
+                        debug!("⏭️  Skipping {} - analyzed {}s ago", symbol, elapsed);
                         skipped += 1;
-                        false
                     } else {
-                        info!("🔄 Re-analyzing {} - last analyzed {}s ago", symbol, elapsed);
-                        true
+                        symbols_to_analyze.push(symbol.clone());
                     }
                 }
                 Ok(None) => {
-                    info!("🆕 Analyzing new ticker: {}", symbol);
-                    true
+                    symbols_to_analyze.push(symbol.clone());
                 }
-                Err(e) => {
-                    warn!("Error checking existing data for {}: {}. Will analyze.", symbol, e);
-                    true
+                Err(_) => {
+                    symbols_to_analyze.push(symbol.clone());
                 }
-            };
-
-            if should_analyze {
-                // Analyze stock with rate limiting
-                match self.analyze_stock(symbol, *market_cap).await {
-                    Ok(analysis) => {
-                        // Save to database
-                        if let Err(e) = self.db.save_analysis(&analysis).await {
-                            error!("Failed to save analysis for {}: {}", symbol, e);
-                            let mut progress = self.progress.write().await;
-                            progress.errors += 1;
-                        } else {
-                            // Update cache
-                            self.cache.set_stock(symbol.clone(), analysis).await;
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to analyze {}: {}", symbol, e);
+            }
+        }
+        
+        let total_to_analyze = symbols_to_analyze.len();
+        info!("📊 Analyzing {} stocks ({} skipped, already up-to-date)", total_to_analyze, skipped);
+        
+        // Initialize progress
+        {
+            let mut progress = self.progress.write().await;
+            progress.total_stocks = symbols.len();
+            progress.analyzed = skipped;
+            progress.cycle_start = Utc::now();
+            progress.errors = 0;
+        }
+        
+        if symbols_to_analyze.is_empty() {
+            info!("✅ All stocks are up-to-date, nothing to analyze");
+            return Ok(());
+        }
+        
+        // Phase 1: Fetch all historical data concurrently
+        info!("🚀 Phase 1: Fetching historical data (concurrency={})", self.yahoo_concurrency);
+        
+        let fetcher = AsyncStockFetcher::new(FetcherConfig {
+            concurrency: self.yahoo_concurrency,
+            delay_between_requests_ms: self.yahoo_delay_ms,
+            days: 90, // 90 days for technical indicators
+        });
+        
+        let fetch_result = fetcher.fetch_batch(symbols_to_analyze.clone()).await;
+        
+        info!(
+            "📈 Fetched {}/{} stocks in {:?} (rate limited: {})",
+            fetch_result.successful.len(),
+            total_to_analyze,
+            fetch_result.total_time,
+            fetch_result.rate_limit_errors
+        );
+        
+        // Build map of fetched data
+        let price_data: HashMap<String, Vec<HistoricalPrice>> = fetch_result
+            .successful
+            .into_iter()
+            .collect();
+        
+        // Track failed fetches
+        {
+            let mut progress = self.progress.write().await;
+            progress.errors += fetch_result.failed.len();
+        }
+        
+        // Phase 2: Process each stock (calculate indicators, fetch NASDAQ data, save)
+        let price_data_len = price_data.len();
+        info!("🔧 Phase 2: Processing {} stocks with indicators and NASDAQ data", price_data_len);
+        
+        let mut analyzed_count = 0;
+        for (symbol, historical_prices) in price_data {
+            // Update progress
+            {
+                let mut progress = self.progress.write().await;
+                progress.current_symbol = Some(symbol.clone());
+                progress.analyzed = skipped + analyzed_count;
+            }
+            
+            let market_cap = market_cap_map.get(&symbol).copied().flatten();
+            
+            match self.process_stock_with_prices(&symbol, market_cap, historical_prices).await {
+                Ok(analysis) => {
+                    if let Err(e) = self.db.save_analysis(&analysis).await {
+                        error!("Failed to save analysis for {}: {}", symbol, e);
                         let mut progress = self.progress.write().await;
                         progress.errors += 1;
+                    } else {
+                        self.cache.set_stock(symbol.clone(), analysis).await;
                     }
                 }
-
-                // Rate limiting with jitter based on config
-                let base_delay = self.yahoo_delay_ms;
-                let jitter = rand::thread_rng().gen_range(0..2000); // Add 0-2 seconds jitter
-                let _delay_ms = base_delay + jitter;
-                // info!("⏱️  Waiting {}ms before next request", delay_ms);
-                // info!("Sike doing it rn!")
-                // sleep(Duration::from_millis(delay_ms)).await;
+                Err(e) => {
+                    warn!("Failed to process {}: {}", symbol, e);
+                    let mut progress = self.progress.write().await;
+                    progress.errors += 1;
+                }
+            }
+            
+            analyzed_count += 1;
+            if analyzed_count % 50 == 0 {
+                info!("Progress: {}/{} processed", analyzed_count, price_data_len);
             }
         }
 
         // Invalidate list caches after cycle
         self.cache.invalidate_all_lists().await;
 
-        let mut progress = self.progress.write().await;
-        progress.analyzed = symbols.len();
-        progress.current_symbol = None;
-
+        let progress = self.progress.read().await;
         info!(
-            "Cycle complete. Processed {} stocks ({} analyzed, {} skipped, {} errors)",
+            "✅ Cycle complete. {} total, {} analyzed, {} skipped, {} errors",
             symbols.len(),
-            symbols.len() - skipped,
+            analyzed_count,
             skipped,
             progress.errors
         );
 
         Ok(())
     }
-
-    async fn analyze_stock(&self, symbol: &str, market_cap: Option<f64>) -> anyhow::Result<StockAnalysis> {
-        // Fetch historical data (90 days for technical indicators)
-        let historical_prices = self
-            .yahoo_client
-            .get_historical_prices(symbol, 90)
-            .await?;
-
+    
+    /// Process a stock with pre-fetched historical prices
+    async fn process_stock_with_prices(
+        &self,
+        symbol: &str,
+        market_cap: Option<f64>,
+        historical_prices: Vec<HistoricalPrice>,
+    ) -> anyhow::Result<StockAnalysis> {
         // Calculate technical indicators
         let rsi = TechnicalIndicators::calculate_rsi(&historical_prices, 14);
         let sma_20 = TechnicalIndicators::calculate_sma(&historical_prices, 20);
         let sma_50 = TechnicalIndicators::calculate_sma(&historical_prices, 50);
         let macd = TechnicalIndicators::calculate_macd(&historical_prices);
 
-        let latest_price = historical_prices.last().unwrap();
+        let latest_price = historical_prices.last()
+            .ok_or_else(|| anyhow::anyhow!("No price data for {}", symbol))?;
 
-        // Fetch NASDAQ technicals (with rate limiting)
+        // Fetch NASDAQ technicals
         let technicals = match self.nasdaq_client.get_technicals(symbol).await {
             Ok(t) => {
                 debug!("Fetched NASDAQ technicals for {}", symbol);
@@ -240,78 +280,48 @@ impl AnalysisEngine {
             }
         };
 
-        // Apply NASDAQ delay
-        self.nasdaq_client.apply_delay().await;
-
         // Fetch NASDAQ news (check cache first)
         let news = if let Some(cached_news) = self.cache.get_news(symbol).await {
-            debug!("Using cached news for {}", symbol);
             Some(cached_news)
         } else {
             match self.nasdaq_client.get_news(symbol, 10).await {
                 Ok(n) if !n.is_empty() => {
-                    debug!("Fetched {} news items for {}", n.len(), symbol);
-                    // Cache the news
                     self.cache.set_news(symbol.to_string(), n.clone()).await;
                     Some(n)
                 }
-                Ok(_) => None,
-                Err(e) => {
-                    debug!("Could not fetch news for {}: {}", symbol, e);
-                    None
-                }
+                _ => None,
             }
         };
 
-        // Apply NASDAQ delay again after news fetch
-        self.nasdaq_client.apply_delay().await;
-
-        // Get sector from technicals if available
         let sector = technicals.as_ref().and_then(|t| t.sector.clone());
 
-        // Calculate price change - prefer NASDAQ primaryData (most accurate),
-        // then calculate from previous_close, then fall back to historical data
+        // Calculate price change
         let (price_change, price_change_percent) = if let Some(ref tech) = technicals {
-            // First priority: Use NASDAQ primaryData fields (always accurate)
             if let (Some(change), Some(pct)) = (tech.net_change, tech.percentage_change) {
-                debug!("Using NASDAQ primaryData for {}: change={}, pct={}", symbol, change, pct);
                 (Some(change), Some(pct))
-            }
-            // Second priority: Calculate from previous_close
-            else if let Some(prev_close) = tech.previous_close {
+            } else if let Some(prev_close) = tech.previous_close {
                 if prev_close > 0.0 {
                     let change = latest_price.close - prev_close;
-                    let change_percent = (change / prev_close) * 100.0;
-                    debug!("Calculated from previous_close for {}: change={}, pct={}", symbol, change, change_percent);
-                    (Some(change), Some(change_percent))
+                    (Some(change), Some((change / prev_close) * 100.0))
                 } else {
                     (None, None)
                 }
+            } else {
+                (None, None)
+            }
+        } else if historical_prices.len() >= 2 {
+            let prev = &historical_prices[historical_prices.len() - 2];
+            if prev.close > 0.0 && prev.volume > 0.0 {
+                let change = latest_price.close - prev.close;
+                (Some(change), Some((change / prev.close) * 100.0))
             } else {
                 (None, None)
             }
         } else {
-            // Fallback: calculate from historical data if we have at least 2 days
-            // Only use if previous day had trading activity (volume > 0)
-            if historical_prices.len() >= 2 {
-                let prev_idx = historical_prices.len() - 2;
-                let prev = &historical_prices[prev_idx];
-                if prev.close > 0.0 && prev.volume > 0.0 {
-                    let change = latest_price.close - prev.close;
-                    let change_percent = (change / prev.close) * 100.0;
-                    debug!("Calculated from historical for {}: change={}, pct={}", symbol, change, change_percent);
-                    (Some(change), Some(change_percent))
-                } else {
-                    // Previous day had no volume - likely stale data
-                    warn!("Skipping price change calc for {} - previous day had no volume (stale data)", symbol);
-                    (None, None)
-                }
-            } else {
-                (None, None)
-            }
+            (None, None)
         };
 
-        let analysis = StockAnalysis {
+        Ok(StockAnalysis {
             id: None,
             symbol: symbol.to_string(),
             price: latest_price.close,
@@ -329,9 +339,7 @@ impl AnalysisEngine {
             analyzed_at: Utc::now(),
             technicals,
             news,
-        };
-
-        Ok(analysis)
+        })
     }
 
     async fn get_stock_symbols(&self) -> Vec<(String, Option<f64>)> {

@@ -54,3 +54,7 @@ rand = "0.8"
 
 # OpenRouter AI
 openrouter-rs = "0.4"
+
+[[bin]]
+name = "rate_limit_tester"
+path = "src/bin/rate_limit_tester.rs"
