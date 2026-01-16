@@ -540,14 +540,20 @@ async fn get_index_heatmap(
 ) -> impl IntoResponse {
     let period = query.period.unwrap_or_else(|| "1d".to_string());
     
-    // Validate period
-    let valid_periods = ["1d", "1w", "1m", "6m", "1y"];
-    if !valid_periods.contains(&period.as_str()) {
-        return Json(json!({
-            "success": false,
-            "error": format!("Invalid period '{}'. Valid periods: 1d, 1w, 1m, 6m, 1y", period)
-        }));
-    }
+    // Convert period to number of days for historical data fetch
+    let days: i64 = match period.as_str() {
+        "1d" => 2,    // Need at least 2 days to get previous close
+        "1w" => 7,
+        "1m" => 30,
+        "6m" => 180,
+        "1y" => 365,
+        _ => {
+            return Json(json!({
+                "success": false,
+                "error": format!("Invalid period '{}'. Valid periods: 1d, 1w, 1m, 6m, 1y", period)
+            }));
+        }
+    };
 
     // Get index info and symbols
     let Some(info) = IndexDataProvider::get_index_info(&index_id) else {
@@ -603,12 +609,35 @@ async fn get_index_heatmap(
         .map(|s| (s.symbol.clone(), s))
         .collect();
 
-    // Match index symbols with database stocks
+    // Match index symbols with database stocks and calculate period performance
     let symbol_count = symbols.len();
+    
     for symbol in &symbols {
         if let Some(stock) = stock_map.get(&symbol.to_string()) {
             let market_cap = stock.market_cap.unwrap_or(0.0);
-            let change_percent = stock.price_change_percent.unwrap_or(0.0);
+            
+            // For 1d period, use the daily price_change_percent (fast path)
+            // For longer periods, fetch historical data and calculate
+            let change_percent = if period == "1d" {
+                stock.price_change_percent.unwrap_or(0.0)
+            } else {
+                // Try to fetch historical data for period-based calculation
+                match state.yahoo_client.get_historical_prices(*symbol, days).await {
+                    Ok(prices) if prices.len() >= 2 => {
+                        let first_price = prices.first().map(|p| p.close).unwrap_or(0.0);
+                        let last_price = prices.last().map(|p| p.close).unwrap_or(0.0);
+                        if first_price > 0.0 {
+                            ((last_price - first_price) / first_price) * 100.0
+                        } else {
+                            0.0
+                        }
+                    }
+                    _ => {
+                        // Fallback to daily change if historical fetch fails
+                        stock.price_change_percent.unwrap_or(0.0)
+                    }
+                }
+            };
             
             total_market_cap += market_cap;
             
