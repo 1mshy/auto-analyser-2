@@ -1,4 +1,4 @@
-use crate::models::{Stock, StockAnalysis, StockFilter, MarketSummary};
+use crate::models::{Stock, StockAnalysis, StockFilter, MarketSummary, SectorPerformance, AggregatedNewsItem};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use futures::stream::StreamExt;
@@ -132,6 +132,18 @@ impl MongoDB {
         if let Some(true) = filter.only_overbought {
             filter_doc.insert("is_overbought", true);
         }
+        if let Some(min_k) = filter.min_stochastic_k {
+            filter_doc.insert("stochastic.k_line", doc! { "$gte": min_k });
+        }
+        if let Some(max_k) = filter.max_stochastic_k {
+            filter_doc.insert("stochastic.k_line", doc! { "$lte": max_k });
+        }
+        if let Some(min_bw) = filter.min_bandwidth {
+            filter_doc.insert("bollinger.bandwidth", doc! { "$gte": min_bw });
+        }
+        if let Some(max_bw) = filter.max_bandwidth {
+            filter_doc.insert("bollinger.bandwidth", doc! { "$lte": max_bw });
+        }
 
         // Build sort document
         let sort_field = filter.sort_by.as_deref().unwrap_or("market_cap");
@@ -199,6 +211,18 @@ impl MongoDB {
         }
         if let Some(true) = filter.only_overbought {
             filter_doc.insert("is_overbought", true);
+        }
+        if let Some(min_k) = filter.min_stochastic_k {
+            filter_doc.insert("stochastic.k_line", doc! { "$gte": min_k });
+        }
+        if let Some(max_k) = filter.max_stochastic_k {
+            filter_doc.insert("stochastic.k_line", doc! { "$lte": max_k });
+        }
+        if let Some(min_bw) = filter.min_bandwidth {
+            filter_doc.insert("bollinger.bandwidth", doc! { "$gte": min_bw });
+        }
+        if let Some(max_bw) = filter.max_bandwidth {
+            filter_doc.insert("bollinger.bandwidth", doc! { "$lte": max_bw });
         }
 
         Ok(collection.count_documents(filter_doc).await?)
@@ -358,6 +382,117 @@ impl MongoDB {
             }
         }
         Ok(None)
+    }
+
+    /// Get sector performance aggregation
+    pub async fn get_sector_performance(&self) -> Result<Vec<SectorPerformance>> {
+        let collection = self.analysis_collection();
+
+        // Get all analyses grouped by sector
+        let mut sector_map: std::collections::HashMap<String, Vec<StockAnalysis>> = std::collections::HashMap::new();
+
+        let mut cursor = collection
+            .find(doc! { "sector": { "$exists": true, "$ne": null } })
+            .await?;
+
+        while let Some(doc) = cursor.next().await {
+            if let Ok(analysis) = doc {
+                if let Some(ref sector) = analysis.sector {
+                    sector_map.entry(sector.clone()).or_default().push(analysis);
+                }
+            }
+        }
+
+        let mut results = Vec::new();
+        for (sector, mut stocks) in sector_map {
+            let stock_count = stocks.len() as u32;
+            let avg_change_percent = stocks.iter()
+                .filter_map(|s| s.price_change_percent)
+                .sum::<f64>() / stocks.iter().filter(|s| s.price_change_percent.is_some()).count().max(1) as f64;
+            let avg_rsi = stocks.iter()
+                .filter_map(|s| s.rsi)
+                .sum::<f64>() / stocks.iter().filter(|s| s.rsi.is_some()).count().max(1) as f64;
+
+            // Sort by price_change_percent for top/bottom
+            stocks.sort_by(|a, b| {
+                b.price_change_percent.unwrap_or(0.0)
+                    .partial_cmp(&a.price_change_percent.unwrap_or(0.0))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            let top_performers: Vec<StockAnalysis> = stocks.iter().take(3).cloned().collect();
+            let bottom_performers: Vec<StockAnalysis> = stocks.iter().rev().take(3).cloned().collect();
+
+            results.push(SectorPerformance {
+                sector,
+                stock_count,
+                avg_change_percent,
+                avg_rsi,
+                top_performers,
+                bottom_performers,
+            });
+        }
+
+        // Sort sectors by avg_change_percent descending
+        results.sort_by(|a, b| {
+            b.avg_change_percent.partial_cmp(&a.avg_change_percent).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        Ok(results)
+    }
+
+    /// Get aggregated news from all stocks
+    pub async fn get_all_news(
+        &self,
+        sector: Option<String>,
+        search: Option<String>,
+        page: u32,
+        page_size: u32,
+    ) -> Result<(Vec<AggregatedNewsItem>, u64)> {
+        let collection = self.analysis_collection();
+
+        let mut filter_doc = doc! { "news": { "$exists": true, "$ne": null, "$not": { "$size": 0 } } };
+        if let Some(ref s) = sector {
+            filter_doc.insert("sector", s);
+        }
+
+        let mut cursor = collection.find(filter_doc).await?;
+
+        let mut all_news: Vec<AggregatedNewsItem> = Vec::new();
+        while let Some(doc) = cursor.next().await {
+            if let Ok(analysis) = doc {
+                if let Some(news_items) = analysis.news {
+                    for item in news_items {
+                        // Apply search filter
+                        if let Some(ref query) = search {
+                            let q = query.to_lowercase();
+                            if !item.title.to_lowercase().contains(&q)
+                                && !analysis.symbol.to_lowercase().contains(&q) {
+                                continue;
+                            }
+                        }
+                        all_news.push(AggregatedNewsItem {
+                            symbol: analysis.symbol.clone(),
+                            sector: analysis.sector.clone(),
+                            title: item.title,
+                            url: item.url,
+                            publisher: item.publisher,
+                            created: item.created,
+                            ago: item.ago,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Sort by created date descending (most recent first)
+        all_news.sort_by(|a, b| b.created.cmp(&a.created));
+
+        let total = all_news.len() as u64;
+        let skip = ((page - 1) * page_size) as usize;
+        let paginated: Vec<AggregatedNewsItem> = all_news.into_iter().skip(skip).take(page_size as usize).collect();
+
+        Ok((paginated, total))
     }
 
     /// Get all analyses from the database

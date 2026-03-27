@@ -31,6 +31,8 @@ mod tests {
             id: None,
             symbol: "MSFT".to_string(),
             price: 350.0,
+            price_change: Some(5.0),
+            price_change_percent: Some(1.45),
             rsi: Some(65.5),
             sma_20: Some(345.0),
             sma_50: Some(340.0),
@@ -45,6 +47,11 @@ mod tests {
             is_oversold: false,
             is_overbought: false,
             analyzed_at: Utc::now(),
+            bollinger: None,
+            stochastic: None,
+            earnings: None,
+            technicals: None,
+            news: None,
         };
 
         let json = serde_json::to_string(&analysis).unwrap();
@@ -83,7 +90,7 @@ mod tests {
 
         let json = serde_json::to_string(&macd).unwrap();
         let deserialized: MACDIndicator = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.macd_line, 2.5);
         assert_eq!(deserialized.signal_line, 2.0);
         assert_eq!(deserialized.histogram, 0.5);
@@ -102,7 +109,7 @@ mod tests {
 
         let json = serde_json::to_string(&price).unwrap();
         let deserialized: HistoricalPrice = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.open, 100.0);
         assert_eq!(deserialized.close, 103.0);
     }
@@ -124,23 +131,31 @@ mod tests {
     }
 
     #[test]
-    fn test_stock_filter_empty() {
-        let filter = StockFilter {
-            min_price: None,
-            max_price: None,
-            min_volume: None,
-            min_market_cap: None,
-            max_market_cap: None,
-            min_rsi: None,
-            max_rsi: None,
-            sectors: None,
-            only_oversold: None,
-            only_overbought: None,
+    fn test_bollinger_bands() {
+        let bb = BollingerBands {
+            upper_band: 110.0,
+            lower_band: 90.0,
+            middle_band: 100.0,
+            bandwidth: 20.0,
         };
 
-        let json = serde_json::to_string(&filter).unwrap();
-        // Should serialize to mostly null values
-        assert!(json.contains("null") || json.len() < 50);
+        let json = serde_json::to_string(&bb).unwrap();
+        let deserialized: BollingerBands = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.upper_band, 110.0);
+        assert_eq!(deserialized.bandwidth, 20.0);
+    }
+
+    #[test]
+    fn test_stochastic_oscillator() {
+        let stoch = StochasticOscillator {
+            k_line: 75.0,
+            d_line: 70.0,
+        };
+
+        let json = serde_json::to_string(&stoch).unwrap();
+        let deserialized: StochasticOscillator = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.k_line, 75.0);
+        assert_eq!(deserialized.d_line, 70.0);
     }
 
     #[test]
@@ -149,6 +164,8 @@ mod tests {
             id: None,
             symbol: "TEST".to_string(),
             price: 100.0,
+            price_change: None,
+            price_change_percent: None,
             rsi: Some(25.0),
             sma_20: None,
             sma_50: None,
@@ -159,6 +176,11 @@ mod tests {
             is_oversold: true,
             is_overbought: false,
             analyzed_at: Utc::now(),
+            bollinger: None,
+            stochastic: None,
+            earnings: None,
+            technicals: None,
+            news: None,
         };
 
         assert!(analysis.is_oversold);

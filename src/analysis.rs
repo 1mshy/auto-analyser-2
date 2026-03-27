@@ -268,6 +268,8 @@ impl AnalysisEngine {
         let sma_20 = TechnicalIndicators::calculate_sma(&historical_prices, 20);
         let sma_50 = TechnicalIndicators::calculate_sma(&historical_prices, 50);
         let macd = TechnicalIndicators::calculate_macd(&historical_prices);
+        let bollinger = TechnicalIndicators::calculate_bollinger_bands(&historical_prices, 20, 2.0);
+        let stochastic = TechnicalIndicators::calculate_stochastic(&historical_prices, 14, 3);
 
         let latest_price = historical_prices.last()
             .ok_or_else(|| anyhow::anyhow!("No price data for {}", symbol))?;
@@ -341,6 +343,9 @@ impl AnalysisEngine {
             is_oversold: TechnicalIndicators::is_oversold(rsi),
             is_overbought: TechnicalIndicators::is_overbought(rsi),
             analyzed_at: Utc::now(),
+            bollinger,
+            stochastic,
+            earnings: None,
             technicals,
             news,
         })

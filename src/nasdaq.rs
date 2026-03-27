@@ -1,4 +1,4 @@
-use crate::models::{NasdaqNewsItem, NasdaqTechnicals};
+use crate::models::{InsiderTrade, NasdaqNewsItem, NasdaqTechnicals};
 use anyhow::{anyhow, Result};
 use serde::Deserialize;
 use std::time::Duration;
@@ -114,6 +114,39 @@ struct NasdaqNewsRow {
     publisher: Option<String>,
     created: Option<String>,
     ago: Option<String>,
+}
+
+// Insider trades response structures
+
+#[derive(Debug, Deserialize)]
+struct InsiderTradesResponse {
+    data: Option<InsiderTradesData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InsiderTradesData {
+    #[serde(rename = "transactionTable")]
+    transaction_table: Option<InsiderTransactionTable>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InsiderTransactionTable {
+    rows: Option<Vec<InsiderTradeRow>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InsiderTradeRow {
+    insider: Option<String>,
+    relation: Option<String>,
+    #[serde(rename = "transactionType")]
+    transaction_type: Option<String>,
+    #[serde(rename = "lastDate")]
+    last_date: Option<String>,
+    #[serde(rename = "sharesTraded")]
+    shares_traded: Option<String>,
+    price: Option<String>,
+    #[serde(rename = "sharesHeld")]
+    shares_held: Option<String>,
 }
 
 impl NasdaqClient {
@@ -283,6 +316,56 @@ impl NasdaqClient {
                     publisher: row.publisher,
                     created: row.created,
                     ago: row.ago,
+                })
+            })
+            .collect())
+    }
+
+    /// Fetch insider trades for a stock from NASDAQ API
+    pub async fn get_insider_trades(&self, symbol: &str, limit: usize) -> Result<Vec<InsiderTrade>> {
+        let url = format!(
+            "https://api.nasdaq.com/api/company/{}/insider-trades?limit={}&type=ALL",
+            symbol.to_uppercase(),
+            limit
+        );
+
+        debug!("Fetching NASDAQ insider trades for {}", symbol);
+
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| anyhow!("NASDAQ insider trades request failed for {}: {}", symbol, e))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            warn!("NASDAQ insider trades API returned status {} for {}", status, symbol);
+            return Ok(vec![]);
+        }
+
+        let nasdaq_response: InsiderTradesResponse = response
+            .json()
+            .await
+            .map_err(|e| anyhow!("Failed to parse NASDAQ insider trades for {}: {}", symbol, e))?;
+
+        let rows = nasdaq_response
+            .data
+            .and_then(|d| d.transaction_table)
+            .and_then(|t| t.rows)
+            .unwrap_or_default();
+
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| {
+                Some(InsiderTrade {
+                    insider_name: row.insider?,
+                    relation: row.relation,
+                    transaction_type: row.transaction_type.unwrap_or_else(|| "Unknown".to_string()),
+                    date: row.last_date,
+                    shares_traded: row.shares_traded.as_ref().and_then(|s| Self::parse_number_with_commas(&Some(s.clone()))),
+                    price: row.price.as_ref().and_then(|s| Self::parse_dollar_value(&Some(s.clone()))),
+                    shares_held: row.shares_held.as_ref().and_then(|s| Self::parse_number_with_commas(&Some(s.clone()))),
                 })
             })
             .collect())

@@ -6,6 +6,9 @@ import { Dashboard } from './pages/Dashboard';
 import { StocksPage } from './pages/StocksPage';
 import { OpportunitiesPage } from './pages/OpportunitiesPage';
 import { FundsPage } from './pages/FundsPage';
+import { NewsPage } from './pages/NewsPage';
+import { SectorPage } from './pages/SectorPage';
+import { ScreenerPage } from './pages/ScreenerPage';
 import { StockDetailPage } from './pages/StockDetailPage';
 import { useWebSocket, useMarketOpenRefresh } from './hooks';
 import { AnalysisProgress } from './types';
@@ -58,6 +61,9 @@ function App() {
             <Route path="/stocks/:symbol" element={<StockDetailPage />} />
             <Route path="/opportunities" element={<OpportunitiesPage />} />
             <Route path="/funds" element={<FundsPage />} />
+            <Route path="/news" element={<NewsPage />} />
+            <Route path="/sectors" element={<SectorPage />} />
+            <Route path="/screener" element={<ScreenerPage />} />
           </Routes>
         </Box>
       </Router>

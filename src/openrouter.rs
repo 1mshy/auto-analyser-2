@@ -586,6 +586,9 @@ mod tests {
             is_oversold: false,
             is_overbought: false,
             analyzed_at: Utc::now(),
+            bollinger: None,
+            stochastic: None,
+            earnings: None,
             technicals: None,
             news: None,
         };
