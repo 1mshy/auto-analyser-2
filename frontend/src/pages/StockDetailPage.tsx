@@ -21,6 +21,8 @@ import {
   StockAnalysis,
   AIAnalysisResponse,
   CompanyProfile,
+  InsiderTrade,
+  EarningsData,
   getMarketCapTier,
   getMarketCapTierColor,
   getMarketCapTierLabel
@@ -95,7 +97,10 @@ export const StockDetailPage: React.FC = () => {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'about' | 'technicals' | 'chart' | 'ai' | 'news'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'about' | 'technicals' | 'chart' | 'ai' | 'news' | 'insiders'>('overview');
+  const [insiderTrades, setInsiderTrades] = useState<InsiderTrade[]>([]);
+  const [insidersLoading, setInsidersLoading] = useState(false);
+  const [stockEarnings, setStockEarnings] = useState<EarningsData | null>(null);
 
   // Streaming AI state
   const [streamingText, setStreamingText] = useState('');
@@ -198,11 +203,35 @@ export const StockDetailPage: React.FC = () => {
     }
   }, [symbol]);
 
+  const fetchInsiderTrades = useCallback(async () => {
+    if (!symbol) return;
+    setInsidersLoading(true);
+    try {
+      const trades = await api.getInsiderTrades(symbol);
+      setInsiderTrades(trades);
+    } catch (err) {
+      console.error('Failed to fetch insider trades:', err);
+    } finally {
+      setInsidersLoading(false);
+    }
+  }, [symbol]);
+
+  const fetchEarnings = useCallback(async () => {
+    if (!symbol) return;
+    try {
+      const earnings = await api.getStockEarnings(symbol);
+      setStockEarnings(earnings);
+    } catch (err) {
+      console.error('Failed to fetch earnings:', err);
+    }
+  }, [symbol]);
+
   useEffect(() => {
     fetchStock();
     checkAIStatus();
     fetchCompanyProfile();
-  }, [fetchStock, checkAIStatus, fetchCompanyProfile]);
+    fetchEarnings();
+  }, [fetchStock, checkAIStatus, fetchCompanyProfile, fetchEarnings]);
 
   // Auto-trigger AI analysis when enabled
   useEffect(() => {
@@ -361,7 +390,45 @@ export const StockDetailPage: React.FC = () => {
             News ({stock.news.length})
           </Button>
         )}
+        <Button
+          size="sm"
+          variant={activeTab === 'insiders' ? 'solid' : 'outline'}
+          colorPalette={activeTab === 'insiders' ? 'teal' : 'gray'}
+          onClick={() => { setActiveTab('insiders'); if (insiderTrades.length === 0 && !insidersLoading) fetchInsiderTrades(); }}
+        >
+          Insider Trades
+        </Button>
       </HStack>
+
+      {/* Earnings Card (shown on overview) */}
+      {activeTab === 'overview' && stockEarnings && stockEarnings.earnings_date && (
+        <Card.Root bg="gray.800" borderColor="gray.700" mb={4}>
+          <Card.Body p={4}>
+            <Flex align="center" gap={4} wrap="wrap">
+              <Box>
+                <Text color="gray.500" fontSize="xs">Upcoming Earnings</Text>
+                <Text color="yellow.400" fontWeight="bold">
+                  {new Date(stockEarnings.earnings_date).toLocaleDateString()}
+                  {' '}
+                  ({Math.ceil((new Date(stockEarnings.earnings_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))} days)
+                </Text>
+              </Box>
+              {stockEarnings.eps_estimate != null && (
+                <Box>
+                  <Text color="gray.500" fontSize="xs">EPS Estimate</Text>
+                  <Text color="white" fontWeight="bold">${stockEarnings.eps_estimate.toFixed(2)}</Text>
+                </Box>
+              )}
+              {stockEarnings.revenue_estimate != null && (
+                <Box>
+                  <Text color="gray.500" fontSize="xs">Revenue Estimate</Text>
+                  <Text color="white" fontWeight="bold">${(stockEarnings.revenue_estimate / 1e9).toFixed(2)}B</Text>
+                </Box>
+              )}
+            </Flex>
+          </Card.Body>
+        </Card.Root>
+      )}
 
       {/* Overview Tab */}
       {activeTab === 'overview' && (
@@ -721,6 +788,90 @@ export const StockDetailPage: React.FC = () => {
             </Card.Root>
           )}
 
+          {/* Bollinger Bands */}
+          <Card.Root bg="gray.800" borderColor="gray.700">
+            <Card.Header>
+              <Heading size="sm" color="white">Bollinger Bands (20, 2)</Heading>
+            </Card.Header>
+            <Card.Body>
+              {stock.bollinger ? (
+                <VStack align="start" gap={2}>
+                  <HStack justify="space-between" w="100%">
+                    <Text color="gray.400">Upper Band</Text>
+                    <Text color="red.400">${stock.bollinger.upper_band.toFixed(2)}</Text>
+                  </HStack>
+                  <HStack justify="space-between" w="100%">
+                    <Text color="gray.400">Middle Band (SMA 20)</Text>
+                    <Text color="white">${stock.bollinger.middle_band.toFixed(2)}</Text>
+                  </HStack>
+                  <HStack justify="space-between" w="100%">
+                    <Text color="gray.400">Lower Band</Text>
+                    <Text color="green.400">${stock.bollinger.lower_band.toFixed(2)}</Text>
+                  </HStack>
+                  <HStack justify="space-between" w="100%">
+                    <Text color="gray.400">Bandwidth</Text>
+                    <Text color="white">{stock.bollinger.bandwidth.toFixed(4)}</Text>
+                  </HStack>
+                  <Separator my={2} />
+                  <Badge
+                    colorPalette={
+                      stock.price <= stock.bollinger.lower_band ? 'green' :
+                      stock.price >= stock.bollinger.upper_band ? 'red' : 'gray'
+                    }
+                    size="lg"
+                  >
+                    {stock.price <= stock.bollinger.lower_band ? 'Near Lower Band (Potential Buy)' :
+                     stock.price >= stock.bollinger.upper_band ? 'Near Upper Band (Potential Sell)' :
+                     'Within Bands'}
+                  </Badge>
+                </VStack>
+              ) : (
+                <Text color="gray.500">Bollinger Bands data not available</Text>
+              )}
+            </Card.Body>
+          </Card.Root>
+
+          {/* Stochastic Oscillator */}
+          <Card.Root bg="gray.800" borderColor="gray.700">
+            <Card.Header>
+              <Heading size="sm" color="white">Stochastic Oscillator (14, 3)</Heading>
+            </Card.Header>
+            <Card.Body>
+              {stock.stochastic ? (
+                <VStack align="start" gap={2}>
+                  <HStack justify="space-between" w="100%">
+                    <Text color="gray.400">%K Line</Text>
+                    <Text color={stock.stochastic.k_line < 20 ? 'green.400' : stock.stochastic.k_line > 80 ? 'red.400' : 'white'}>
+                      {stock.stochastic.k_line.toFixed(2)}
+                    </Text>
+                  </HStack>
+                  <HStack justify="space-between" w="100%">
+                    <Text color="gray.400">%D Line</Text>
+                    <Text color={stock.stochastic.d_line < 20 ? 'green.400' : stock.stochastic.d_line > 80 ? 'red.400' : 'white'}>
+                      {stock.stochastic.d_line.toFixed(2)}
+                    </Text>
+                  </HStack>
+                  <Separator my={2} />
+                  <Badge
+                    colorPalette={stock.stochastic.k_line < 20 ? 'green' : stock.stochastic.k_line > 80 ? 'red' : 'gray'}
+                    size="lg"
+                  >
+                    {stock.stochastic.k_line < 20 ? 'Oversold (<20)' :
+                     stock.stochastic.k_line > 80 ? 'Overbought (>80)' :
+                     'Neutral'}
+                  </Badge>
+                  {stock.stochastic.k_line > stock.stochastic.d_line ? (
+                    <Badge colorPalette="green" size="sm">%K above %D (Bullish)</Badge>
+                  ) : (
+                    <Badge colorPalette="red" size="sm">%K below %D (Bearish)</Badge>
+                  )}
+                </VStack>
+              ) : (
+                <Text color="gray.500">Stochastic data not available</Text>
+              )}
+            </Card.Body>
+          </Card.Root>
+
           {/* Dividend Info */}
           {stock.technicals && stock.technicals.annualized_dividend && (
             <Card.Root bg="gray.800" borderColor="gray.700">
@@ -900,6 +1051,77 @@ export const StockDetailPage: React.FC = () => {
             </Card.Root>
           ))}
         </VStack>
+      )}
+
+      {/* Insiders Tab */}
+      {activeTab === 'insiders' && (
+        <Card.Root bg="gray.800" borderColor="gray.700">
+          <Card.Header>
+            <Heading size="md" color="white">Insider Trades</Heading>
+          </Card.Header>
+          <Card.Body>
+            {insidersLoading ? (
+              <Flex justify="center" py={8}>
+                <Spinner size="lg" color="teal.400" />
+                <Text ml={3} color="gray.400">Loading insider trades...</Text>
+              </Flex>
+            ) : insiderTrades.length === 0 ? (
+              <Text color="gray.500">No insider trading data available for this stock.</Text>
+            ) : (
+              <VStack align="stretch" gap={0}>
+                {/* Header */}
+                <Flex px={3} py={2} color="gray.500" fontSize="xs" fontWeight="semibold" borderBottom="1px" borderColor="gray.700">
+                  <Text w="120px">Date</Text>
+                  <Text flex={1}>Name</Text>
+                  <Text w="100px">Relation</Text>
+                  <Text w="80px" textAlign="center">Type</Text>
+                  <Text w="100px" textAlign="right">Shares</Text>
+                  <Text w="80px" textAlign="right">Price</Text>
+                  <Text w="100px" textAlign="right">Held After</Text>
+                </Flex>
+                {insiderTrades.map((trade, idx) => (
+                  <Flex
+                    key={idx}
+                    px={3}
+                    py={2}
+                    fontSize="sm"
+                    borderBottom="1px"
+                    borderColor="gray.700"
+                    _hover={{ bg: 'gray.750' }}
+                    align="center"
+                  >
+                    <Text w="120px" color="gray.400">{trade.date || '-'}</Text>
+                    <Text flex={1} color="white" fontWeight="medium">{trade.insider_name}</Text>
+                    <Text w="100px" color="gray.400" fontSize="xs">{trade.relation || '-'}</Text>
+                    <Flex w="80px" justify="center">
+                      <Badge
+                        colorPalette={
+                          trade.transaction_type.toLowerCase().includes('buy') || trade.transaction_type.toLowerCase().includes('purchase')
+                            ? 'green'
+                            : trade.transaction_type.toLowerCase().includes('sell') || trade.transaction_type.toLowerCase().includes('sale')
+                            ? 'red'
+                            : 'gray'
+                        }
+                        size="sm"
+                      >
+                        {trade.transaction_type}
+                      </Badge>
+                    </Flex>
+                    <Text w="100px" textAlign="right" color="white">
+                      {trade.shares_traded != null ? trade.shares_traded.toLocaleString() : '-'}
+                    </Text>
+                    <Text w="80px" textAlign="right" color="white">
+                      {trade.price != null ? `$${trade.price.toFixed(2)}` : '-'}
+                    </Text>
+                    <Text w="100px" textAlign="right" color="gray.400">
+                      {trade.shares_held != null ? trade.shares_held.toLocaleString() : '-'}
+                    </Text>
+                  </Flex>
+                ))}
+              </VStack>
+            )}
+          </Card.Body>
+        </Card.Root>
       )}
     </Container>
   );

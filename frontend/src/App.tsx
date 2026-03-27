@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Box } from '@chakra-ui/react';
 import { Navigation } from './components/Navigation';
@@ -6,8 +6,11 @@ import { Dashboard } from './pages/Dashboard';
 import { StocksPage } from './pages/StocksPage';
 import { OpportunitiesPage } from './pages/OpportunitiesPage';
 import { FundsPage } from './pages/FundsPage';
+import { NewsPage } from './pages/NewsPage';
+import { SectorPage } from './pages/SectorPage';
+import { ScreenerPage } from './pages/ScreenerPage';
 import { StockDetailPage } from './pages/StockDetailPage';
-import { useWebSocket } from './hooks';
+import { useWebSocket, useMarketOpenRefresh } from './hooks';
 import { AnalysisProgress } from './types';
 import { api } from './api';
 import { SettingsProvider } from './contexts/SettingsContext';
@@ -15,6 +18,19 @@ import { SettingsProvider } from './contexts/SettingsContext';
 function App() {
   const { } = useWebSocket(); // WebSocket for real-time updates
   const [progress, setProgress] = useState<AnalysisProgress | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Handler for 10am weekday market open refresh
+  const handleMarketOpenRefresh = useCallback(() => {
+    console.log('🔄 Refreshing all stock data for market open...');
+    // Increment key to force re-fetch in child components
+    setRefreshKey(prev => prev + 1);
+    // Also reload the page to ensure fresh data everywhere
+    window.location.reload();
+  }, []);
+
+  // Set up automatic refresh at 10am on weekdays
+  useMarketOpenRefresh(handleMarketOpenRefresh);
 
   useEffect(() => {
     const fetchProgress = async () => {
@@ -29,7 +45,7 @@ function App() {
     fetchProgress();
     const interval = setInterval(fetchProgress, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [refreshKey]);
 
   return (
     <SettingsProvider>
@@ -45,6 +61,9 @@ function App() {
             <Route path="/stocks/:symbol" element={<StockDetailPage />} />
             <Route path="/opportunities" element={<OpportunitiesPage />} />
             <Route path="/funds" element={<FundsPage />} />
+            <Route path="/news" element={<NewsPage />} />
+            <Route path="/sectors" element={<SectorPage />} />
+            <Route path="/screener" element={<ScreenerPage />} />
           </Routes>
         </Box>
       </Router>

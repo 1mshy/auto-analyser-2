@@ -1,4 +1,4 @@
-use crate::models::{CompanyProfile, HistoricalPrice};
+use crate::models::{CompanyProfile, EarningsData, HistoricalPrice};
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use rand::Rng;
@@ -29,6 +29,23 @@ struct QuoteSummaryData {
     asset_profile: Option<AssetProfile>,
     #[serde(rename = "financialData")]
     financial_data: Option<FinancialDataResponse>,
+    #[serde(rename = "calendarEvents")]
+    calendar_events: Option<CalendarEvents>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CalendarEvents {
+    earnings: Option<EarningsInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EarningsInfo {
+    #[serde(rename = "earningsDate")]
+    earnings_date: Option<Vec<YahooValue>>,
+    #[serde(rename = "earningsAverage")]
+    earnings_average: Option<YahooValue>,
+    #[serde(rename = "revenueAverage")]
+    revenue_average: Option<YahooValue>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -483,6 +500,61 @@ impl YahooFinanceClient {
             operating_margins: financial_data.as_ref().and_then(|f| f.operating_margins.as_ref().and_then(|v| v.to_f64())),
             return_on_equity: financial_data.as_ref().and_then(|f| f.return_on_equity.as_ref().and_then(|v| v.to_f64())),
             free_cash_flow: financial_data.as_ref().and_then(|f| f.free_cash_flow.as_ref().and_then(|v| v.to_f64())),
+        })
+    }
+
+    /// Fetch earnings data from Yahoo Finance calendarEvents module
+    pub async fn get_earnings_data(&self, symbol: &str) -> Result<EarningsData> {
+        let url = format!(
+            "https://query1.finance.yahoo.com/v10/finance/quoteSummary/{}?modules=calendarEvents",
+            symbol.replace("/", "-")
+        );
+
+        tracing::debug!("Fetching earnings data for {} from Yahoo Finance", symbol);
+
+        let text = self.fetch_with_crumb(&url).await?;
+
+        let summary_response: QuoteSummaryResponse = serde_json::from_str(&text)
+            .map_err(|e| anyhow!("Failed to parse earnings JSON for {}: {}", symbol, e))?;
+
+        if let Some(error) = summary_response.quote_summary.error {
+            return Err(anyhow!(
+                "Yahoo Finance error for {}: {} - {}",
+                symbol,
+                error.code,
+                error.description
+            ));
+        }
+
+        let data = summary_response
+            .quote_summary
+            .result
+            .and_then(|r| r.into_iter().next())
+            .ok_or_else(|| anyhow!("No data returned for {}", symbol))?;
+
+        let calendar = data.calendar_events;
+
+        let earnings_date = calendar.as_ref()
+            .and_then(|c| c.earnings.as_ref())
+            .and_then(|e| e.earnings_date.as_ref())
+            .and_then(|dates| dates.first())
+            .and_then(|v| v.raw)
+            .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
+
+        let eps_estimate = calendar.as_ref()
+            .and_then(|c| c.earnings.as_ref())
+            .and_then(|e| e.earnings_average.as_ref())
+            .and_then(|v| v.to_f64());
+
+        let revenue_estimate = calendar.as_ref()
+            .and_then(|c| c.earnings.as_ref())
+            .and_then(|e| e.revenue_average.as_ref())
+            .and_then(|v| v.to_f64());
+
+        Ok(EarningsData {
+            earnings_date,
+            eps_estimate,
+            revenue_estimate,
         })
     }
 }

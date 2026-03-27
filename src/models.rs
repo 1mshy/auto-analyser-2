@@ -34,6 +34,12 @@ pub struct StockAnalysis {
     pub is_overbought: bool,
     pub analyzed_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub bollinger: Option<BollingerBands>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stochastic: Option<StochasticOscillator>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub earnings: Option<EarningsData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub technicals: Option<NasdaqTechnicals>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub news: Option<Vec<NasdaqNewsItem>>,
@@ -44,6 +50,59 @@ pub struct MACDIndicator {
     pub macd_line: f64,
     pub signal_line: f64,
     pub histogram: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BollingerBands {
+    pub upper_band: f64,
+    pub lower_band: f64,
+    pub middle_band: f64,
+    pub bandwidth: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StochasticOscillator {
+    pub k_line: f64,
+    pub d_line: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EarningsData {
+    pub earnings_date: Option<DateTime<Utc>>,
+    pub eps_estimate: Option<f64>,
+    pub revenue_estimate: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InsiderTrade {
+    pub insider_name: String,
+    pub relation: Option<String>,
+    pub transaction_type: String,
+    pub date: Option<String>,
+    pub shares_traded: Option<f64>,
+    pub price: Option<f64>,
+    pub shares_held: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SectorPerformance {
+    pub sector: String,
+    pub stock_count: u32,
+    pub avg_change_percent: f64,
+    pub avg_rsi: f64,
+    pub top_performers: Vec<StockAnalysis>,
+    pub bottom_performers: Vec<StockAnalysis>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AggregatedNewsItem {
+    pub symbol: String,
+    pub sector: Option<String>,
+    pub title: String,
+    pub url: String,
+    pub publisher: Option<String>,
+    pub created: Option<String>,
+    pub ago: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +127,11 @@ pub struct StockFilter {
     pub sectors: Option<Vec<String>>,
     pub only_oversold: Option<bool>,
     pub only_overbought: Option<bool>,
+    // Stochastic / Bollinger filters
+    pub min_stochastic_k: Option<f64>,
+    pub max_stochastic_k: Option<f64>,
+    pub min_bandwidth: Option<f64>,
+    pub max_bandwidth: Option<f64>,
     // Sorting options
     pub sort_by: Option<String>,      // "market_cap", "price_change_percent", "rsi", "price"
     pub sort_order: Option<String>,   // "asc" or "desc"
@@ -243,6 +307,9 @@ mod tests {
             is_oversold: false,
             is_overbought: false,
             analyzed_at: Utc::now(),
+            bollinger: None,
+            stochastic: None,
+            earnings: None,
             technicals: None,
             news: None,
         };
@@ -341,6 +408,9 @@ mod tests {
             is_oversold: true,
             is_overbought: false,
             analyzed_at: Utc::now(),
+            bollinger: None,
+            stochastic: None,
+            earnings: None,
             technicals: None,
             news: None,
         };

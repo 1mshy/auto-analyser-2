@@ -1,4 +1,4 @@
-use crate::models::{HistoricalPrice, MACDIndicator};
+use crate::models::{BollingerBands, HistoricalPrice, MACDIndicator, StochasticOscillator};
 
 pub struct TechnicalIndicators;
 
@@ -122,6 +122,111 @@ impl TechnicalIndicators {
         }
 
         Some(ema)
+    }
+
+    /// Calculate Bollinger Bands
+    pub fn calculate_bollinger_bands(
+        prices: &[HistoricalPrice],
+        period: usize,
+        std_dev_multiplier: f64,
+    ) -> Option<BollingerBands> {
+        if prices.len() < period {
+            return None;
+        }
+
+        let recent: Vec<f64> = prices.iter().rev().take(period).map(|p| p.close).collect();
+        let middle_band = recent.iter().sum::<f64>() / period as f64;
+
+        let variance = recent.iter()
+            .map(|x| (x - middle_band).powi(2))
+            .sum::<f64>() / period as f64;
+        let std_dev = variance.sqrt();
+
+        let upper_band = middle_band + std_dev_multiplier * std_dev;
+        let lower_band = middle_band - std_dev_multiplier * std_dev;
+        let bandwidth = if middle_band > 0.0 {
+            (upper_band - lower_band) / middle_band * 100.0
+        } else {
+            0.0
+        };
+
+        Some(BollingerBands {
+            upper_band,
+            lower_band,
+            middle_band,
+            bandwidth,
+        })
+    }
+
+    /// Calculate Stochastic Oscillator (%K and %D)
+    pub fn calculate_stochastic(
+        prices: &[HistoricalPrice],
+        k_period: usize,
+        d_period: usize,
+    ) -> Option<StochasticOscillator> {
+        let needed = k_period + d_period - 1;
+        if prices.len() < needed {
+            return None;
+        }
+
+        // Calculate multiple %K values for the D period
+        let mut k_values = Vec::with_capacity(d_period);
+
+        for i in 0..d_period {
+            let end = prices.len() - i;
+            let start = if end >= k_period { end - k_period } else { 0 };
+            let window = &prices[start..end];
+
+            let highest_high = window.iter().map(|p| p.high).fold(f64::NEG_INFINITY, f64::max);
+            let lowest_low = window.iter().map(|p| p.low).fold(f64::INFINITY, f64::min);
+            let close = window.last()?.close;
+
+            let range = highest_high - lowest_low;
+            let k = if range > 0.0 {
+                ((close - lowest_low) / range) * 100.0
+            } else {
+                50.0
+            };
+            k_values.push(k);
+        }
+
+        let k_line = k_values[0]; // Most recent %K
+        let d_line = k_values.iter().sum::<f64>() / k_values.len() as f64;
+
+        Some(StochasticOscillator { k_line, d_line })
+    }
+
+    /// Calculate Pearson correlation coefficient between two price series
+    pub fn calculate_correlation(prices_a: &[f64], prices_b: &[f64]) -> Option<f64> {
+        let n = prices_a.len().min(prices_b.len());
+        if n < 2 {
+            return None;
+        }
+
+        let a = &prices_a[..n];
+        let b = &prices_b[..n];
+
+        let mean_a = a.iter().sum::<f64>() / n as f64;
+        let mean_b = b.iter().sum::<f64>() / n as f64;
+
+        let mut cov = 0.0;
+        let mut var_a = 0.0;
+        let mut var_b = 0.0;
+
+        for i in 0..n {
+            let da = a[i] - mean_a;
+            let db = b[i] - mean_b;
+            cov += da * db;
+            var_a += da * da;
+            var_b += db * db;
+        }
+
+        let denom = (var_a * var_b).sqrt();
+        if denom == 0.0 {
+            return None;
+        }
+
+        Some(cov / denom)
     }
 
     /// Determine if stock is oversold (RSI < 30)
@@ -266,6 +371,73 @@ mod tests {
         assert!(!TechnicalIndicators::is_overbought(Some(65.0)));
         assert!(!TechnicalIndicators::is_overbought(Some(50.0)));
         assert!(!TechnicalIndicators::is_overbought(None));
+    }
+
+    #[test]
+    fn test_bollinger_bands() {
+        let prices = create_test_prices(vec![
+            100.0, 102.0, 101.0, 103.0, 104.0, 102.0, 105.0, 106.0,
+            104.0, 107.0, 108.0, 106.0, 109.0, 110.0, 108.0, 111.0,
+            112.0, 110.0, 113.0, 114.0,
+        ]);
+
+        let bb = TechnicalIndicators::calculate_bollinger_bands(&prices, 20, 2.0);
+        assert!(bb.is_some(), "Bollinger Bands should calculate with 20 days");
+        let bb = bb.unwrap();
+        assert!(bb.upper_band > bb.middle_band, "Upper band should be above middle");
+        assert!(bb.lower_band < bb.middle_band, "Lower band should be below middle");
+        assert!(bb.bandwidth > 0.0, "Bandwidth should be positive");
+    }
+
+    #[test]
+    fn test_bollinger_bands_insufficient_data() {
+        let prices = create_test_prices(vec![100.0, 102.0, 104.0]);
+        let bb = TechnicalIndicators::calculate_bollinger_bands(&prices, 20, 2.0);
+        assert!(bb.is_none(), "Should return None with insufficient data");
+    }
+
+    #[test]
+    fn test_stochastic_oscillator() {
+        let prices = create_test_prices(vec![
+            100.0, 102.0, 101.0, 103.0, 104.0, 102.0, 105.0, 106.0,
+            104.0, 107.0, 108.0, 106.0, 109.0, 110.0, 108.0, 111.0,
+        ]);
+
+        let stoch = TechnicalIndicators::calculate_stochastic(&prices, 14, 3);
+        assert!(stoch.is_some(), "Stochastic should calculate with 16 days");
+        let stoch = stoch.unwrap();
+        assert!(stoch.k_line >= 0.0 && stoch.k_line <= 100.0, "K should be 0-100, got {}", stoch.k_line);
+        assert!(stoch.d_line >= 0.0 && stoch.d_line <= 100.0, "D should be 0-100, got {}", stoch.d_line);
+    }
+
+    #[test]
+    fn test_stochastic_insufficient_data() {
+        let prices = create_test_prices(vec![100.0, 102.0, 104.0]);
+        let stoch = TechnicalIndicators::calculate_stochastic(&prices, 14, 3);
+        assert!(stoch.is_none(), "Should return None with insufficient data");
+    }
+
+    #[test]
+    fn test_correlation() {
+        // Perfect positive correlation
+        let a = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let b = vec![2.0, 4.0, 6.0, 8.0, 10.0];
+        let corr = TechnicalIndicators::calculate_correlation(&a, &b);
+        assert!(corr.is_some());
+        assert!((corr.unwrap() - 1.0).abs() < 0.001, "Perfect positive should be ~1.0");
+
+        // Perfect negative correlation
+        let c = vec![5.0, 4.0, 3.0, 2.0, 1.0];
+        let corr = TechnicalIndicators::calculate_correlation(&a, &c);
+        assert!(corr.is_some());
+        assert!((corr.unwrap() + 1.0).abs() < 0.001, "Perfect negative should be ~-1.0");
+    }
+
+    #[test]
+    fn test_correlation_insufficient_data() {
+        let a = vec![1.0];
+        let b = vec![2.0];
+        assert!(TechnicalIndicators::calculate_correlation(&a, &b).is_none());
     }
 
     #[test]

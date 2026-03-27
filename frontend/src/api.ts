@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse } from './types';
+import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, CorrelationData } from './types';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3333';
 
@@ -171,6 +171,65 @@ export const api = {
   getIndexHeatmap: async (indexId: string, period: string = '1d'): Promise<IndexHeatmapResponse> => {
     const response = await axios.get(`${API_BASE_URL}/api/indexes/${indexId}/heatmap?period=${period}`);
     return response.data;
+  },
+
+  // Get aggregated news feed
+  getNews: async (params?: { sector?: string; search?: string; page?: number; page_size?: number }): Promise<{ news: AggregatedNewsItem[]; pagination: PaginationInfo }> => {
+    const queryParams = new URLSearchParams();
+    if (params?.sector) queryParams.append('sector', params.sector);
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
+    const qs = queryParams.toString();
+    const url = qs ? `${API_BASE_URL}/api/news?${qs}` : `${API_BASE_URL}/api/news`;
+    const response = await axios.get(url);
+    return {
+      news: response.data.news || [],
+      pagination: response.data.pagination || { page: 1, page_size: 50, total: 0, total_pages: 0 },
+    };
+  },
+
+  // Get earnings calendar
+  getEarnings: async (daysAhead?: number): Promise<EarningsData[]> => {
+    const url = daysAhead
+      ? `${API_BASE_URL}/api/earnings?days_ahead=${daysAhead}`
+      : `${API_BASE_URL}/api/earnings`;
+    const response = await axios.get(url);
+    return response.data.earnings || [];
+  },
+
+  // Get insider trades for a stock
+  getInsiderTrades: async (symbol: string): Promise<InsiderTrade[]> => {
+    const response = await axios.get(`${API_BASE_URL}/api/stocks/${symbol}/insiders`);
+    return response.data.trades || [];
+  },
+
+  // Get sector performance data
+  getSectorPerformance: async (): Promise<SectorPerformance[]> => {
+    const response = await axios.get(`${API_BASE_URL}/api/sectors`);
+    return response.data.sectors || [];
+  },
+
+  // Get correlation matrix
+  getCorrelationMatrix: async (symbols: string[], days?: number): Promise<CorrelationData> => {
+    const params = new URLSearchParams();
+    params.append('symbols', symbols.join(','));
+    if (days) params.append('days', days.toString());
+    const response = await axios.get(`${API_BASE_URL}/api/analytics/correlation?${params.toString()}`);
+    return response.data;
+  },
+
+  // Get earnings data for a single stock
+  getStockEarnings: async (symbol: string): Promise<EarningsData | null> => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/stocks/${symbol}/earnings`);
+      if (response.data.success) {
+        return response.data.earnings;
+      }
+      return null;
+    } catch {
+      return null;
+    }
   },
 };
 

@@ -1,8 +1,10 @@
 use crate::{
     cache::CacheLayer,
     db::MongoDB,
+    indicators::TechnicalIndicators,
     indexes::{IndexDataProvider, IndexHeatmapData, StockHeatmapItem},
     models::StockFilter,
+    nasdaq::NasdaqClient,
     openrouter::{OpenRouterClient, StreamEvent},
     yahoo::YahooFinanceClient,
 };
@@ -40,6 +42,7 @@ pub struct AppState {
     pub progress: Arc<RwLock<AnalysisProgress>>,
     pub yahoo_client: YahooFinanceClient,
     pub openrouter_client: OpenRouterClient,
+    pub nasdaq_client: NasdaqClient,
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -57,6 +60,13 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/progress", get(get_progress))
         .route("/api/ai/status", get(get_ai_status))
         .route("/api/ai/models", get(get_ai_models))
+        // New analytics endpoints
+        .route("/api/news", get(get_all_news))
+        .route("/api/sectors", get(get_sector_performance))
+        .route("/api/earnings", get(get_earnings_calendar))
+        .route("/api/stocks/:symbol/insiders", get(get_insider_trades))
+        .route("/api/stocks/:symbol/earnings", get(get_stock_earnings))
+        .route("/api/analytics/correlation", get(get_correlation_matrix))
         // Index/Fund heatmap endpoints
         .route("/api/indexes", get(get_indexes))
         .route("/api/indexes/:index_id", get(get_index_detail))
@@ -111,6 +121,10 @@ async fn get_stocks(State(state): State<AppState>) -> impl IntoResponse {
         sectors: None,
         only_oversold: None,
         only_overbought: None,
+        min_stochastic_k: None,
+        max_stochastic_k: None,
+        min_bandwidth: None,
+        max_bandwidth: None,
         sort_by: Some("market_cap".to_string()),
         sort_order: Some("desc".to_string()),
         page: Some(1),
@@ -146,6 +160,10 @@ async fn filter_stocks(
         sectors: filter.sectors.clone(),
         only_oversold: filter.only_oversold,
         only_overbought: filter.only_overbought,
+        min_stochastic_k: filter.min_stochastic_k,
+        max_stochastic_k: filter.max_stochastic_k,
+        min_bandwidth: filter.min_bandwidth,
+        max_bandwidth: filter.max_bandwidth,
         sort_by: None,
         sort_order: None,
         page: None,
@@ -490,6 +508,314 @@ async fn websocket_connection(mut socket: WebSocket, state: AppState) {
 }
 
 // ============================================================================
+// News, Sectors, Earnings, Insiders, Correlation Endpoints
+// ============================================================================
+
+/// Query parameters for news endpoint
+#[derive(Debug, Deserialize)]
+pub struct NewsQuery {
+    pub sector: Option<String>,
+    pub search: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+/// Get aggregated news from all stocks
+async fn get_all_news(
+    State(state): State<AppState>,
+    Query(query): Query<NewsQuery>,
+) -> impl IntoResponse {
+    let page = query.page.unwrap_or(1).max(1);
+    let page_size = query.page_size.unwrap_or(50).min(100);
+
+    match state.db.get_all_news(query.sector, query.search, page, page_size).await {
+        Ok((news, total)) => {
+            let total_pages = ((total as f64) / (page_size as f64)).ceil() as u32;
+            Json(json!({
+                "success": true,
+                "news": news,
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total": total,
+                    "total_pages": total_pages
+                }
+            }))
+        }
+        Err(e) => Json(json!({
+            "success": false,
+            "error": e.to_string()
+        })),
+    }
+}
+
+/// Get sector performance aggregation
+async fn get_sector_performance(State(state): State<AppState>) -> impl IntoResponse {
+    // Check generic cache first
+    if let Some(cached) = state.cache.get_generic("sectors").await {
+        return Json(serde_json::from_str(&cached).unwrap_or(json!({
+            "success": false,
+            "error": "Cache parse error"
+        })));
+    }
+
+    match state.db.get_sector_performance().await {
+        Ok(sectors) => {
+            let response = json!({
+                "success": true,
+                "sectors": sectors
+            });
+            // Cache the result
+            if let Ok(serialized) = serde_json::to_string(&response) {
+                state.cache.set_generic("sectors".to_string(), serialized).await;
+            }
+            Json(response)
+        }
+        Err(e) => Json(json!({
+            "success": false,
+            "error": e.to_string()
+        })),
+    }
+}
+
+/// Query parameters for earnings calendar
+#[derive(Debug, Deserialize)]
+pub struct EarningsQuery {
+    pub days_ahead: Option<u32>,
+}
+
+/// Get earnings calendar for top stocks
+async fn get_earnings_calendar(
+    State(state): State<AppState>,
+    Query(query): Query<EarningsQuery>,
+) -> impl IntoResponse {
+    let _days_ahead = query.days_ahead.unwrap_or(30);
+
+    // Get top stocks by market cap
+    let filter = StockFilter {
+        min_price: None,
+        max_price: None,
+        min_volume: None,
+        min_market_cap: Some(10_000_000_000.0), // Only large caps for earnings calendar
+        max_market_cap: None,
+        min_rsi: None,
+        max_rsi: None,
+        sectors: None,
+        only_oversold: None,
+        only_overbought: None,
+        min_stochastic_k: None,
+        max_stochastic_k: None,
+        min_bandwidth: None,
+        max_bandwidth: None,
+        sort_by: Some("market_cap".to_string()),
+        sort_order: Some("desc".to_string()),
+        page: Some(1),
+        page_size: Some(100),
+    };
+
+    let stocks = match state.db.get_latest_analyses(filter).await {
+        Ok(s) => s,
+        Err(e) => {
+            return Json(json!({ "success": false, "error": e.to_string() }));
+        }
+    };
+
+    let mut earnings = Vec::new();
+
+    for stock in &stocks {
+        // Check cache first
+        if let Some(cached) = state.cache.get_earnings(&stock.symbol).await {
+            if cached.earnings_date.is_some() {
+                earnings.push(json!({
+                    "symbol": stock.symbol,
+                    "sector": stock.sector,
+                    "market_cap": stock.market_cap,
+                    "price": stock.price,
+                    "earnings": cached
+                }));
+            }
+            continue;
+        }
+
+        // Fetch from Yahoo (with rate limiting awareness)
+        match state.yahoo_client.get_earnings_data(&stock.symbol).await {
+            Ok(data) => {
+                state.cache.set_earnings(stock.symbol.clone(), data.clone()).await;
+                if data.earnings_date.is_some() {
+                    earnings.push(json!({
+                        "symbol": stock.symbol,
+                        "sector": stock.sector,
+                        "market_cap": stock.market_cap,
+                        "price": stock.price,
+                        "earnings": data
+                    }));
+                }
+            }
+            Err(e) => {
+                warn!("Failed to fetch earnings for {}: {}", stock.symbol, e);
+            }
+        }
+    }
+
+    // Sort by earnings date ascending
+    earnings.sort_by(|a, b| {
+        let date_a = a.get("earnings").and_then(|e| e.get("earnings_date")).and_then(|d| d.as_str());
+        let date_b = b.get("earnings").and_then(|e| e.get("earnings_date")).and_then(|d| d.as_str());
+        date_a.cmp(&date_b)
+    });
+
+    Json(json!({
+        "success": true,
+        "earnings": earnings,
+        "count": earnings.len()
+    }))
+}
+
+/// Get insider trades for a stock
+async fn get_insider_trades(
+    State(state): State<AppState>,
+    Path(symbol): Path<String>,
+) -> impl IntoResponse {
+    // Check cache
+    if let Some(cached) = state.cache.get_insiders(&symbol).await {
+        return Json(json!({
+            "success": true,
+            "symbol": symbol,
+            "trades": cached,
+            "cached": true
+        }));
+    }
+
+    match state.nasdaq_client.get_insider_trades(&symbol, 20).await {
+        Ok(trades) => {
+            state.cache.set_insiders(symbol.clone(), trades.clone()).await;
+            Json(json!({
+                "success": true,
+                "symbol": symbol,
+                "trades": trades,
+                "cached": false
+            }))
+        }
+        Err(e) => {
+            warn!("Failed to fetch insider trades for {}: {}", symbol, e);
+            Json(json!({
+                "success": false,
+                "error": e.to_string()
+            }))
+        }
+    }
+}
+
+/// Get earnings data for a single stock
+async fn get_stock_earnings(
+    State(state): State<AppState>,
+    Path(symbol): Path<String>,
+) -> impl IntoResponse {
+    // Check cache
+    if let Some(cached) = state.cache.get_earnings(&symbol).await {
+        return Json(json!({
+            "success": true,
+            "symbol": symbol,
+            "earnings": cached,
+            "cached": true
+        }));
+    }
+
+    match state.yahoo_client.get_earnings_data(&symbol).await {
+        Ok(data) => {
+            state.cache.set_earnings(symbol.clone(), data.clone()).await;
+            Json(json!({
+                "success": true,
+                "symbol": symbol,
+                "earnings": data,
+                "cached": false
+            }))
+        }
+        Err(e) => {
+            warn!("Failed to fetch earnings for {}: {}", symbol, e);
+            Json(json!({
+                "success": false,
+                "error": e.to_string()
+            }))
+        }
+    }
+}
+
+/// Query parameters for correlation matrix
+#[derive(Debug, Deserialize)]
+pub struct CorrelationQuery {
+    pub symbols: String,       // Comma-separated
+    pub days: Option<i64>,
+}
+
+/// Get correlation matrix for a set of symbols
+async fn get_correlation_matrix(
+    State(state): State<AppState>,
+    Query(query): Query<CorrelationQuery>,
+) -> impl IntoResponse {
+    let symbols: Vec<String> = query.symbols
+        .split(',')
+        .map(|s| s.trim().to_uppercase())
+        .filter(|s| !s.is_empty())
+        .take(20) // Max 20 symbols
+        .collect();
+
+    if symbols.len() < 2 {
+        return Json(json!({
+            "success": false,
+            "error": "Need at least 2 symbols for correlation"
+        }));
+    }
+
+    let days = query.days.unwrap_or(90);
+
+    // Fetch historical prices for all symbols
+    let mut price_map: std::collections::HashMap<String, Vec<f64>> = std::collections::HashMap::new();
+
+    for symbol in &symbols {
+        match state.yahoo_client.get_historical_prices(symbol, days).await {
+            Ok(prices) => {
+                let closes: Vec<f64> = prices.iter().map(|p| p.close).collect();
+                price_map.insert(symbol.clone(), closes);
+            }
+            Err(e) => {
+                warn!("Failed to fetch history for {}: {}", symbol, e);
+            }
+        }
+    }
+
+    // Only keep symbols we have data for
+    let valid_symbols: Vec<String> = symbols.into_iter()
+        .filter(|s| price_map.contains_key(s))
+        .collect();
+
+    let n = valid_symbols.len();
+    let mut matrix = vec![vec![0.0f64; n]; n];
+
+    for i in 0..n {
+        for j in 0..n {
+            if i == j {
+                matrix[i][j] = 1.0;
+            } else if j > i {
+                let corr = TechnicalIndicators::calculate_correlation(
+                    &price_map[&valid_symbols[i]],
+                    &price_map[&valid_symbols[j]],
+                ).unwrap_or(0.0);
+                matrix[i][j] = corr;
+                matrix[j][i] = corr;
+            }
+        }
+    }
+
+    Json(json!({
+        "success": true,
+        "symbols": valid_symbols,
+        "matrix": matrix,
+        "days": days
+    }))
+}
+
+// ============================================================================
 // Index/Fund Heatmap Endpoints
 // ============================================================================
 
@@ -587,6 +913,10 @@ async fn get_index_heatmap(
         sectors: None,
         only_oversold: None,
         only_overbought: None,
+        min_stochastic_k: None,
+        max_stochastic_k: None,
+        min_bandwidth: None,
+        max_bandwidth: None,
         sort_by: Some("market_cap".to_string()),
         sort_order: Some("desc".to_string()),
         page: None,

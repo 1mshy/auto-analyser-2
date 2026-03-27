@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Box, Flex, Text, HStack, Container, Badge } from '@chakra-ui/react';
-import { Home, List, TrendingUp, Activity, BarChart3 } from 'lucide-react';
+import { Home, List, TrendingUp, Activity, BarChart3, Newspaper, PieChart, Search } from 'lucide-react';
 import SettingsPanel from './SettingsPanel';
 import { useSettings } from '../contexts/SettingsContext';
 
@@ -94,6 +94,24 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
               icon={<BarChart3 size={18} />}
               label="Funds"
               isActive={location.pathname === '/funds'}
+            />
+            <NavItem
+              to="/news"
+              icon={<Newspaper size={18} />}
+              label="News"
+              isActive={location.pathname === '/news'}
+            />
+            <NavItem
+              to="/sectors"
+              icon={<PieChart size={18} />}
+              label="Sectors"
+              isActive={location.pathname === '/sectors'}
+            />
+            <NavItem
+              to="/screener"
+              icon={<Search size={18} />}
+              label="Screener"
+              isActive={location.pathname === '/screener'}
             />
           </HStack>
 

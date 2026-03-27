@@ -14,6 +14,9 @@ export interface StockAnalysis {
   is_oversold: boolean;
   is_overbought: boolean;
   analyzed_at: string;
+  bollinger?: BollingerBands;
+  stochastic?: StochasticOscillator;
+  earnings?: EarningsData;
   technicals?: NasdaqTechnicals;
   news?: NasdaqNewsItem[];
 }
@@ -22,6 +25,58 @@ export interface MACDIndicator {
   macd_line: number;
   signal_line: number;
   histogram: number;
+}
+
+export interface BollingerBands {
+  upper_band: number;
+  lower_band: number;
+  middle_band: number;
+  bandwidth: number;
+}
+
+export interface StochasticOscillator {
+  k_line: number;
+  d_line: number;
+}
+
+export interface EarningsData {
+  earnings_date?: string;
+  eps_estimate?: number;
+  revenue_estimate?: number;
+}
+
+export interface InsiderTrade {
+  insider_name: string;
+  relation?: string;
+  transaction_type: string;
+  date?: string;
+  shares_traded?: number;
+  price?: number;
+  shares_held?: number;
+}
+
+export interface SectorPerformance {
+  sector: string;
+  stock_count: number;
+  avg_change_percent: number;
+  avg_rsi: number;
+  top_performers: StockAnalysis[];
+  bottom_performers: StockAnalysis[];
+}
+
+export interface AggregatedNewsItem {
+  symbol: string;
+  sector?: string;
+  title: string;
+  url: string;
+  publisher?: string;
+  created?: string;
+  ago?: string;
+}
+
+export interface CorrelationData {
+  symbols: string[];
+  matrix: number[][];
 }
 
 export interface NasdaqTechnicals {
@@ -91,6 +146,10 @@ export interface StockFilter {
   sectors?: string[];
   only_oversold?: boolean;
   only_overbought?: boolean;
+  min_stochastic_k?: number;
+  max_stochastic_k?: number;
+  min_bandwidth?: number;
+  max_bandwidth?: number;
   sort_by?: string;      // "market_cap", "price_change_percent", "rsi", "price"
   sort_order?: string;   // "asc" or "desc"
   page?: number;

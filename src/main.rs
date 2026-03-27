@@ -16,6 +16,7 @@ use api::{create_router, AppState};
 use cache::CacheLayer;
 use config::Config;
 use db::MongoDB;
+use nasdaq::NasdaqClient;
 use openrouter::OpenRouterClient;
 use yahoo::YahooFinanceClient;
 use tower_http::cors::{Any, CorsLayer};
@@ -101,6 +102,9 @@ async fn main() -> anyhow::Result<()> {
         })
     };
 
+    // Create NASDAQ client for API endpoints
+    let nasdaq_client = NasdaqClient::new(config.nasdaq_request_delay_ms);
+
     // Create application state
     let app_state = AppState {
         db: db.clone(),
@@ -108,6 +112,7 @@ async fn main() -> anyhow::Result<()> {
         progress,
         yahoo_client,
         openrouter_client,
+        nasdaq_client,
     };
 
     // Build API router with CORS
