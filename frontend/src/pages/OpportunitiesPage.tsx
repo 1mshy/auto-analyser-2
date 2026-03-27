@@ -16,6 +16,7 @@ import {
 } from '@chakra-ui/react';
 import { Target, TrendingUp, Zap, RefreshCw } from 'lucide-react';
 import { api } from '../api';
+import MarkdownContent from '../components/MarkdownContent';
 import { StockAnalysis, StockFilter, AIAnalysisResponse, getMarketCapTier, getMarketCapTierColor, getMarketCapTierLabel } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 
@@ -125,9 +126,9 @@ const OpportunityCard: React.FC<{
             </Flex>
           ) : aiAnalysis?.success ? (
             <Box>
-              <Text color="gray.300" fontSize="sm" lineClamp={4}>
-                {aiAnalysis.analysis}
-              </Text>
+              <Box maxH="6rem" overflow="hidden">
+                <MarkdownContent fontSize="sm" color="gray.300">{aiAnalysis.analysis || ''}</MarkdownContent>
+              </Box>
               <Text color="gray.500" fontSize="xs" mt={2}>
                 Model: {aiAnalysis.model_used}
               </Text>

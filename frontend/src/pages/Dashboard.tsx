@@ -16,6 +16,7 @@ import {
 } from '@chakra-ui/react';
 import { TrendingUp, TrendingDown, AlertCircle, Target, DollarSign } from 'lucide-react';
 import { api } from '../api';
+import MarkdownContent from '../components/MarkdownContent';
 import { StockAnalysis, MarketSummary, getMarketCapTier, getMarketCapTierColor, AIAnalysisResponse } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 
@@ -102,9 +103,9 @@ const AIAnalysisCard: React.FC<{
           </Flex>
         ) : analysis?.success ? (
           <Box>
-            <Text color="gray.300" fontSize="sm" lineClamp={6}>
-              {analysis.analysis}
-            </Text>
+            <Box maxH="9rem" overflow="hidden">
+              <MarkdownContent fontSize="sm" color="gray.300">{analysis.analysis || ''}</MarkdownContent>
+            </Box>
             <Text color="gray.500" fontSize="xs" mt={2}>
               Model: {analysis.model_used}
             </Text>

@@ -17,6 +17,7 @@ import {
 } from '@chakra-ui/react';
 import { ArrowLeft, TrendingUp, TrendingDown, Zap, RefreshCw, ExternalLink } from 'lucide-react';
 import { api } from '../api';
+import MarkdownContent from '../components/MarkdownContent';
 import {
   StockAnalysis,
   AIAnalysisResponse,
@@ -957,8 +958,8 @@ export const StockDetailPage: React.FC = () => {
                 )}
 
                 {/* Streaming Text with Cursor */}
-                <Text color="gray.200" whiteSpace="pre-wrap" lineHeight="tall">
-                  {streamingText}
+                <Box position="relative">
+                  <MarkdownContent>{streamingText}</MarkdownContent>
                   {isStreaming && (
                     <Box
                       as="span"
@@ -977,7 +978,7 @@ export const StockDetailPage: React.FC = () => {
                       }}
                     />
                   )}
-                </Text>
+                </Box>
 
                 {/* Completion Info */}
                 {!isStreaming && streamingText && (
@@ -1001,9 +1002,7 @@ export const StockDetailPage: React.FC = () => {
               </Flex>
             ) : aiAnalysis?.success ? (
               <Box>
-                <Text color="gray.200" whiteSpace="pre-wrap" lineHeight="tall">
-                  {aiAnalysis.analysis}
-                </Text>
+                <MarkdownContent>{aiAnalysis.analysis || ''}</MarkdownContent>
                 <Separator my={4} />
                 <HStack justify="space-between">
                   <Text color="gray.500" fontSize="sm">
