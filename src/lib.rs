@@ -18,3 +18,4 @@ pub mod openrouter;
 pub mod yahoo;
 pub mod async_fetcher;
 pub mod indexes;
+pub mod notifications;

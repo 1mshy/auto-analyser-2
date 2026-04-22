@@ -5,6 +5,7 @@ use crate::{
     indexes::{IndexDataProvider, IndexHeatmapData, StockHeatmapItem},
     models::StockFilter,
     nasdaq::NasdaqClient,
+    notifications::AlertEngine,
     openrouter::{OpenRouterClient, StreamEvent},
     yahoo::YahooFinanceClient,
 };
@@ -43,10 +44,11 @@ pub struct AppState {
     pub yahoo_client: YahooFinanceClient,
     pub openrouter_client: OpenRouterClient,
     pub nasdaq_client: NasdaqClient,
+    pub alert_engine: AlertEngine,
 }
 
 pub fn create_router(state: AppState) -> Router {
-    Router::new()
+    let router: Router<AppState> = Router::new()
         .route("/", get(root))
         .route("/health", get(health))
         .route("/api/stocks", get(get_stocks))
@@ -71,8 +73,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/indexes", get(get_indexes))
         .route("/api/indexes/:index_id", get(get_index_detail))
         .route("/api/indexes/:index_id/heatmap", get(get_index_heatmap))
-        .route("/ws", get(websocket_handler))
-        .with_state(state)
+        .route("/ws", get(websocket_handler));
+
+    crate::notifications::api::mount(router).with_state(state)
 }
 
 async fn root() -> impl IntoResponse {

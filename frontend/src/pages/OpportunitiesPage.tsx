@@ -19,6 +19,7 @@ import { api } from '../api';
 import MarkdownContent from '../components/MarkdownContent';
 import { StockAnalysis, StockFilter, AIAnalysisResponse, getMarketCapTier, getMarketCapTierColor, getMarketCapTierLabel } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
+import { WatchButton } from '../components/alerts/WatchButton';
 
 // AI Analysis card with auto-trigger
 const OpportunityCard: React.FC<{
@@ -64,11 +65,14 @@ const OpportunityCard: React.FC<{
               <Badge colorPalette={tierColor}>{getMarketCapTierLabel(tier)}</Badge>
               <Badge colorPalette={priorityColor}>Priority: {priority}</Badge>
             </HStack>
-            <Link to={`/stocks/${stock.symbol}`}>
-              <Heading size="md" color="white" _hover={{ color: 'blue.400' }}>
-                {stock.symbol}
-              </Heading>
-            </Link>
+            <HStack>
+              <Link to={`/stocks/${stock.symbol}`}>
+                <Heading size="md" color="white" _hover={{ color: 'blue.400' }}>
+                  {stock.symbol}
+                </Heading>
+              </Link>
+              <WatchButton symbol={stock.symbol} size="xs" />
+            </HStack>
           </VStack>
           <VStack align="end" gap={0}>
             <Text fontWeight="bold" color="white">${stock.price != null ? stock.price.toFixed(2) : '-'}</Text>

@@ -120,6 +120,13 @@ impl MongoDB {
         self.database.collection("stock_analysis")
     }
 
+    /// Raw handle to the Mongo database — exposed so sibling modules (e.g.
+    /// `notifications::repo`) can register their own collections without
+    /// cluttering `MongoDB` with notification-specific accessors.
+    pub fn database(&self) -> &Database {
+        &self.database
+    }
+
     pub fn stocks_collection(&self) -> Collection<Stock> {
         self.database.collection("stocks")
     }

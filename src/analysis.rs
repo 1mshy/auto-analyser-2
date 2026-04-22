@@ -5,6 +5,7 @@ use crate::{
     indicators::TechnicalIndicators,
     models::{AnalysisProgress, HistoricalPrice, NasdaqResponse, StockAnalysis},
     nasdaq::NasdaqClient,
+    notifications::AlertEngine,
 };
 use chrono::Utc;
 use std::collections::HashMap;
@@ -25,6 +26,9 @@ pub struct AnalysisEngine {
     cached_symbols: Arc<RwLock<Vec<(String, Option<f64>)>>>,
     min_market_cap_usd: f64,
     max_abs_price_change_percent: f64,
+    /// Optional alert engine. When present, fresh analyses are fed to it at
+    /// the end of every cycle so user-defined rules can fire.
+    alert_engine: Option<AlertEngine>,
 }
 
 impl AnalysisEngine {
@@ -37,6 +41,7 @@ impl AnalysisEngine {
         nasdaq_delay_ms: u64,
         min_market_cap_usd: f64,
         max_abs_price_change_percent: f64,
+        alert_engine: Option<AlertEngine>,
     ) -> Self {
         let progress = Arc::new(RwLock::new(AnalysisProgress {
             total_stocks: 0,
@@ -66,6 +71,7 @@ impl AnalysisEngine {
             cached_symbols: Arc::new(RwLock::new(Vec::new())),
             min_market_cap_usd,
             max_abs_price_change_percent,
+            alert_engine,
         }
     }
 
@@ -190,6 +196,9 @@ impl AnalysisEngine {
         let mut analyzed_count = 0;
         let mut error_count = 0;
         let mut success_count = 0;
+        // Collected so the alert engine can evaluate rules once per cycle
+        // against every freshly-saved analysis.
+        let mut fresh_analyses: Vec<StockAnalysis> = Vec::new();
         
         // Process results as they arrive
         while let Some(result) = rx.recv().await {
@@ -210,7 +219,8 @@ impl AnalysisEngine {
                                 error!("Failed to save analysis for {}: {}", symbol, e);
                                 error_count += 1;
                             } else {
-                                self.cache.set_stock(symbol.clone(), analysis).await;
+                                self.cache.set_stock(symbol.clone(), analysis.clone()).await;
+                                fresh_analyses.push(analysis);
                                 success_count += 1;
                             }
                         }
@@ -248,6 +258,16 @@ impl AnalysisEngine {
 
         // Invalidate list caches after cycle
         self.cache.invalidate_all_lists().await;
+
+        // Fire user-defined alerts against this cycle's fresh analyses.
+        // Errors here are non-fatal — the analysis cycle has already succeeded.
+        if let Some(engine) = &self.alert_engine {
+            if !fresh_analyses.is_empty() {
+                if let Err(e) = engine.evaluate_and_dispatch(&fresh_analyses).await {
+                    warn!("alert evaluation failed: {}", e);
+                }
+            }
+        }
 
         let progress = self.progress.read().await;
         info!(

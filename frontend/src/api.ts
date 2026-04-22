@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, CorrelationData } from './types';
+import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig } from './types';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3333';
 
@@ -230,6 +230,165 @@ export const api = {
     } catch {
       return null;
     }
+  },
+
+  // --------------------------------------------------------------
+  // Notifications / alert engine
+  // --------------------------------------------------------------
+
+  alerts: {
+    // ---- status ----
+    status: async (): Promise<{ enabled: boolean }> => {
+      const r = await axios.get(`${API_BASE_URL}/api/alerts/status`);
+      return { enabled: !!r.data.enabled };
+    },
+
+    // ---- watchlists ----
+    listWatchlists: async (): Promise<Watchlist[]> => {
+      const r = await axios.get(`${API_BASE_URL}/api/watchlists`);
+      return r.data.watchlists || [];
+    },
+    createWatchlist: async (name: string, symbols: string[] = []): Promise<Watchlist> => {
+      const r = await axios.post(`${API_BASE_URL}/api/watchlists`, { name, symbols });
+      return r.data.watchlist;
+    },
+    updateWatchlist: async (
+      id: string,
+      patch: { name?: string; symbols?: string[] },
+    ): Promise<Watchlist> => {
+      const r = await axios.patch(`${API_BASE_URL}/api/watchlists/${id}`, patch);
+      return r.data.watchlist;
+    },
+    deleteWatchlist: async (id: string): Promise<void> => {
+      await axios.delete(`${API_BASE_URL}/api/watchlists/${id}`);
+    },
+    addSymbol: async (id: string, symbol: string): Promise<Watchlist> => {
+      const r = await axios.post(`${API_BASE_URL}/api/watchlists/${id}/symbols`, { symbol });
+      return r.data.watchlist;
+    },
+    removeSymbol: async (id: string, symbol: string): Promise<Watchlist> => {
+      const r = await axios.delete(`${API_BASE_URL}/api/watchlists/${id}/symbols/${symbol}`);
+      return r.data.watchlist;
+    },
+
+    // ---- channels ----
+    listChannels: async (): Promise<NotificationChannel[]> => {
+      const r = await axios.get(`${API_BASE_URL}/api/alerts/channels`);
+      return r.data.channels || [];
+    },
+    createChannel: async (
+      name: string,
+      config: DiscordChannelConfig,
+      enabled = true,
+    ): Promise<NotificationChannel> => {
+      const r = await axios.post(`${API_BASE_URL}/api/alerts/channels`, {
+        name,
+        kind: 'discord',
+        ...config,
+        enabled,
+      });
+      return r.data.channel;
+    },
+    updateChannel: async (
+      id: string,
+      patch: { name?: string; enabled?: boolean; config?: { kind: 'discord' } & DiscordChannelConfig },
+    ): Promise<NotificationChannel> => {
+      const r = await axios.put(`${API_BASE_URL}/api/alerts/channels/${id}`, patch);
+      return r.data.channel;
+    },
+    deleteChannel: async (id: string): Promise<void> => {
+      await axios.delete(`${API_BASE_URL}/api/alerts/channels/${id}`);
+    },
+    testChannel: async (id: string): Promise<{ success: boolean; error?: string }> => {
+      try {
+        const r = await axios.post(`${API_BASE_URL}/api/alerts/channels/${id}/test`);
+        return { success: !!r.data.success };
+      } catch (e: any) {
+        return { success: false, error: e?.response?.data?.error || 'test failed' };
+      }
+    },
+
+    // ---- rules ----
+    listRules: async (): Promise<AlertRule[]> => {
+      const r = await axios.get(`${API_BASE_URL}/api/alerts/rules`);
+      return r.data.rules || [];
+    },
+    getRule: async (id: string): Promise<AlertRule | null> => {
+      const r = await axios.get(`${API_BASE_URL}/api/alerts/rules/${id}`);
+      return r.data.rule || null;
+    },
+    createRule: async (input: {
+      name: string;
+      enabled?: boolean;
+      scope: AlertScope;
+      conditions: ConditionGroup;
+      cooldown_minutes?: number;
+      quiet_hours?: QuietHours | null;
+      channel_ids: string[];
+      message_template?: string | null;
+      require_consecutive?: number;
+    }): Promise<AlertRule> => {
+      const r = await axios.post(`${API_BASE_URL}/api/alerts/rules`, input);
+      return r.data.rule;
+    },
+    updateRule: async (id: string, patch: Partial<Omit<AlertRule, '_id' | 'created_at' | 'updated_at'>>): Promise<AlertRule> => {
+      const r = await axios.put(`${API_BASE_URL}/api/alerts/rules/${id}`, patch);
+      return r.data.rule;
+    },
+    toggleRule: async (id: string): Promise<AlertRule> => {
+      const r = await axios.post(`${API_BASE_URL}/api/alerts/rules/${id}/toggle`);
+      return r.data.rule;
+    },
+    deleteRule: async (id: string): Promise<void> => {
+      await axios.delete(`${API_BASE_URL}/api/alerts/rules/${id}`);
+    },
+    testRule: async (
+      id: string,
+      symbol?: string,
+    ): Promise<{ success: boolean; delivered?: DeliveryResult[]; symbol?: string; error?: string }> => {
+      try {
+        const r = await axios.post(`${API_BASE_URL}/api/alerts/rules/${id}/test`, { symbol });
+        return {
+          success: !!r.data.success,
+          delivered: r.data.delivered,
+          symbol: r.data.symbol,
+        };
+      } catch (e: any) {
+        return { success: false, error: e?.response?.data?.error || 'test failed' };
+      }
+    },
+
+    // ---- history ----
+    listHistory: async (params?: {
+      page?: number;
+      page_size?: number;
+      rule_id?: string;
+      symbol?: string;
+    }): Promise<{ history: NotificationHistoryItem[]; pagination: PaginationInfo }> => {
+      const qp = new URLSearchParams();
+      if (params?.page) qp.append('page', params.page.toString());
+      if (params?.page_size) qp.append('page_size', params.page_size.toString());
+      if (params?.rule_id) qp.append('rule_id', params.rule_id);
+      if (params?.symbol) qp.append('symbol', params.symbol);
+      const qs = qp.toString();
+      const url = qs ? `${API_BASE_URL}/api/alerts/history?${qs}` : `${API_BASE_URL}/api/alerts/history`;
+      const r = await axios.get(url);
+      return {
+        history: r.data.history || [],
+        pagination: r.data.pagination || { page: 1, page_size: 50, total: 0, total_pages: 0 },
+      };
+    },
+    unreadCount: async (): Promise<number> => {
+      try {
+        const r = await axios.get(`${API_BASE_URL}/api/alerts/history/unread-count`);
+        return r.data.unread || 0;
+      } catch {
+        return 0;
+      }
+    },
+    markRead: async (id: string, read = true): Promise<void> => {
+      await axios.patch(`${API_BASE_URL}/api/alerts/history/${id}/read`, { read });
+    },
   },
 };
 

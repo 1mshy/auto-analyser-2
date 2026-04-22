@@ -374,3 +374,159 @@ export const HEATMAP_PERIODS: { value: HeatmapPeriod; label: string }[] = [
   { value: '1y', label: '1 Year' },
 ];
 
+// ---------------------------------------------------------------------------
+// Notifications / alert engine
+// ---------------------------------------------------------------------------
+
+export interface DiscordChannelConfig {
+  webhook_url: string;
+  username?: string;
+  avatar_url?: string;
+}
+
+/** Mirrors Rust `ChannelConfig` (tagged by `kind`). Flattened onto the parent. */
+export type ChannelConfig = { kind: 'discord' } & DiscordChannelConfig;
+
+export interface NotificationChannel {
+  _id?: string;
+  name: string;
+  kind: 'discord';
+  webhook_url: string;
+  username?: string;
+  avatar_url?: string;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface Watchlist {
+  _id?: string;
+  name: string;
+  symbols: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** Tagged union — one variant per `type`. Keep in sync with Rust `Condition`. */
+export type Condition =
+  | { type: 'rsi_below'; value: number }
+  | { type: 'rsi_above'; value: number }
+  | { type: 'price_below'; value: number }
+  | { type: 'price_above'; value: number }
+  | { type: 'price_change_pct_below'; value: number }
+  | { type: 'price_change_pct_above'; value: number }
+  | { type: 'near_52_week_low'; within_pct: number }
+  | { type: 'near_52_week_high'; within_pct: number }
+  | { type: 'macd_bullish_cross' }
+  | { type: 'macd_bearish_cross' }
+  | { type: 'stochastic_k_below'; value: number }
+  | { type: 'stochastic_k_above'; value: number }
+  | { type: 'bollinger_bandwidth_below'; value: number }
+  | { type: 'is_oversold' }
+  | { type: 'is_overbought' }
+  | { type: 'volume_above'; value: number }
+  | { type: 'sector_equals'; sector: string }
+  | { type: 'drop_from_high_pct'; value: number };
+
+export type ConditionType = Condition['type'];
+
+export type ConditionGroup =
+  | { op: 'and'; children: ConditionGroup[] }
+  | { op: 'or'; children: ConditionGroup[] }
+  | { op: 'not'; child: ConditionGroup }
+  | { op: 'leaf'; condition: Condition };
+
+export type AlertScope =
+  | { type: 'all_watched' }
+  | { type: 'watchlist'; watchlist_id: string }
+  | { type: 'symbols'; symbols: string[] }
+  | { type: 'all_analyzed' };
+
+export interface QuietHours {
+  start_hour: number;
+  end_hour: number;
+  tz?: string;
+}
+
+export interface AlertRule {
+  _id?: string;
+  name: string;
+  enabled: boolean;
+  scope: AlertScope;
+  conditions: ConditionGroup;
+  cooldown_minutes: number;
+  quiet_hours?: QuietHours | null;
+  channel_ids: string[];
+  message_template?: string | null;
+  require_consecutive: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeliveryResult {
+  channel_id: string;
+  channel_name: string;
+  ok: boolean;
+  error?: string;
+  sent_at: string;
+}
+
+export interface NotificationHistoryItem {
+  _id?: string;
+  rule_id: string;
+  rule_name: string;
+  symbol: string;
+  matched_conditions: string[];
+  message: string;
+  channel_ids: string[];
+  delivered: DeliveryResult[];
+  snapshot: StockAnalysis;
+  created_at: string;
+  read: boolean;
+}
+
+/** Pretty labels for each leaf condition type — shared by the rule builder UI. */
+export const CONDITION_LABELS: Record<ConditionType, string> = {
+  rsi_below: 'RSI below',
+  rsi_above: 'RSI above',
+  price_below: 'Price below ($)',
+  price_above: 'Price above ($)',
+  price_change_pct_below: 'Day change % below',
+  price_change_pct_above: 'Day change % above',
+  near_52_week_low: 'Within % of 52-week low',
+  near_52_week_high: 'Within % of 52-week high',
+  macd_bullish_cross: 'MACD bullish cross',
+  macd_bearish_cross: 'MACD bearish cross',
+  stochastic_k_below: 'Stochastic %K below',
+  stochastic_k_above: 'Stochastic %K above',
+  bollinger_bandwidth_below: 'Bollinger bandwidth below',
+  is_oversold: 'Is oversold (RSI < 30)',
+  is_overbought: 'Is overbought (RSI > 70)',
+  volume_above: 'Volume above',
+  sector_equals: 'Sector equals',
+  drop_from_high_pct: 'Down % from 52w high',
+};
+
+/** Construct a default value for a freshly-picked condition type. */
+export function defaultCondition(type: ConditionType): Condition {
+  switch (type) {
+    case 'rsi_below': return { type, value: 30 };
+    case 'rsi_above': return { type, value: 70 };
+    case 'price_below': return { type, value: 100 };
+    case 'price_above': return { type, value: 100 };
+    case 'price_change_pct_below': return { type, value: -5 };
+    case 'price_change_pct_above': return { type, value: 5 };
+    case 'near_52_week_low': return { type, within_pct: 5 };
+    case 'near_52_week_high': return { type, within_pct: 5 };
+    case 'macd_bullish_cross': return { type };
+    case 'macd_bearish_cross': return { type };
+    case 'stochastic_k_below': return { type, value: 20 };
+    case 'stochastic_k_above': return { type, value: 80 };
+    case 'bollinger_bandwidth_below': return { type, value: 0.05 };
+    case 'is_oversold': return { type };
+    case 'is_overbought': return { type };
+    case 'volume_above': return { type, value: 1_000_000 };
+    case 'sector_equals': return { type, sector: 'Technology' };
+    case 'drop_from_high_pct': return { type, value: 20 };
+  }
+}
+

@@ -8,6 +8,7 @@ mod indicators;
 mod indexes;
 mod models;
 mod nasdaq;
+mod notifications;
 mod openrouter;
 mod yahoo;
 
@@ -17,6 +18,7 @@ use cache::CacheLayer;
 use config::Config;
 use db::MongoDB;
 use nasdaq::NasdaqClient;
+use notifications::AlertEngine;
 use openrouter::OpenRouterClient;
 use yahoo::YahooFinanceClient;
 use tower_http::cors::{Any, CorsLayer};
@@ -66,6 +68,15 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("🤖 OpenRouter AI disabled (set OPENROUTER_API_KEY_STOCKS to enable)");
     }
 
+    // Initialize the alert engine up-front so it can both (a) feed the analysis
+    // cycle and (b) be reused by the HTTP API for CRUD on channels / rules / history.
+    let alert_engine = AlertEngine::new(
+        db.clone(),
+        config.notifications_enabled,
+        config.public_base_url.clone(),
+    )
+    .await?;
+
     // Create analysis engine
     let analysis_engine = AnalysisEngine::new(
         db.clone(),
@@ -76,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
         config.nasdaq_request_delay_ms,
         config.min_market_cap_usd,
         config.max_abs_price_change_percent,
+        Some(alert_engine.clone()),
     );
     let progress = analysis_engine.get_progress();
     tracing::info!("Yahoo Finance: concurrency={}, delay={}ms", config.yahoo_concurrency, config.yahoo_request_delay_ms);
@@ -115,6 +127,7 @@ async fn main() -> anyhow::Result<()> {
         yahoo_client,
         openrouter_client,
         nasdaq_client,
+        alert_engine,
     };
 
     // Build API router with CORS

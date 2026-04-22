@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Box, Flex, Text, HStack, Container, Badge } from '@chakra-ui/react';
-import { Home, List, TrendingUp, Activity, BarChart3, Newspaper, PieChart, Search } from 'lucide-react';
+import { Home, List, TrendingUp, Activity, BarChart3, Newspaper, PieChart, Search, Bell } from 'lucide-react';
 import SettingsPanel from './SettingsPanel';
 import { useSettings } from '../contexts/SettingsContext';
+import { api } from '../api';
 
 interface NavItemProps {
   to: string;
@@ -38,6 +39,27 @@ interface NavigationProps {
 export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCount }) => {
   const location = useLocation();
   const { isFiltered, settings } = useSettings();
+  const [unread, setUnread] = useState(0);
+
+  // Poll the alerts inbox for unread count. 30s is plenty given rules fire
+  // at most once per analysis cycle (~hourly by default).
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const n = await api.alerts.unreadCount();
+        if (!cancelled) setUnread(n);
+      } catch {
+        /* ignore - API may not be ready yet */
+      }
+    };
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   // Format market cap for display
   const formatMarketCap = (value: number | null) => {
@@ -113,6 +135,33 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
               label="Screener"
               isActive={location.pathname === '/screener'}
             />
+            <Link to="/alerts">
+              <HStack
+                px={3}
+                py={2}
+                borderRadius="md"
+                bg={location.pathname === '/alerts' ? 'blue.500' : 'transparent'}
+                color={location.pathname === '/alerts' ? 'white' : 'gray.300'}
+                _hover={{ bg: location.pathname === '/alerts' ? 'blue.600' : 'whiteAlpha.200' }}
+                position="relative"
+                cursor="pointer"
+              >
+                <Bell size={18} />
+                <Text fontWeight={location.pathname === '/alerts' ? 'semibold' : 'medium'}>Alerts</Text>
+                {unread > 0 && (
+                  <Badge
+                    colorPalette="red"
+                    size="sm"
+                    position="absolute"
+                    top="-1"
+                    right="-1"
+                    borderRadius="full"
+                  >
+                    {unread > 99 ? '99+' : unread}
+                  </Badge>
+                )}
+              </HStack>
+            </Link>
           </HStack>
 
           {/* Right Side: Status + Settings */}

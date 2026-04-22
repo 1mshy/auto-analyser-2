@@ -23,6 +23,13 @@ pub struct Config {
     /// `|price_change_percent|` exceeds this threshold. Keeps runaway
     /// gainers/losers out of the feed. Configurable via `MAX_ABS_PRICE_CHANGE_PCT`.
     pub max_abs_price_change_percent: f64,
+    /// Master kill-switch for the alert engine. When `false`, no rules are
+    /// evaluated at the end of each cycle; API CRUD still works so users can
+    /// keep editing rules while paused. Configurable via `NOTIFICATIONS_ENABLED`.
+    pub notifications_enabled: bool,
+    /// Base URL of the frontend, used to render "view stock" links inside
+    /// Discord embeds. e.g. `http://localhost:5173`. Optional.
+    pub public_base_url: Option<String>,
 }
 
 impl Config {
@@ -70,6 +77,11 @@ impl Config {
             max_abs_price_change_percent: env::var("MAX_ABS_PRICE_CHANGE_PCT")
                 .unwrap_or_else(|_| "25".to_string())
                 .parse()?,
+            notifications_enabled: env::var("NOTIFICATIONS_ENABLED")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
+            public_base_url: env::var("PUBLIC_BASE_URL").ok().filter(|s| !s.is_empty()),
             OPENROUTER_API_KEY_STOCKS,
             openrouter_enabled,
         })

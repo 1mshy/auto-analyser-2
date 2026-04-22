@@ -28,6 +28,7 @@ import {
   getMarketCapTierColor,
   getMarketCapTierLabel
 } from '../types';
+import { WatchButton } from '../components/alerts/WatchButton';
 
 // TradingView widget integration
 const TradingViewWidget: React.FC<{ symbol: string }> = ({ symbol }) => {
@@ -306,7 +307,10 @@ export const StockDetailPage: React.FC = () => {
             {stock.is_oversold && <Badge colorPalette="green" size="lg">Oversold</Badge>}
             {stock.is_overbought && <Badge colorPalette="red" size="lg">Overbought</Badge>}
           </HStack>
-          <Heading size="2xl" color="white">{stock.symbol}</Heading>
+          <HStack>
+            <Heading size="2xl" color="white">{stock.symbol}</Heading>
+            <WatchButton symbol={stock.symbol} size="md" />
+          </HStack>
           <Text color="gray.400">{stock.sector || 'Unknown Sector'}</Text>
         </VStack>
 
