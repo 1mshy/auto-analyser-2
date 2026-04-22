@@ -132,6 +132,9 @@ pub struct StockFilter {
     pub max_stochastic_k: Option<f64>,
     pub min_bandwidth: Option<f64>,
     pub max_bandwidth: Option<f64>,
+    /// Drop rows whose `|price_change_percent|` exceeds this threshold.
+    /// Keeps runaway day-gainers out of the feed.
+    pub max_abs_price_change_percent: Option<f64>,
     // Sorting options
     pub sort_by: Option<String>,      // "market_cap", "price_change_percent", "rsi", "price"
     pub sort_order: Option<String>,   // "asc" or "desc"

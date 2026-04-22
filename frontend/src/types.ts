@@ -150,6 +150,8 @@ export interface StockFilter {
   max_stochastic_k?: number;
   min_bandwidth?: number;
   max_bandwidth?: number;
+  /** Drop rows whose |price_change_percent| exceeds this. Server-side. */
+  max_abs_price_change_percent?: number;
   sort_by?: string;      // "market_cap", "price_change_percent", "rsi", "price"
   sort_order?: string;   // "asc" or "desc"
   page?: number;

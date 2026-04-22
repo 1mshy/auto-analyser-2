@@ -74,6 +74,8 @@ async fn main() -> anyhow::Result<()> {
         config.yahoo_request_delay_ms,
         config.yahoo_concurrency,
         config.nasdaq_request_delay_ms,
+        config.min_market_cap_usd,
+        config.max_abs_price_change_percent,
     );
     let progress = analysis_engine.get_progress();
     tracing::info!("Yahoo Finance: concurrency={}, delay={}ms", config.yahoo_concurrency, config.yahoo_request_delay_ms);

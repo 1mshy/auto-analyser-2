@@ -204,74 +204,12 @@ impl NasdaqClient {
             ));
         }
 
-        let nasdaq_response: NasdaqTechnicalsResponse = response
-            .json()
+        let text = response
+            .text()
             .await
-            .map_err(|e| anyhow!("Failed to parse NASDAQ technicals for {}: {}", symbol, e))?;
+            .map_err(|e| anyhow!("Failed to read NASDAQ technicals body for {}: {}", symbol, e))?;
 
-        let data = nasdaq_response
-            .data
-            .ok_or_else(|| anyhow!("No data in NASDAQ technicals response for {}", symbol))?;
-
-        // Extract primaryData (always available, even for warrants)
-        let primary = data.primary_data.as_ref();
-        let last_sale_price = primary.and_then(|p| Self::parse_dollar_value(&p.last_sale_price));
-        let net_change = primary.and_then(|p| Self::parse_signed_number(&p.net_change));
-        let percentage_change = primary.and_then(|p| Self::parse_percentage(&p.percentage_change));
-
-        // summaryData may not be present for all securities (e.g., warrants)
-        let summary = data.summary_data;
-
-        // Parse high/low from "227.07/225.91" format
-        let (todays_high, todays_low) = summary.as_ref()
-            .map(|s| Self::parse_high_low(&s.today_high_low))
-            .unwrap_or((None, None));
-        let (fifty_two_week_high, fifty_two_week_low) = summary.as_ref()
-            .map(|s| Self::parse_high_low(&s.fifty_two_week_high_low))
-            .unwrap_or((None, None));
-
-        Ok(NasdaqTechnicals {
-            exchange: summary.as_ref().and_then(|s| s.exchange.as_ref().and_then(|v| v.value.clone())),
-            sector: summary.as_ref().and_then(|s| s.sector.as_ref().and_then(|v| v.value.clone())),
-            industry: summary.as_ref().and_then(|s| s.industry.as_ref().and_then(|v| v.value.clone())),
-            one_year_target: summary.as_ref()
-                .and_then(|s| s.one_yr_target.as_ref())
-                .and_then(|v| Self::parse_dollar_value(&v.value)),
-            todays_high,
-            todays_low,
-            share_volume: summary.as_ref()
-                .and_then(|s| s.share_volume.as_ref())
-                .and_then(|v| Self::parse_number_with_commas(&v.value)),
-            average_volume: summary.as_ref()
-                .and_then(|s| s.average_volume.as_ref())
-                .and_then(|v| Self::parse_number_with_commas(&v.value)),
-            previous_close: summary.as_ref()
-                .and_then(|s| s.previous_close.as_ref())
-                .and_then(|v| Self::parse_dollar_value(&v.value)),
-            fifty_two_week_high,
-            fifty_two_week_low,
-            pe_ratio: summary.as_ref()
-                .and_then(|s| s.pe_ratio.as_ref())
-                .and_then(|v| Self::parse_json_number(&v.value)),
-            forward_pe: summary.as_ref()
-                .and_then(|s| s.forward_pe.as_ref())
-                .and_then(|v| Self::parse_dollar_value(&v.value)),
-            eps: summary.as_ref()
-                .and_then(|s| s.eps.as_ref())
-                .and_then(|v| Self::parse_dollar_value(&v.value)),
-            annualized_dividend: summary.as_ref()
-                .and_then(|s| s.annualized_dividend.as_ref())
-                .and_then(|v| Self::parse_dollar_value(&v.value)),
-            ex_dividend_date: summary.as_ref().and_then(|s| s.ex_dividend_date.as_ref().and_then(|v| v.value.clone())),
-            dividend_pay_date: summary.as_ref().and_then(|s| s.dividend_pay_date.as_ref().and_then(|v| v.value.clone())),
-            current_yield: summary.as_ref()
-                .and_then(|s| s.current_yield.as_ref())
-                .and_then(|v| Self::parse_percentage(&v.value)),
-            // Primary data fields (more reliable for price changes)
-            last_sale_price,
-            net_change,
-            percentage_change,
-        })
+        parse_technicals_response(&text, symbol)
     }
 
     /// Fetch news for a stock from NASDAQ API
@@ -297,28 +235,12 @@ impl NasdaqClient {
             return Ok(vec![]);
         }
 
-        let nasdaq_response: NasdaqNewsResponse = response
-            .json()
+        let text = response
+            .text()
             .await
-            .map_err(|e| anyhow!("Failed to parse NASDAQ news for {}: {}", symbol, e))?;
+            .map_err(|e| anyhow!("Failed to read NASDAQ news body for {}: {}", symbol, e))?;
 
-        let rows = nasdaq_response
-            .data
-            .and_then(|d| d.rows)
-            .unwrap_or_default();
-
-        Ok(rows
-            .into_iter()
-            .filter_map(|row| {
-                Some(NasdaqNewsItem {
-                    title: row.title?,
-                    url: format!("https://www.nasdaq.com{}", row.url?),
-                    publisher: row.publisher,
-                    created: row.created,
-                    ago: row.ago,
-                })
-            })
-            .collect())
+        parse_news_response(&text, symbol)
     }
 
     /// Fetch insider trades for a stock from NASDAQ API
@@ -344,31 +266,12 @@ impl NasdaqClient {
             return Ok(vec![]);
         }
 
-        let nasdaq_response: InsiderTradesResponse = response
-            .json()
+        let text = response
+            .text()
             .await
-            .map_err(|e| anyhow!("Failed to parse NASDAQ insider trades for {}: {}", symbol, e))?;
+            .map_err(|e| anyhow!("Failed to read NASDAQ insider body for {}: {}", symbol, e))?;
 
-        let rows = nasdaq_response
-            .data
-            .and_then(|d| d.transaction_table)
-            .and_then(|t| t.rows)
-            .unwrap_or_default();
-
-        Ok(rows
-            .into_iter()
-            .filter_map(|row| {
-                Some(InsiderTrade {
-                    insider_name: row.insider?,
-                    relation: row.relation,
-                    transaction_type: row.transaction_type.unwrap_or_else(|| "Unknown".to_string()),
-                    date: row.last_date,
-                    shares_traded: row.shares_traded.as_ref().and_then(|s| Self::parse_number_with_commas(&Some(s.clone()))),
-                    price: row.price.as_ref().and_then(|s| Self::parse_dollar_value(&Some(s.clone()))),
-                    shares_held: row.shares_held.as_ref().and_then(|s| Self::parse_number_with_commas(&Some(s.clone()))),
-                })
-            })
-            .collect())
+        parse_insider_trades_response(&text, symbol)
     }
 
     /// Apply rate limiting delay
@@ -379,6 +282,8 @@ impl NasdaqClient {
     }
 
     // Helper functions for parsing NASDAQ data
+    // Kept as associated fns for back-compat; they delegate to module-level
+    // free functions that are easier to exercise from tests.
 
     fn parse_high_low(value: &Option<LabelValue>) -> (Option<f64>, Option<f64>) {
         if let Some(lv) = value {
@@ -436,67 +341,445 @@ impl NasdaqClient {
     }
 }
 
+// ============================================================================
+// Pure parsing functions (offline-testable)
+// ============================================================================
+
+/// Parse a NASDAQ `/api/quote/{sym}/info` response into `NasdaqTechnicals`.
+pub(crate) fn parse_technicals_response(text: &str, symbol: &str) -> Result<NasdaqTechnicals> {
+    let nasdaq_response: NasdaqTechnicalsResponse = serde_json::from_str(text)
+        .map_err(|e| anyhow!("Failed to parse NASDAQ technicals for {}: {}", symbol, e))?;
+
+    let data = nasdaq_response
+        .data
+        .ok_or_else(|| anyhow!("No data in NASDAQ technicals response for {}", symbol))?;
+
+    let primary = data.primary_data.as_ref();
+    let last_sale_price = primary.and_then(|p| NasdaqClient::parse_dollar_value(&p.last_sale_price));
+    let net_change = primary.and_then(|p| NasdaqClient::parse_signed_number(&p.net_change));
+    let percentage_change = primary.and_then(|p| NasdaqClient::parse_percentage(&p.percentage_change));
+
+    let summary = data.summary_data;
+
+    let (todays_high, todays_low) = summary
+        .as_ref()
+        .map(|s| NasdaqClient::parse_high_low(&s.today_high_low))
+        .unwrap_or((None, None));
+    let (fifty_two_week_high, fifty_two_week_low) = summary
+        .as_ref()
+        .map(|s| NasdaqClient::parse_high_low(&s.fifty_two_week_high_low))
+        .unwrap_or((None, None));
+
+    Ok(NasdaqTechnicals {
+        exchange: summary.as_ref().and_then(|s| s.exchange.as_ref().and_then(|v| v.value.clone())),
+        sector: summary.as_ref().and_then(|s| s.sector.as_ref().and_then(|v| v.value.clone())),
+        industry: summary.as_ref().and_then(|s| s.industry.as_ref().and_then(|v| v.value.clone())),
+        one_year_target: summary.as_ref()
+            .and_then(|s| s.one_yr_target.as_ref())
+            .and_then(|v| NasdaqClient::parse_dollar_value(&v.value)),
+        todays_high,
+        todays_low,
+        share_volume: summary.as_ref()
+            .and_then(|s| s.share_volume.as_ref())
+            .and_then(|v| NasdaqClient::parse_number_with_commas(&v.value)),
+        average_volume: summary.as_ref()
+            .and_then(|s| s.average_volume.as_ref())
+            .and_then(|v| NasdaqClient::parse_number_with_commas(&v.value)),
+        previous_close: summary.as_ref()
+            .and_then(|s| s.previous_close.as_ref())
+            .and_then(|v| NasdaqClient::parse_dollar_value(&v.value)),
+        fifty_two_week_high,
+        fifty_two_week_low,
+        pe_ratio: summary.as_ref()
+            .and_then(|s| s.pe_ratio.as_ref())
+            .and_then(|v| NasdaqClient::parse_json_number(&v.value)),
+        forward_pe: summary.as_ref()
+            .and_then(|s| s.forward_pe.as_ref())
+            .and_then(|v| NasdaqClient::parse_dollar_value(&v.value)),
+        eps: summary.as_ref()
+            .and_then(|s| s.eps.as_ref())
+            .and_then(|v| NasdaqClient::parse_dollar_value(&v.value)),
+        annualized_dividend: summary.as_ref()
+            .and_then(|s| s.annualized_dividend.as_ref())
+            .and_then(|v| NasdaqClient::parse_dollar_value(&v.value)),
+        ex_dividend_date: summary.as_ref().and_then(|s| s.ex_dividend_date.as_ref().and_then(|v| v.value.clone())),
+        dividend_pay_date: summary.as_ref().and_then(|s| s.dividend_pay_date.as_ref().and_then(|v| v.value.clone())),
+        current_yield: summary.as_ref()
+            .and_then(|s| s.current_yield.as_ref())
+            .and_then(|v| NasdaqClient::parse_percentage(&v.value)),
+        last_sale_price,
+        net_change,
+        percentage_change,
+    })
+}
+
+/// Parse a NASDAQ news headline response.
+pub(crate) fn parse_news_response(text: &str, symbol: &str) -> Result<Vec<NasdaqNewsItem>> {
+    let nasdaq_response: NasdaqNewsResponse = serde_json::from_str(text)
+        .map_err(|e| anyhow!("Failed to parse NASDAQ news for {}: {}", symbol, e))?;
+
+    let rows = nasdaq_response
+        .data
+        .and_then(|d| d.rows)
+        .unwrap_or_default();
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            Some(NasdaqNewsItem {
+                title: row.title?,
+                url: format!("https://www.nasdaq.com{}", row.url?),
+                publisher: row.publisher,
+                created: row.created,
+                ago: row.ago,
+            })
+        })
+        .collect())
+}
+
+/// Parse a NASDAQ insider trades response.
+pub(crate) fn parse_insider_trades_response(text: &str, symbol: &str) -> Result<Vec<InsiderTrade>> {
+    let nasdaq_response: InsiderTradesResponse = serde_json::from_str(text)
+        .map_err(|e| anyhow!("Failed to parse NASDAQ insider trades for {}: {}", symbol, e))?;
+
+    let rows = nasdaq_response
+        .data
+        .and_then(|d| d.transaction_table)
+        .and_then(|t| t.rows)
+        .unwrap_or_default();
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            Some(InsiderTrade {
+                insider_name: row.insider?,
+                relation: row.relation,
+                transaction_type: row.transaction_type.unwrap_or_else(|| "Unknown".to_string()),
+                date: row.last_date,
+                shares_traded: row.shares_traded.as_ref().and_then(|s| NasdaqClient::parse_number_with_commas(&Some(s.clone()))),
+                price: row.price.as_ref().and_then(|s| NasdaqClient::parse_dollar_value(&Some(s.clone()))),
+                shares_held: row.shares_held.as_ref().and_then(|s| NasdaqClient::parse_number_with_commas(&Some(s.clone()))),
+            })
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // ---- Primitive parsers ---------------------------------------------------
+
     #[test]
-    fn test_parse_high_low() {
+    fn test_parse_high_low_basic() {
         let value = Some(LabelValue {
             label: Some("Today's High/Low".to_string()),
             value: Some("$227.07/$225.91".to_string()),
         });
-
         let (high, low) = NasdaqClient::parse_high_low(&value);
         assert!((high.unwrap() - 227.07).abs() < 0.01);
         assert!((low.unwrap() - 225.91).abs() < 0.01);
     }
 
     #[test]
+    fn test_parse_high_low_no_dollar_signs() {
+        let value = Some(LabelValue {
+            label: None,
+            value: Some("237.23/164.075".to_string()),
+        });
+        let (high, low) = NasdaqClient::parse_high_low(&value);
+        assert_eq!(high, Some(237.23));
+        assert_eq!(low, Some(164.075));
+    }
+
+    #[test]
+    fn test_parse_high_low_malformed() {
+        let value = Some(LabelValue {
+            label: None,
+            value: Some("N/A".to_string()),
+        });
+        let (h, l) = NasdaqClient::parse_high_low(&value);
+        assert!(h.is_none() && l.is_none());
+
+        let none_val = Some(LabelValue {
+            label: None,
+            value: None,
+        });
+        let (h, l) = NasdaqClient::parse_high_low(&none_val);
+        assert!(h.is_none() && l.is_none());
+
+        let (h, l) = NasdaqClient::parse_high_low(&None);
+        assert!(h.is_none() && l.is_none());
+    }
+
+    #[test]
     fn test_parse_dollar_value() {
-        assert_eq!(
-            NasdaqClient::parse_dollar_value(&Some("$226.51".to_string())),
-            Some(226.51)
-        );
-        assert_eq!(
-            NasdaqClient::parse_dollar_value(&Some("$1,234.56".to_string())),
-            Some(1234.56)
-        );
+        assert_eq!(NasdaqClient::parse_dollar_value(&Some("$226.51".to_string())), Some(226.51));
+        assert_eq!(NasdaqClient::parse_dollar_value(&Some("$1,234.56".to_string())), Some(1234.56));
+        assert_eq!(NasdaqClient::parse_dollar_value(&Some("  $0.00 ".to_string())), Some(0.0));
+        assert_eq!(NasdaqClient::parse_dollar_value(&Some("N/A".to_string())), None);
+        assert_eq!(NasdaqClient::parse_dollar_value(&Some("--".to_string())), None);
+        assert_eq!(NasdaqClient::parse_dollar_value(&Some("".to_string())), None);
+        assert_eq!(NasdaqClient::parse_dollar_value(&None), None);
     }
 
     #[test]
     fn test_parse_number_with_commas() {
-        assert_eq!(
-            NasdaqClient::parse_number_with_commas(&Some("67,622,607".to_string())),
-            Some(67622607.0)
-        );
+        assert_eq!(NasdaqClient::parse_number_with_commas(&Some("67,622,607".to_string())), Some(67_622_607.0));
+        assert_eq!(NasdaqClient::parse_number_with_commas(&Some("1000".to_string())), Some(1000.0));
+        assert_eq!(NasdaqClient::parse_number_with_commas(&Some("N/A".to_string())), None);
+        assert_eq!(NasdaqClient::parse_number_with_commas(&Some("".to_string())), None);
     }
 
     #[test]
     fn test_parse_percentage() {
-        assert_eq!(
-            NasdaqClient::parse_percentage(&Some("0.44%".to_string())),
-            Some(0.44)
-        );
-        assert_eq!(
-            NasdaqClient::parse_percentage(&Some("-6.30%".to_string())),
-            Some(-6.30)
-        );
+        assert_eq!(NasdaqClient::parse_percentage(&Some("0.44%".to_string())), Some(0.44));
+        assert_eq!(NasdaqClient::parse_percentage(&Some("-6.30%".to_string())), Some(-6.30));
+        assert_eq!(NasdaqClient::parse_percentage(&Some("  12.5%  ".to_string())), Some(12.5));
+        assert_eq!(NasdaqClient::parse_percentage(&Some("N/A".to_string())), None);
+        assert_eq!(NasdaqClient::parse_percentage(&Some("--".to_string())), None);
+        assert_eq!(NasdaqClient::parse_percentage(&None), None);
     }
 
     #[test]
     fn test_parse_signed_number() {
-        assert_eq!(
-            NasdaqClient::parse_signed_number(&Some("-0.23".to_string())),
-            Some(-0.23)
-        );
-        assert_eq!(
-            NasdaqClient::parse_signed_number(&Some("1.45".to_string())),
-            Some(1.45)
-        );
-        assert_eq!(
-            NasdaqClient::parse_signed_number(&Some("-1,234.56".to_string())),
-            Some(-1234.56)
-        );
+        assert_eq!(NasdaqClient::parse_signed_number(&Some("-0.23".to_string())), Some(-0.23));
+        assert_eq!(NasdaqClient::parse_signed_number(&Some("1.45".to_string())), Some(1.45));
+        assert_eq!(NasdaqClient::parse_signed_number(&Some("-1,234.56".to_string())), Some(-1234.56));
+        assert_eq!(NasdaqClient::parse_signed_number(&Some("N/A".to_string())), None);
+        assert_eq!(NasdaqClient::parse_signed_number(&None), None);
+    }
+
+    #[test]
+    fn test_parse_json_number_variants() {
+        assert_eq!(NasdaqClient::parse_json_number(&Some(serde_json::json!(12.5))), Some(12.5));
+        assert_eq!(NasdaqClient::parse_json_number(&Some(serde_json::json!("33.25"))), Some(33.25));
+        assert_eq!(NasdaqClient::parse_json_number(&Some(serde_json::json!("N/A"))), None);
+        assert_eq!(NasdaqClient::parse_json_number(&Some(serde_json::json!(null))), None);
+        assert_eq!(NasdaqClient::parse_json_number(&None), None);
+    }
+
+    // ---- parse_technicals_response ------------------------------------------
+
+    fn technicals_fixture_common_stock() -> &'static str {
+        r#"{
+            "data": {
+                "symbol": "AAPL",
+                "primaryData": {
+                    "lastSalePrice": "$226.51",
+                    "netChange": "+1.45",
+                    "percentageChange": "0.64%"
+                },
+                "summaryData": {
+                    "Exchange":           {"label": "Exchange",          "value": "NASDAQ-GS"},
+                    "Sector":             {"label": "Sector",            "value": "Technology"},
+                    "Industry":           {"label": "Industry",          "value": "Computer Hardware"},
+                    "OneYrTarget":        {"label": "1 Yr Target",       "value": "$250.00"},
+                    "TodayHighLow":       {"label": "Today's High/Low",  "value": "$227.07/$225.91"},
+                    "ShareVolume":        {"label": "Share Volume",      "value": "67,622,607"},
+                    "AverageVolume":      {"label": "Average Volume",    "value": "55,000,000"},
+                    "PreviousClose":      {"label": "Previous Close",    "value": "$225.06"},
+                    "FiftTwoWeekHighLow": {"label": "52 Week High/Low",  "value": "$237.23/$164.08"},
+                    "MarketCap":          {"label": "Market Cap",        "value": "3,400,000,000,000"},
+                    "PERatio":            {"label": "P/E Ratio",         "value": 30.5},
+                    "ForwardPE1Yr":       {"label": "Forward P/E",       "value": "$28.00"},
+                    "EarningsPerShare":   {"label": "EPS",               "value": "$6.50"},
+                    "AnnualizedDividend": {"label": "Annualized Div",    "value": "$0.96"},
+                    "ExDividendDate":     {"label": "Ex Div Date",       "value": "2024-11-08"},
+                    "DividendPaymentDate":{"label": "Div Pay Date",      "value": "2024-11-14"},
+                    "Yield":              {"label": "Yield",             "value": "0.44%"}
+                }
+            },
+            "status": {"rCode": 200}
+        }"#
+    }
+
+    #[test]
+    fn test_parse_technicals_common_stock() {
+        let t = parse_technicals_response(technicals_fixture_common_stock(), "AAPL").unwrap();
+        assert_eq!(t.last_sale_price, Some(226.51));
+        assert_eq!(t.net_change, Some(1.45));
+        assert_eq!(t.percentage_change, Some(0.64));
+        assert_eq!(t.sector.as_deref(), Some("Technology"));
+        assert_eq!(t.one_year_target, Some(250.0));
+        assert_eq!(t.todays_high, Some(227.07));
+        assert_eq!(t.todays_low, Some(225.91));
+        assert_eq!(t.share_volume, Some(67_622_607.0));
+        assert_eq!(t.fifty_two_week_high, Some(237.23));
+        assert_eq!(t.fifty_two_week_low, Some(164.08));
+        assert_eq!(t.pe_ratio, Some(30.5));
+        assert_eq!(t.eps, Some(6.5));
+        assert_eq!(t.current_yield, Some(0.44));
+    }
+
+    #[test]
+    fn test_parse_technicals_warrant_no_summary_data() {
+        // Warrants often lack `summaryData`. Must not crash the parser —
+        // should return `Ok` with mostly-None fields plus primaryData.
+        let json = r#"{
+            "data": {
+                "symbol": "AAPL.WS",
+                "primaryData": {
+                    "lastSalePrice": "$0.15",
+                    "netChange": "0.00",
+                    "percentageChange": "0.00%"
+                },
+                "summaryData": null
+            },
+            "status": {"rCode": 200}
+        }"#;
+        let t = parse_technicals_response(json, "AAPL.WS").unwrap();
+        assert_eq!(t.last_sale_price, Some(0.15));
+        assert!(t.sector.is_none());
+        assert!(t.one_year_target.is_none());
+        assert!(t.todays_high.is_none());
+        assert!(t.pe_ratio.is_none());
+    }
+
+    #[test]
+    fn test_parse_technicals_na_values() {
+        // Many small-cap stocks have "N/A" for P/E, yield, etc.
+        let json = r#"{
+            "data": {
+                "symbol": "TINY",
+                "primaryData": {
+                    "lastSalePrice": "$1.23",
+                    "netChange": "0.01",
+                    "percentageChange": "0.82%"
+                },
+                "summaryData": {
+                    "PERatio":  {"label": "P/E Ratio",  "value": "N/A"},
+                    "Yield":    {"label": "Yield",      "value": "N/A"},
+                    "EarningsPerShare": {"label": "EPS", "value": "N/A"},
+                    "OneYrTarget": {"label": "Target", "value": ""}
+                }
+            }
+        }"#;
+        let t = parse_technicals_response(json, "TINY").unwrap();
+        assert!(t.pe_ratio.is_none());
+        assert!(t.current_yield.is_none());
+        assert!(t.eps.is_none());
+        assert!(t.one_year_target.is_none());
+    }
+
+    #[test]
+    fn test_parse_technicals_no_data() {
+        let json = r#"{"data": null, "status": {"rCode": 400}}"#;
+        let err = parse_technicals_response(json, "ZZZ").unwrap_err();
+        assert!(err.to_string().contains("No data"));
+    }
+
+    #[test]
+    fn test_parse_technicals_invalid_json() {
+        let err = parse_technicals_response("not json", "AAPL").unwrap_err();
+        assert!(err.to_string().contains("Failed to parse"));
+    }
+
+    // ---- parse_news_response ------------------------------------------------
+
+    #[test]
+    fn test_parse_news_response_rows() {
+        let json = r#"{
+            "data": {
+                "rows": [
+                    {
+                        "title": "Apple beats earnings",
+                        "url": "/articles/apple-beats-earnings",
+                        "publisher": "Reuters",
+                        "created": "2024-01-01",
+                        "ago": "2 hours ago"
+                    },
+                    {
+                        "title": null,
+                        "url": "/articles/missing-title",
+                        "publisher": "Bloomberg"
+                    },
+                    {
+                        "title": "Has title but no url",
+                        "url": null
+                    }
+                ]
+            }
+        }"#;
+        let news = parse_news_response(json, "AAPL").unwrap();
+        assert_eq!(news.len(), 1, "rows missing title or url must be dropped");
+        assert_eq!(news[0].title, "Apple beats earnings");
+        assert!(news[0].url.starts_with("https://www.nasdaq.com"));
+        assert_eq!(news[0].publisher.as_deref(), Some("Reuters"));
+    }
+
+    #[test]
+    fn test_parse_news_response_empty() {
+        let empty_rows = r#"{"data": {"rows": []}}"#;
+        assert!(parse_news_response(empty_rows, "AAPL").unwrap().is_empty());
+
+        let no_rows = r#"{"data": {}}"#;
+        assert!(parse_news_response(no_rows, "AAPL").unwrap().is_empty());
+
+        let no_data = r#"{"data": null}"#;
+        assert!(parse_news_response(no_data, "AAPL").unwrap().is_empty());
+    }
+
+    // ---- parse_insider_trades_response --------------------------------------
+
+    #[test]
+    fn test_parse_insider_trades_rows() {
+        let json = r#"{
+            "data": {
+                "transactionTable": {
+                    "rows": [
+                        {
+                            "insider": "TIM COOK",
+                            "relation": "Chief Executive Officer",
+                            "transactionType": "Sale",
+                            "lastDate": "11/01/2024",
+                            "sharesTraded": "50,000",
+                            "price": "$226.51",
+                            "sharesHeld": "3,280,994"
+                        },
+                        {
+                            "insider": null,
+                            "relation": "Director"
+                        }
+                    ]
+                }
+            }
+        }"#;
+        let trades = parse_insider_trades_response(json, "AAPL").unwrap();
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].insider_name, "TIM COOK");
+        assert_eq!(trades[0].shares_traded, Some(50_000.0));
+        assert_eq!(trades[0].price, Some(226.51));
+        assert_eq!(trades[0].shares_held, Some(3_280_994.0));
+    }
+
+    #[test]
+    fn test_parse_insider_trades_missing_type_defaults_unknown() {
+        let json = r#"{
+            "data": {
+                "transactionTable": {
+                    "rows": [
+                        {"insider": "SOMEONE"}
+                    ]
+                }
+            }
+        }"#;
+        let trades = parse_insider_trades_response(json, "X").unwrap();
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].transaction_type, "Unknown");
+        assert!(trades[0].shares_traded.is_none());
+        assert!(trades[0].price.is_none());
+    }
+
+    #[test]
+    fn test_parse_insider_trades_missing_tables() {
+        let no_table = r#"{"data": {}}"#;
+        assert!(parse_insider_trades_response(no_table, "X").unwrap().is_empty());
+
+        let no_data = r#"{"data": null}"#;
+        assert!(parse_insider_trades_response(no_data, "X").unwrap().is_empty());
+
+        let empty_rows = r#"{"data": {"transactionTable": {"rows": []}}}"#;
+        assert!(parse_insider_trades_response(empty_rows, "X").unwrap().is_empty());
     }
 }

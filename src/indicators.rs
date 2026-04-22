@@ -75,19 +75,41 @@ impl TechnicalIndicators {
         Some(sum / period as f64)
     }
 
-    /// Calculate MACD (Moving Average Convergence Divergence)
+    /// Calculate MACD (Moving Average Convergence Divergence) with a real
+    /// signal line computed as EMA(9) of the MACD series.
+    ///
+    /// Requires at least 34 bars (`26 + 9 - 1`) so the signal EMA has enough
+    /// MACD samples to seed itself.
     pub fn calculate_macd(prices: &[HistoricalPrice]) -> Option<MACDIndicator> {
-        if prices.len() < 26 {
+        const FAST: usize = 12;
+        const SLOW: usize = 26;
+        const SIGNAL: usize = 9;
+
+        if prices.len() < SLOW + SIGNAL - 1 {
             return None;
         }
 
-        let ema_12 = Self::calculate_ema(prices, 12)?;
-        let ema_26 = Self::calculate_ema(prices, 26)?;
-        let macd_line = ema_12 - ema_26;
+        let closes: Vec<f64> = prices.iter().map(|p| p.close).collect();
+        let ema_fast = ema_series(&closes, FAST);
+        let ema_slow = ema_series(&closes, SLOW);
 
-        // For signal line, we'd need to calculate EMA of MACD values
-        // Simplified version using the current MACD value
-        let signal_line = macd_line * 0.9; // Approximation
+        // `ema_fast` starts at index FAST-1 in `closes`; `ema_slow` at SLOW-1.
+        // Align `ema_fast` forward by `SLOW - FAST` so the two series start on
+        // the same bar.
+        let offset = SLOW - FAST;
+        let macd_series: Vec<f64> = ema_slow
+            .iter()
+            .enumerate()
+            .map(|(i, &slow)| ema_fast[i + offset] - slow)
+            .collect();
+
+        if macd_series.len() < SIGNAL {
+            return None;
+        }
+
+        let signal_series = ema_series(&macd_series, SIGNAL);
+        let macd_line = *macd_series.last()?;
+        let signal_line = *signal_series.last()?;
         let histogram = macd_line - signal_line;
 
         Some(MACDIndicator {
@@ -97,31 +119,14 @@ impl TechnicalIndicators {
         })
     }
 
-    /// Calculate Exponential Moving Average
+    /// Calculate Exponential Moving Average — chronological, seeded with the
+    /// SMA of the first `period` samples. Returns `None` if `prices.len() < period`.
     fn calculate_ema(prices: &[HistoricalPrice], period: usize) -> Option<f64> {
         if prices.len() < period {
             return None;
         }
-
-        let multiplier = 2.0 / (period as f64 + 1.0);
-        
-        // Start with SMA
-        let initial_sma: f64 = prices
-            .iter()
-            .rev()
-            .skip(prices.len() - period)
-            .take(period)
-            .map(|p| p.close)
-            .sum::<f64>() / period as f64;
-
-        let mut ema = initial_sma;
-
-        // Calculate EMA for remaining prices
-        for price in prices.iter().rev().take(prices.len() - period) {
-            ema = (price.close - ema) * multiplier + ema;
-        }
-
-        Some(ema)
+        let closes: Vec<f64> = prices.iter().map(|p| p.close).collect();
+        ema_series(&closes, period).last().copied()
     }
 
     /// Calculate Bollinger Bands
@@ -240,6 +245,24 @@ impl TechnicalIndicators {
     }
 }
 
+/// Compute the EMA series for `closes`, seeded with the SMA of the first
+/// `period` values. The returned vector has length `closes.len() - period + 1`
+/// (empty if there aren't enough samples). Iterates chronologically.
+fn ema_series(closes: &[f64], period: usize) -> Vec<f64> {
+    if closes.len() < period || period == 0 {
+        return Vec::new();
+    }
+    let k = 2.0 / (period as f64 + 1.0);
+    let mut out = Vec::with_capacity(closes.len() - period + 1);
+    let mut ema: f64 = closes[..period].iter().sum::<f64>() / period as f64;
+    out.push(ema);
+    for &c in &closes[period..] {
+        ema = (c - ema) * k + ema;
+        out.push(ema);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,39 +343,103 @@ mod tests {
 
     #[test]
     fn test_macd_calculation() {
-        // Need at least 26 days for MACD
+        // Need at least 34 days (26 + 9 - 1) for MACD with a real signal EMA.
         let mut price_values = Vec::new();
-        for i in 0..30 {
+        for i in 0..40 {
             price_values.push(100.0 + i as f64 * 0.5);
         }
         let prices = create_test_prices(price_values);
 
-        let macd = TechnicalIndicators::calculate_macd(&prices);
-        assert!(macd.is_some(), "MACD should calculate with 30 days of data");
-        
-        let macd_indicator = macd.unwrap();
-        assert!(macd_indicator.macd_line.abs() > 0.0, "MACD line should be non-zero");
-        assert!(macd_indicator.signal_line.abs() > 0.0, "Signal line should be non-zero");
+        let macd = TechnicalIndicators::calculate_macd(&prices).unwrap();
+        assert!(macd.macd_line > 0.0, "Uptrend → positive MACD line, got {}", macd.macd_line);
+        assert!(macd.signal_line > 0.0);
+        // Histogram definition holds exactly.
+        assert!((macd.histogram - (macd.macd_line - macd.signal_line)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_macd_regression_not_fake_signal() {
+        // Regression: previous implementation set signal_line = macd_line * 0.9,
+        // so histogram was always exactly 0.1 * macd_line. Verify we now have a
+        // real EMA(9) signal line by crafting data where the relationship breaks.
+        let mut prices = Vec::new();
+        for _ in 0..30 { prices.push(100.0); }          // flat for 30 bars
+        for i in 0..10 { prices.push(100.0 + i as f64 * 0.01); } // tiny up-tick
+        let prices = create_test_prices(prices);
+
+        let macd = TechnicalIndicators::calculate_macd(&prices).unwrap();
+        // Signal line is EMA(9) of MACD series; MACD series was 0 for ages so
+        // signal_line should be tiny and positive but STRICTLY less than MACD,
+        // and the ratio must NOT be the old 0.9.
+        assert!(macd.macd_line > 0.0);
+        assert!(macd.signal_line >= 0.0);
+        assert!(macd.signal_line < macd.macd_line);
+        let ratio = macd.signal_line / macd.macd_line;
+        assert!(
+            (ratio - 0.9).abs() > 0.01,
+            "signal_line/macd_line should not be the old 0.9 approximation, got {}",
+            ratio
+        );
+        // Histogram sanity: equals diff.
+        assert!((macd.histogram - (macd.macd_line - macd.signal_line)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_macd_flat_series_gives_zero() {
+        let prices = create_test_prices(vec![100.0; 40]);
+        let macd = TechnicalIndicators::calculate_macd(&prices).unwrap();
+        assert!(macd.macd_line.abs() < 1e-9);
+        assert!(macd.signal_line.abs() < 1e-9);
+        assert!(macd.histogram.abs() < 1e-9);
     }
 
     #[test]
     fn test_macd_insufficient_data() {
         let prices = create_test_prices(vec![100.0, 102.0, 104.0, 106.0, 108.0]);
         let macd = TechnicalIndicators::calculate_macd(&prices);
-        assert!(macd.is_none(), "MACD should return None with < 26 days");
+        assert!(macd.is_none(), "MACD should return None with < 34 bars");
+
+        // Boundary: exactly 33 bars should still be None.
+        let prices33 = create_test_prices((0..33).map(|i| 100.0 + i as f64).collect());
+        assert!(TechnicalIndicators::calculate_macd(&prices33).is_none());
+
+        // 34 bars is enough.
+        let prices34 = create_test_prices((0..34).map(|i| 100.0 + i as f64).collect());
+        assert!(TechnicalIndicators::calculate_macd(&prices34).is_some());
     }
 
     #[test]
-    fn test_ema_calculation() {
+    fn test_ema_calculation_chronological() {
+        // 13 bars rising 100 → 112. Initial SMA(12) = mean(100..111) = 105.5.
+        // After one step with close=112, k = 2/13, so
+        // EMA = (112 - 105.5) * 2/13 + 105.5 ≈ 106.5.
         let prices = create_test_prices(vec![
             100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0,
             108.0, 109.0, 110.0, 111.0, 112.0,
         ]);
 
-        let ema = TechnicalIndicators::calculate_ema(&prices, 12);
-        assert!(ema.is_some());
-        let ema_value = ema.unwrap();
-        assert!(ema_value > 100.0 && ema_value < 115.0, "EMA should be in reasonable range, got {}", ema_value);
+        let ema = TechnicalIndicators::calculate_ema(&prices, 12).unwrap();
+        assert!((ema - 106.5).abs() < 0.01, "EMA(12) chronological should be ~106.5, got {}", ema);
+    }
+
+    #[test]
+    fn test_ema_regression_direction_sensitive() {
+        // An uptrend must produce EMA > the oldest SMA seed. The pre-fix
+        // implementation iterated in reverse and could push the EMA toward the
+        // older (lower) values.
+        let prices = create_test_prices((0..30).map(|i| 100.0 + i as f64).collect());
+        let ema = TechnicalIndicators::calculate_ema(&prices, 12).unwrap();
+        let seed_sma: f64 = (0..12).map(|i| 100.0 + i as f64).sum::<f64>() / 12.0; // 105.5
+        assert!(ema > seed_sma, "Uptrend EMA must exceed initial SMA seed ({} vs {})", ema, seed_sma);
+        // And must be below the latest close.
+        assert!(ema < 129.0);
+    }
+
+    #[test]
+    fn test_ema_flat_returns_constant() {
+        let prices = create_test_prices(vec![50.0; 30]);
+        let ema = TechnicalIndicators::calculate_ema(&prices, 12).unwrap();
+        assert!((ema - 50.0).abs() < 1e-9);
     }
 
     #[test]
@@ -452,44 +539,96 @@ mod tests {
         let rsi_value = rsi.unwrap();
         assert!(rsi_value > 80.0, "RSI with all gains should be very high, got {}", rsi_value);
     }
-}
 
-#[cfg(test)]
-mod tests_backup {
-    use super::*;
-    use chrono::Utc;
+    // ---- Edge cases: flat / alternating / zero-range ----------------------
 
     #[test]
-    fn test_sma_calculation() {
-        let prices = vec![
-            HistoricalPrice {
-                date: Utc::now(),
-                open: 100.0,
-                high: 105.0,
-                low: 99.0,
-                close: 102.0,
-                volume: 1000.0,
-            },
-            HistoricalPrice {
-                date: Utc::now(),
-                open: 102.0,
-                high: 106.0,
-                low: 101.0,
-                close: 104.0,
-                volume: 1000.0,
-            },
-            HistoricalPrice {
-                date: Utc::now(),
-                open: 104.0,
-                high: 108.0,
-                low: 103.0,
-                close: 106.0,
-                volume: 1000.0,
-            },
-        ];
+    fn test_rsi_flat_series_returns_50() {
+        let prices = create_test_prices(vec![100.0; 20]);
+        let rsi = TechnicalIndicators::calculate_rsi(&prices, 14).unwrap();
+        assert!((rsi - 50.0).abs() < 1e-9, "Flat series should yield RSI=50, got {}", rsi);
+    }
 
-        let sma = TechnicalIndicators::calculate_sma(&prices, 3);
-        assert!(sma.is_some());
-        assert!((sma.unwrap() - 104.0).abs() < 0.01);
+    #[test]
+    fn test_rsi_alternating_near_50() {
+        // +1/-1 alternating — average gain == average loss → RSI near 50.
+        let mut closes = Vec::new();
+        let mut p = 100.0;
+        for i in 0..20 {
+            closes.push(p);
+            p += if i % 2 == 0 { 1.0 } else { -1.0 };
+        }
+        let prices = create_test_prices(closes);
+        let rsi = TechnicalIndicators::calculate_rsi(&prices, 14).unwrap();
+        assert!(
+            (rsi - 50.0).abs() < 10.0,
+            "Alternating series RSI should be near 50, got {}",
+            rsi
+        );
+    }
+
+    #[test]
+    fn test_rsi_recovery_after_drop() {
+        // Sharp drop then strong recovery — RSI should climb back above 50.
+        let mut closes = vec![100.0, 95.0, 90.0, 85.0, 80.0, 75.0, 70.0];
+        for i in 1..=15 {
+            closes.push(70.0 + i as f64 * 2.0);
+        }
+        let prices = create_test_prices(closes);
+        let rsi = TechnicalIndicators::calculate_rsi(&prices, 14).unwrap();
+        assert!(rsi > 50.0, "RSI after recovery should be > 50, got {}", rsi);
+    }
+
+    #[test]
+    fn test_bollinger_bands_flat_prices() {
+        let prices = create_test_prices(vec![50.0; 25]);
+        let bb = TechnicalIndicators::calculate_bollinger_bands(&prices, 20, 2.0).unwrap();
+        assert!((bb.middle_band - 50.0).abs() < 1e-9);
+        assert!((bb.upper_band - 50.0).abs() < 1e-9);
+        assert!((bb.lower_band - 50.0).abs() < 1e-9);
+        assert!(bb.bandwidth.abs() < 1e-9, "Flat prices → zero bandwidth");
+    }
+
+    #[test]
+    fn test_bollinger_bands_zero_middle_fallback() {
+        // If middle_band is 0 (pathological), bandwidth must be 0, not NaN.
+        let prices = create_test_prices(vec![0.0; 25]);
+        let bb = TechnicalIndicators::calculate_bollinger_bands(&prices, 20, 2.0).unwrap();
+        assert_eq!(bb.bandwidth, 0.0);
+        assert!(bb.upper_band.is_finite() && bb.lower_band.is_finite());
+    }
+
+    #[test]
+    fn test_stochastic_zero_range_fallback() {
+        // Highs == lows → range is 0 → formula would divide by zero.
+        // Must return 50.0 (mid-range) instead of NaN.
+        let mut prices = Vec::new();
+        for _ in 0..20 {
+            prices.push(HistoricalPrice {
+                date: chrono::Utc::now(),
+                open: 100.0,
+                high: 100.0,
+                low: 100.0,
+                close: 100.0,
+                volume: 1000.0,
+            });
+        }
+        let stoch = TechnicalIndicators::calculate_stochastic(&prices, 14, 3).unwrap();
+        assert!((stoch.k_line - 50.0).abs() < 1e-9);
+        assert!((stoch.d_line - 50.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_stochastic_at_top_of_range() {
+        // Close equals the high over the lookback → %K = 100.
+        let mut prices = create_test_prices(
+            (0..20).map(|i| 100.0 + i as f64).collect::<Vec<f64>>(),
+        );
+        // Force close == max high in the last 14 bars.
+        let max_high = prices.iter().rev().take(14).map(|p| p.high).fold(f64::NEG_INFINITY, f64::max);
+        prices.last_mut().unwrap().close = max_high;
+        let stoch = TechnicalIndicators::calculate_stochastic(&prices, 14, 3).unwrap();
+        assert!(stoch.k_line > 99.0, "Close at top → K near 100, got {}", stoch.k_line);
     }
 }
+

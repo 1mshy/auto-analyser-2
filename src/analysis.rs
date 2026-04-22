@@ -23,6 +23,8 @@ pub struct AnalysisEngine {
     yahoo_delay_ms: u64,
     yahoo_concurrency: usize,
     cached_symbols: Arc<RwLock<Vec<(String, Option<f64>)>>>,
+    min_market_cap_usd: f64,
+    max_abs_price_change_percent: f64,
 }
 
 impl AnalysisEngine {
@@ -33,6 +35,8 @@ impl AnalysisEngine {
         yahoo_delay_ms: u64,
         yahoo_concurrency: usize,
         nasdaq_delay_ms: u64,
+        min_market_cap_usd: f64,
+        max_abs_price_change_percent: f64,
     ) -> Self {
         let progress = Arc::new(RwLock::new(AnalysisProgress {
             total_stocks: 0,
@@ -60,6 +64,8 @@ impl AnalysisEngine {
             yahoo_delay_ms,
             yahoo_concurrency,
             cached_symbols: Arc::new(RwLock::new(Vec::new())),
+            min_market_cap_usd,
+            max_abs_price_change_percent,
         }
     }
 
@@ -263,6 +269,27 @@ impl AnalysisEngine {
         market_cap: Option<f64>,
         historical_prices: Vec<HistoricalPrice>,
     ) -> anyhow::Result<StockAnalysis> {
+        // Data-quality gate: reject thinly-traded / brand-new / delisted stocks
+        // before running any indicator math. Without this, the feed fills up
+        // with tickers whose RSI is based on 5 bars of zero-volume noise.
+        const MIN_BARS: usize = 30;
+        if historical_prices.len() < MIN_BARS {
+            return Err(anyhow::anyhow!(
+                "{}: only {} bars (need {}+)",
+                symbol, historical_prices.len(), MIN_BARS
+            ));
+        }
+
+        let latest_price = historical_prices.last()
+            .ok_or_else(|| anyhow::anyhow!("No price data for {}", symbol))?;
+
+        if latest_price.volume <= 0.0 {
+            return Err(anyhow::anyhow!(
+                "{}: latest bar has zero volume, refusing to save analysis",
+                symbol
+            ));
+        }
+
         // Calculate technical indicators
         let rsi = TechnicalIndicators::calculate_rsi(&historical_prices, 14);
         let sma_20 = TechnicalIndicators::calculate_sma(&historical_prices, 20);
@@ -270,9 +297,6 @@ impl AnalysisEngine {
         let macd = TechnicalIndicators::calculate_macd(&historical_prices);
         let bollinger = TechnicalIndicators::calculate_bollinger_bands(&historical_prices, 20, 2.0);
         let stochastic = TechnicalIndicators::calculate_stochastic(&historical_prices, 14, 3);
-
-        let latest_price = historical_prices.last()
-            .ok_or_else(|| anyhow::anyhow!("No price data for {}", symbol))?;
 
         // Fetch NASDAQ technicals
         let technicals = match self.nasdaq_client.get_technicals(symbol).await {
@@ -326,6 +350,16 @@ impl AnalysisEngine {
         } else {
             (None, None)
         };
+
+        // Drop runaway day-gainers/losers that the user doesn't want in the feed.
+        if let Some(pct) = price_change_percent {
+            if pct.abs() > self.max_abs_price_change_percent {
+                return Err(anyhow::anyhow!(
+                    "{}: |price_change_percent| {:.2}% exceeds max {:.2}%",
+                    symbol, pct, self.max_abs_price_change_percent
+                ));
+            }
+        }
 
         Ok(StockAnalysis {
             id: None,
@@ -390,7 +424,7 @@ impl AnalysisEngine {
 
     async fn fetch_nasdaq_stocks(&self) -> anyhow::Result<Vec<(String, Option<f64>)>> {
         let url = "https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=0";
-        
+
         let response = self.http_client
             .get(url)
             .send()
@@ -398,22 +432,24 @@ impl AnalysisEngine {
             .error_for_status()?;
 
         let nasdaq_response: NasdaqResponse = response.json().await?;
-        
+
+        let min_cap = self.min_market_cap_usd;
+        let total_before = nasdaq_response.data.table.rows.len();
+
         let mut stocks: Vec<(String, Option<f64>)> = nasdaq_response
             .data
             .table
             .rows
             .into_iter()
             .filter_map(|stock| {
-                // Parse market cap (format: "1,234,567,890" or "0")
-                let market_cap = Self::parse_market_cap(&stock.market_cap);
-                
-                // Only include stocks with valid symbols and market cap
-                if !stock.symbol.is_empty() && market_cap.is_some() {
-                    Some((stock.symbol, market_cap))
-                } else {
-                    None
+                if stock.symbol.is_empty() || is_junk_symbol(&stock.symbol) {
+                    return None;
                 }
+                let mc = parse_market_cap(&stock.market_cap)?;
+                if mc < min_cap {
+                    return None;
+                }
+                Some((stock.symbol, Some(mc)))
             })
             .collect();
 
@@ -423,23 +459,181 @@ impl AnalysisEngine {
             let cap_b = b.1.unwrap_or(0.0);
             cap_b.partial_cmp(&cap_a).unwrap_or(std::cmp::Ordering::Equal)
         });
-        
+
+        info!(
+            "NASDAQ screener: {} rows → {} after junk/market-cap filter (min_cap=${:.0})",
+            total_before, stocks.len(), min_cap
+        );
+
         Ok(stocks)
     }
 
     fn parse_market_cap(market_cap_str: &str) -> Option<f64> {
-        // Remove dollar signs, commas, and whitespace, then parse
-        // Examples: "$1,234,567,890", "1234567890", "$0"
-        let cleaned = market_cap_str
-            .replace('$', "")
-            .replace(',', "")
-            .trim()
-            .to_string();
-        
-        if cleaned.is_empty() || cleaned == "0" {
-            return None;
+        parse_market_cap(market_cap_str)
+    }
+}
+
+/// Reject warrants, units, rights, preferred shares, and other non-common-stock
+/// tickers that clutter the NASDAQ screener. Match is case-insensitive on the
+/// *suffix* following a dot/dash/slash so we don't accidentally drop legit
+/// symbols like "AAPL" or "BRK-B".
+///
+/// Examples we filter out:
+///   * `FOO.W`, `FOO.WS`, `FOO/WS`, `FOO-W` — warrants
+///   * `FOO.U`, `FOO-U` — units (typical SPAC structure)
+///   * `FOO.R`, `FOO-R` — rights
+pub(crate) fn is_junk_symbol(symbol: &str) -> bool {
+    // Find the suffix after the last '.', '-', or '/'. Case-insensitive.
+    let upper = symbol.to_ascii_uppercase();
+    let last_sep = upper.rfind(|c: char| c == '.' || c == '-' || c == '/');
+    let Some(idx) = last_sep else { return false; };
+    let suffix = &upper[idx + 1..];
+
+    // Preserved as common-stock sub-classes we must NOT reject, despite their
+    // separator-prefixed letters. BRK-B, BF-B, HEI-A, GOOG-L style tickers are
+    // single-letter share classes (A/B/C/K/L), not warrants/units/rights.
+    // Warrants/units/rights use a distinct set of suffixes:
+    matches!(suffix, "W" | "WS" | "WSA" | "WSB" | "U" | "UN" | "R" | "RT")
+}
+
+/// Parse a NASDAQ screener `marketCap` string.
+/// Accepts `"$1,234,567,890"`, `"1234567890"`; rejects empty / `"0"` / `"N/A"`.
+pub(crate) fn parse_market_cap(market_cap_str: &str) -> Option<f64> {
+    let cleaned = market_cap_str
+        .replace('$', "")
+        .replace(',', "");
+    let cleaned = cleaned.trim();
+
+    if cleaned.is_empty() || cleaned == "0" {
+        return None;
+    }
+
+    let v = cleaned.parse::<f64>().ok()?;
+    // Defensive: NASDAQ occasionally emits negative or NaN-ish placeholder values.
+    if !v.is_finite() || v <= 0.0 {
+        return None;
+    }
+    Some(v)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{NasdaqResponse, NasdaqStock};
+
+    #[test]
+    fn test_parse_market_cap_valid() {
+        assert_eq!(parse_market_cap("$1,234,567,890"), Some(1_234_567_890.0));
+        assert_eq!(parse_market_cap("1234567890"), Some(1_234_567_890.0));
+        assert_eq!(parse_market_cap("3400000000000"), Some(3_400_000_000_000.0));
+        assert_eq!(parse_market_cap("  $500,000,000 "), Some(500_000_000.0));
+    }
+
+    #[test]
+    fn test_parse_market_cap_rejects_junk() {
+        assert_eq!(parse_market_cap(""), None);
+        assert_eq!(parse_market_cap(" "), None);
+        assert_eq!(parse_market_cap("$0"), None);
+        assert_eq!(parse_market_cap("0"), None);
+        assert_eq!(parse_market_cap("N/A"), None);
+        assert_eq!(parse_market_cap("--"), None);
+        assert_eq!(parse_market_cap("-1000"), None, "negative should be rejected");
+    }
+
+    #[test]
+    fn test_nasdaq_screener_deserialization() {
+        let json = r#"{
+            "data": {
+                "table": {
+                    "rows": [
+                        {"symbol": "AAPL", "name": "Apple Inc.", "marketCap": "3,400,000,000,000"},
+                        {"symbol": "TINY", "name": "Tiny Co.",   "marketCap": "0"},
+                        {"symbol": "SPAC.U", "name": "SPAC Unit", "marketCap": "500,000,000"}
+                    ]
+                }
+            }
+        }"#;
+        let resp: NasdaqResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.data.table.rows.len(), 3);
+        assert_eq!(resp.data.table.rows[0].symbol, "AAPL");
+        assert_eq!(resp.data.table.rows[1].market_cap, "0");
+    }
+
+    #[test]
+    fn test_nasdaq_screener_filter_pipeline() {
+        // Replicate the filter in fetch_nasdaq_stocks so the filtering behavior
+        // stays covered even when it evolves.
+        let rows = vec![
+            NasdaqStock { symbol: "AAPL".to_string(), name: "Apple".to_string(), market_cap: "3,400,000,000,000".to_string() },
+            NasdaqStock { symbol: "".to_string(),     name: "Empty".to_string(), market_cap: "1,000,000".to_string() },
+            NasdaqStock { symbol: "ZERO".to_string(), name: "Zero".to_string(),  market_cap: "0".to_string() },
+        ];
+        let filtered: Vec<_> = rows.into_iter()
+            .filter_map(|s| {
+                let mc = parse_market_cap(&s.market_cap)?;
+                if s.symbol.is_empty() { return None; }
+                Some((s.symbol, mc))
+            })
+            .collect();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].0, "AAPL");
+    }
+
+    // ---- is_junk_symbol ------------------------------------------------------
+
+    #[test]
+    fn test_is_junk_symbol_rejects_warrants_and_units() {
+        for junk in &[
+            "FOO.W", "FOO.WS", "FOO/WS", "FOO-W",
+            "FOO.WSA", "FOO.WSB",
+            "FOO.U", "FOO-U", "FOO.UN",
+            "FOO.R", "FOO-R", "FOO.RT",
+            "foo.w", "foo.ws", // case-insensitive
+        ] {
+            assert!(is_junk_symbol(junk), "should be junk: {}", junk);
         }
-        
-        cleaned.parse::<f64>().ok()
+    }
+
+    #[test]
+    fn test_is_junk_symbol_keeps_common_stock() {
+        for good in &[
+            "AAPL", "MSFT", "GOOG", "BRK-B", "BF-B", "HEI-A",
+            "GOOG.L", "FOO.TO", "FOO-K", "FOO.C",
+        ] {
+            assert!(!is_junk_symbol(good), "should NOT be junk: {}", good);
+        }
+    }
+
+    // ---- End-to-end screener filter simulation ------------------------------
+
+    #[test]
+    fn test_screener_filter_with_min_market_cap_and_junk() {
+        // Mix of legit large caps, warrants/SPACs, and sub-threshold micro caps.
+        let rows = vec![
+            NasdaqStock { symbol: "AAPL".into(),   name: "Apple".into(),     market_cap: "3,400,000,000,000".into() },
+            NasdaqStock { symbol: "MSFT".into(),   name: "Microsoft".into(), market_cap: "3,000,000,000,000".into() },
+            NasdaqStock { symbol: "SPAC.U".into(), name: "SPAC Unit".into(), market_cap: "500,000,000".into() },
+            NasdaqStock { symbol: "XYZ.WS".into(), name: "Warrant".into(),   market_cap: "100,000,000".into() },
+            NasdaqStock { symbol: "MICRO".into(),  name: "Micro-cap".into(), market_cap: "50,000,000".into() },
+            NasdaqStock { symbol: "ZERO".into(),   name: "Zero".into(),      market_cap: "0".into() },
+            NasdaqStock { symbol: "BRK-B".into(),  name: "Berkshire".into(), market_cap: "1,000,000,000,000".into() },
+        ];
+        let min_cap = 300_000_000.0;
+
+        let kept: Vec<_> = rows
+            .into_iter()
+            .filter_map(|s| {
+                if s.symbol.is_empty() || is_junk_symbol(&s.symbol) {
+                    return None;
+                }
+                let mc = parse_market_cap(&s.market_cap)?;
+                if mc < min_cap {
+                    return None;
+                }
+                Some(s.symbol)
+            })
+            .collect();
+
+        assert_eq!(kept, vec!["AAPL", "MSFT", "BRK-B"]);
     }
 }

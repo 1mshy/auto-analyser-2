@@ -15,6 +15,14 @@ pub struct Config {
     pub news_cache_ttl_secs: u64,
     pub OPENROUTER_API_KEY_STOCKS: Option<String>,
     pub openrouter_enabled: bool,
+    /// Minimum market cap to accept a stock into the analysis pipeline.
+    /// Below this, the screener-dredged small-caps / shell companies are
+    /// excluded. Configurable via `MIN_MARKET_CAP_USD`.
+    pub min_market_cap_usd: f64,
+    /// Drop stocks from the current analysis cycle whose one-day
+    /// `|price_change_percent|` exceeds this threshold. Keeps runaway
+    /// gainers/losers out of the feed. Configurable via `MAX_ABS_PRICE_CHANGE_PCT`.
+    pub max_abs_price_change_percent: f64,
 }
 
 impl Config {
@@ -55,6 +63,12 @@ impl Config {
                 .parse()?,
             news_cache_ttl_secs: env::var("NEWS_CACHE_TTL_SECS")
                 .unwrap_or_else(|_| "900".to_string()) // 15 minutes
+                .parse()?,
+            min_market_cap_usd: env::var("MIN_MARKET_CAP_USD")
+                .unwrap_or_else(|_| "300000000".to_string()) // $300M
+                .parse()?,
+            max_abs_price_change_percent: env::var("MAX_ABS_PRICE_CHANGE_PCT")
+                .unwrap_or_else(|_| "25".to_string())
                 .parse()?,
             OPENROUTER_API_KEY_STOCKS,
             openrouter_enabled,

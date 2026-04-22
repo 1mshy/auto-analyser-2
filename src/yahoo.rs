@@ -269,10 +269,10 @@ impl YahooFinanceClient {
         if status == reqwest::StatusCode::FORBIDDEN {
             tracing::warn!("Got 403, refreshing crumb and retrying...");
             self.refresh_crumb().await?;
-            
+
             let crumb = self.get_crumb().await?;
             let full_url = format!("{}{}crumb={}", base_url, separator, crumb);
-            
+
             let retry_response = self.client
                 .get(&full_url)
                 .header(ACCEPT, "application/json")
@@ -280,11 +280,25 @@ impl YahooFinanceClient {
                 .await
                 .map_err(|e| anyhow!("HTTP retry request failed: {}", e))?;
 
-            if !retry_response.status().is_success() {
-                return Err(anyhow!("Request failed after crumb refresh: {}", retry_response.status()));
+            let retry_status = retry_response.status();
+
+            // The retry may itself be rate-limited. Emit the canonical
+            // "Rate limited ... (429)" message so `async_fetcher` counts it
+            // correctly instead of treating it as a generic failure.
+            if retry_status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                return Err(anyhow!("Rate limited by Yahoo Finance (429) after crumb refresh"));
             }
 
-            return retry_response.text().await
+            if !retry_status.is_success() {
+                return Err(anyhow!(
+                    "Request failed after crumb refresh: {}",
+                    retry_status
+                ));
+            }
+
+            return retry_response
+                .text()
+                .await
                 .map_err(|e| anyhow!("Failed to read response: {}", e));
         }
 
@@ -352,76 +366,9 @@ impl YahooFinanceClient {
         );
 
         tracing::debug!("Fetching {} from Yahoo Finance (query2): {}", symbol, url);
-        
+
         let text = self.fetch_with_crumb(&url).await?;
-        
-        let yahoo_response: YahooResponse = serde_json::from_str(&text)
-            .map_err(|e| anyhow!("Failed to parse JSON for {}: {}", symbol, e))?;
-
-        if let Some(error) = yahoo_response.chart.error {
-            return Err(anyhow!(
-                "Yahoo Finance error for {}: {} - {}",
-                symbol,
-                error.code,
-                error.description
-            ));
-        }
-
-        let result = yahoo_response
-            .chart
-            .result
-            .and_then(|r| r.into_iter().next())
-            .ok_or_else(|| anyhow!("No data returned for {}", symbol))?;
-
-        let timestamps = result
-            .timestamp
-            .ok_or_else(|| anyhow!("No timestamps for {}", symbol))?;
-
-        let quote = result
-            .indicators
-            .quote
-            .into_iter()
-            .next()
-            .ok_or_else(|| anyhow!("No quote data for {}", symbol))?;
-
-        let opens = quote.open.unwrap_or_default();
-        let highs = quote.high.unwrap_or_default();
-        let lows = quote.low.unwrap_or_default();
-        let closes = quote.close.unwrap_or_default();
-        let volumes = quote.volume.unwrap_or_default();
-
-        let mut prices = Vec::new();
-
-        for (i, &timestamp) in timestamps.iter().enumerate() {
-            if let (Some(Some(open)), Some(Some(high)), Some(Some(low)), Some(Some(close))) = (
-                opens.get(i),
-                highs.get(i),
-                lows.get(i),
-                closes.get(i),
-            ) {
-                let volume = volumes
-                    .get(i)
-                    .and_then(|v| v.as_ref())
-                    .copied()
-                    .unwrap_or(0) as f64;
-
-                prices.push(HistoricalPrice {
-                    date: DateTime::from_timestamp(timestamp, 0)
-                        .unwrap_or_else(|| Utc::now()),
-                    open: *open,
-                    high: *high,
-                    low: *low,
-                    close: *close,
-                    volume,
-                });
-            }
-        }
-
-        if prices.is_empty() {
-            return Err(anyhow!("No valid price data for {}", symbol));
-        }
-
-        Ok(prices)
+        parse_historical_prices(&text, symbol)
     }
 
     pub async fn get_latest_quote(&self, symbol: &str) -> Result<(f64, f64)> {
@@ -452,55 +399,7 @@ impl YahooFinanceClient {
         tracing::debug!("Fetching company profile for {} from Yahoo Finance: {}", symbol, url);
 
         let text = self.fetch_with_crumb(&url).await?;
-
-        let summary_response: QuoteSummaryResponse = serde_json::from_str(&text)
-            .map_err(|e| anyhow!("Failed to parse quoteSummary JSON for {}: {}", symbol, e))?;
-
-        if let Some(error) = summary_response.quote_summary.error {
-            return Err(anyhow!(
-                "Yahoo Finance error for {}: {} - {}",
-                symbol,
-                error.code,
-                error.description
-            ));
-        }
-
-        let data = summary_response
-            .quote_summary
-            .result
-            .and_then(|r| r.into_iter().next())
-            .ok_or_else(|| anyhow!("No data returned for {}", symbol))?;
-
-        let asset_profile = data.asset_profile;
-        let financial_data = data.financial_data;
-
-        // Build CompanyProfile from both assetProfile and financialData
-        Ok(CompanyProfile {
-            // Asset Profile fields
-            long_business_summary: asset_profile.as_ref().and_then(|p| p.long_business_summary.clone()),
-            industry: asset_profile.as_ref().and_then(|p| p.industry.clone()),
-            sector: asset_profile.as_ref().and_then(|p| p.sector.clone()),
-            website: asset_profile.as_ref().and_then(|p| p.website.clone()),
-            full_time_employees: asset_profile.as_ref().and_then(|p| p.full_time_employees),
-            city: asset_profile.as_ref().and_then(|p| p.city.clone()),
-            state: asset_profile.as_ref().and_then(|p| p.state.clone()),
-            country: asset_profile.as_ref().and_then(|p| p.country.clone()),
-            phone: asset_profile.as_ref().and_then(|p| p.phone.clone()),
-            // Financial Data fields
-            current_price: financial_data.as_ref().and_then(|f| f.current_price.as_ref().and_then(|v| v.to_f64())),
-            target_high_price: financial_data.as_ref().and_then(|f| f.target_high_price.as_ref().and_then(|v| v.to_f64())),
-            target_low_price: financial_data.as_ref().and_then(|f| f.target_low_price.as_ref().and_then(|v| v.to_f64())),
-            target_mean_price: financial_data.as_ref().and_then(|f| f.target_mean_price.as_ref().and_then(|v| v.to_f64())),
-            recommendation_key: financial_data.as_ref().and_then(|f| f.recommendation_key.clone()),
-            number_of_analyst_opinions: financial_data.as_ref().and_then(|f| f.number_of_analyst_opinions.as_ref().and_then(|v| v.to_i64())),
-            total_revenue: financial_data.as_ref().and_then(|f| f.total_revenue.as_ref().and_then(|v| v.to_f64())),
-            revenue_per_share: financial_data.as_ref().and_then(|f| f.revenue_per_share.as_ref().and_then(|v| v.to_f64())),
-            profit_margins: financial_data.as_ref().and_then(|f| f.profit_margins.as_ref().and_then(|v| v.to_f64())),
-            gross_margins: financial_data.as_ref().and_then(|f| f.gross_margins.as_ref().and_then(|v| v.to_f64())),
-            operating_margins: financial_data.as_ref().and_then(|f| f.operating_margins.as_ref().and_then(|v| v.to_f64())),
-            return_on_equity: financial_data.as_ref().and_then(|f| f.return_on_equity.as_ref().and_then(|v| v.to_f64())),
-            free_cash_flow: financial_data.as_ref().and_then(|f| f.free_cash_flow.as_ref().and_then(|v| v.to_f64())),
-        })
+        parse_company_profile(&text, symbol)
     }
 
     /// Fetch earnings data from Yahoo Finance calendarEvents module
@@ -513,50 +412,179 @@ impl YahooFinanceClient {
         tracing::debug!("Fetching earnings data for {} from Yahoo Finance", symbol);
 
         let text = self.fetch_with_crumb(&url).await?;
-
-        let summary_response: QuoteSummaryResponse = serde_json::from_str(&text)
-            .map_err(|e| anyhow!("Failed to parse earnings JSON for {}: {}", symbol, e))?;
-
-        if let Some(error) = summary_response.quote_summary.error {
-            return Err(anyhow!(
-                "Yahoo Finance error for {}: {} - {}",
-                symbol,
-                error.code,
-                error.description
-            ));
-        }
-
-        let data = summary_response
-            .quote_summary
-            .result
-            .and_then(|r| r.into_iter().next())
-            .ok_or_else(|| anyhow!("No data returned for {}", symbol))?;
-
-        let calendar = data.calendar_events;
-
-        let earnings_date = calendar.as_ref()
-            .and_then(|c| c.earnings.as_ref())
-            .and_then(|e| e.earnings_date.as_ref())
-            .and_then(|dates| dates.first())
-            .and_then(|v| v.raw)
-            .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
-
-        let eps_estimate = calendar.as_ref()
-            .and_then(|c| c.earnings.as_ref())
-            .and_then(|e| e.earnings_average.as_ref())
-            .and_then(|v| v.to_f64());
-
-        let revenue_estimate = calendar.as_ref()
-            .and_then(|c| c.earnings.as_ref())
-            .and_then(|e| e.revenue_average.as_ref())
-            .and_then(|v| v.to_f64());
-
-        Ok(EarningsData {
-            earnings_date,
-            eps_estimate,
-            revenue_estimate,
-        })
+        parse_earnings_data(&text, symbol)
     }
+}
+
+// ============================================================================
+// Pure parsing functions (offline-testable)
+// ============================================================================
+
+/// Parse a Yahoo Finance chart response into historical prices.
+/// Rows with any missing OHLC value are skipped; missing volume defaults to 0.
+pub(crate) fn parse_historical_prices(text: &str, symbol: &str) -> Result<Vec<HistoricalPrice>> {
+    let yahoo_response: YahooResponse = serde_json::from_str(text)
+        .map_err(|e| anyhow!("Failed to parse JSON for {}: {}", symbol, e))?;
+
+    if let Some(error) = yahoo_response.chart.error {
+        return Err(anyhow!(
+            "Yahoo Finance error for {}: {} - {}",
+            symbol,
+            error.code,
+            error.description
+        ));
+    }
+
+    let result = yahoo_response
+        .chart
+        .result
+        .and_then(|r| r.into_iter().next())
+        .ok_or_else(|| anyhow!("No data returned for {}", symbol))?;
+
+    let timestamps = result
+        .timestamp
+        .ok_or_else(|| anyhow!("No timestamps for {}", symbol))?;
+
+    let quote = result
+        .indicators
+        .quote
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("No quote data for {}", symbol))?;
+
+    let opens = quote.open.unwrap_or_default();
+    let highs = quote.high.unwrap_or_default();
+    let lows = quote.low.unwrap_or_default();
+    let closes = quote.close.unwrap_or_default();
+    let volumes = quote.volume.unwrap_or_default();
+
+    let mut prices = Vec::new();
+
+    for (i, &timestamp) in timestamps.iter().enumerate() {
+        if let (Some(Some(open)), Some(Some(high)), Some(Some(low)), Some(Some(close))) = (
+            opens.get(i),
+            highs.get(i),
+            lows.get(i),
+            closes.get(i),
+        ) {
+            let volume = volumes
+                .get(i)
+                .and_then(|v| v.as_ref())
+                .copied()
+                .unwrap_or(0) as f64;
+
+            prices.push(HistoricalPrice {
+                date: DateTime::from_timestamp(timestamp, 0)
+                    .unwrap_or_else(|| Utc::now()),
+                open: *open,
+                high: *high,
+                low: *low,
+                close: *close,
+                volume,
+            });
+        }
+    }
+
+    if prices.is_empty() {
+        return Err(anyhow!("No valid price data for {}", symbol));
+    }
+
+    Ok(prices)
+}
+
+/// Parse a Yahoo Finance quoteSummary response (assetProfile + financialData).
+pub(crate) fn parse_company_profile(text: &str, symbol: &str) -> Result<CompanyProfile> {
+    let summary_response: QuoteSummaryResponse = serde_json::from_str(text)
+        .map_err(|e| anyhow!("Failed to parse quoteSummary JSON for {}: {}", symbol, e))?;
+
+    if let Some(error) = summary_response.quote_summary.error {
+        return Err(anyhow!(
+            "Yahoo Finance error for {}: {} - {}",
+            symbol,
+            error.code,
+            error.description
+        ));
+    }
+
+    let data = summary_response
+        .quote_summary
+        .result
+        .and_then(|r| r.into_iter().next())
+        .ok_or_else(|| anyhow!("No data returned for {}", symbol))?;
+
+    let asset_profile = data.asset_profile;
+    let financial_data = data.financial_data;
+
+    Ok(CompanyProfile {
+        long_business_summary: asset_profile.as_ref().and_then(|p| p.long_business_summary.clone()),
+        industry: asset_profile.as_ref().and_then(|p| p.industry.clone()),
+        sector: asset_profile.as_ref().and_then(|p| p.sector.clone()),
+        website: asset_profile.as_ref().and_then(|p| p.website.clone()),
+        full_time_employees: asset_profile.as_ref().and_then(|p| p.full_time_employees),
+        city: asset_profile.as_ref().and_then(|p| p.city.clone()),
+        state: asset_profile.as_ref().and_then(|p| p.state.clone()),
+        country: asset_profile.as_ref().and_then(|p| p.country.clone()),
+        phone: asset_profile.as_ref().and_then(|p| p.phone.clone()),
+        current_price: financial_data.as_ref().and_then(|f| f.current_price.as_ref().and_then(|v| v.to_f64())),
+        target_high_price: financial_data.as_ref().and_then(|f| f.target_high_price.as_ref().and_then(|v| v.to_f64())),
+        target_low_price: financial_data.as_ref().and_then(|f| f.target_low_price.as_ref().and_then(|v| v.to_f64())),
+        target_mean_price: financial_data.as_ref().and_then(|f| f.target_mean_price.as_ref().and_then(|v| v.to_f64())),
+        recommendation_key: financial_data.as_ref().and_then(|f| f.recommendation_key.clone()),
+        number_of_analyst_opinions: financial_data.as_ref().and_then(|f| f.number_of_analyst_opinions.as_ref().and_then(|v| v.to_i64())),
+        total_revenue: financial_data.as_ref().and_then(|f| f.total_revenue.as_ref().and_then(|v| v.to_f64())),
+        revenue_per_share: financial_data.as_ref().and_then(|f| f.revenue_per_share.as_ref().and_then(|v| v.to_f64())),
+        profit_margins: financial_data.as_ref().and_then(|f| f.profit_margins.as_ref().and_then(|v| v.to_f64())),
+        gross_margins: financial_data.as_ref().and_then(|f| f.gross_margins.as_ref().and_then(|v| v.to_f64())),
+        operating_margins: financial_data.as_ref().and_then(|f| f.operating_margins.as_ref().and_then(|v| v.to_f64())),
+        return_on_equity: financial_data.as_ref().and_then(|f| f.return_on_equity.as_ref().and_then(|v| v.to_f64())),
+        free_cash_flow: financial_data.as_ref().and_then(|f| f.free_cash_flow.as_ref().and_then(|v| v.to_f64())),
+    })
+}
+
+/// Parse a Yahoo Finance quoteSummary response for earnings (calendarEvents).
+pub(crate) fn parse_earnings_data(text: &str, symbol: &str) -> Result<EarningsData> {
+    let summary_response: QuoteSummaryResponse = serde_json::from_str(text)
+        .map_err(|e| anyhow!("Failed to parse earnings JSON for {}: {}", symbol, e))?;
+
+    if let Some(error) = summary_response.quote_summary.error {
+        return Err(anyhow!(
+            "Yahoo Finance error for {}: {} - {}",
+            symbol,
+            error.code,
+            error.description
+        ));
+    }
+
+    let data = summary_response
+        .quote_summary
+        .result
+        .and_then(|r| r.into_iter().next())
+        .ok_or_else(|| anyhow!("No data returned for {}", symbol))?;
+
+    let calendar = data.calendar_events;
+
+    let earnings_date = calendar.as_ref()
+        .and_then(|c| c.earnings.as_ref())
+        .and_then(|e| e.earnings_date.as_ref())
+        .and_then(|dates| dates.first())
+        .and_then(|v| v.raw)
+        .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
+
+    let eps_estimate = calendar.as_ref()
+        .and_then(|c| c.earnings.as_ref())
+        .and_then(|e| e.earnings_average.as_ref())
+        .and_then(|v| v.to_f64());
+
+    let revenue_estimate = calendar.as_ref()
+        .and_then(|c| c.earnings.as_ref())
+        .and_then(|e| e.revenue_average.as_ref())
+        .and_then(|v| v.to_f64());
+
+    Ok(EarningsData {
+        earnings_date,
+        eps_estimate,
+        revenue_estimate,
+    })
 }
 
 impl Default for YahooFinanceClient {
@@ -569,45 +597,356 @@ impl Default for YahooFinanceClient {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_fetch_historical_prices() {
-        let client = YahooFinanceClient::new();
-        
-        // Note: This test requires internet and may fail if rate limited
-        // In CI/CD, consider mocking or using VCR-style recordings
-        match client.get_historical_prices("AAPL", 7).await {
-            Ok(prices) => {
-                assert!(!prices.is_empty(), "Should have some price data");
-                assert!(prices.len() <= 7, "Should not exceed requested days");
-                
-                // Verify data structure
-                let first = &prices[0];
-                assert!(first.close > 0.0, "Close price should be positive");
-                assert!(first.volume >= 0.0, "Volume should be non-negative");
-            }
-            Err(e) => {
-                // If we're rate limited, that's expected behavior
-                let err_msg = e.to_string();
-                assert!(
-                    err_msg.contains("Rate limited") || err_msg.contains("429"),
-                    "Should fail with rate limit error if blocked"
-                );
-            }
-        }
-    }
+    // ---- Client construction -------------------------------------------------
 
-    #[tokio::test]
-    async fn test_invalid_symbol() {
+    #[test]
+    fn test_client_has_user_agent() {
         let client = YahooFinanceClient::new();
-        
-        let result = client.get_historical_prices("INVALIDSYMBOL12345", 7).await;
-        assert!(result.is_err(), "Invalid symbol should return error");
-    }
-
-    #[tokio::test]
-    async fn test_client_has_user_agent() {
-        let client = YahooFinanceClient::new();
-        // Just verify client was created successfully with proper configuration
         assert_eq!(client.max_retries, 3);
+    }
+
+    // ---- Rate-limit error message format (locks async_fetcher contract) -----
+
+    /// Shared helper replicating `async_fetcher`'s rate-limit detection.
+    fn is_rate_limited_error(msg: &str) -> bool {
+        msg.contains("429") || msg.contains("Rate limited")
+    }
+
+    #[test]
+    fn test_rate_limit_error_messages_are_detectable() {
+        // Direct 429 response
+        let direct = format!("Rate limited by Yahoo Finance (429)");
+        assert!(is_rate_limited_error(&direct));
+
+        // 429 on the retry after a 403 crumb refresh. Regression: previously
+        // this bubbled up as a plain "Request failed after crumb refresh: 429"
+        // which would match "429" but not the "Rate limited" phrase; the new
+        // message explicitly includes both for consistent logging.
+        let after_refresh = format!("Rate limited by Yahoo Finance (429) after crumb refresh");
+        assert!(is_rate_limited_error(&after_refresh));
+        assert!(after_refresh.contains("429"));
+        assert!(after_refresh.contains("Rate limited"));
+    }
+
+    // ---- YahooValue ----------------------------------------------------------
+
+    #[test]
+    fn test_yahoo_value_to_f64_and_i64() {
+        let v: YahooValue = serde_json::from_str(r#"{"raw": 42.5, "fmt": "42.50"}"#).unwrap();
+        assert_eq!(v.to_f64(), Some(42.5));
+        assert_eq!(v.to_i64(), Some(42));
+
+        let empty: YahooValue = serde_json::from_str(r#"{}"#).unwrap();
+        assert_eq!(empty.to_f64(), None);
+        assert_eq!(empty.to_i64(), None);
+
+        let no_fmt: YahooValue = serde_json::from_str(r#"{"raw": 7.0}"#).unwrap();
+        assert_eq!(no_fmt.to_f64(), Some(7.0));
+    }
+
+    // ---- parse_historical_prices --------------------------------------------
+
+    fn chart_fixture_normal() -> &'static str {
+        r#"{
+            "chart": {
+                "result": [{
+                    "timestamp": [1700000000, 1700086400, 1700172800],
+                    "indicators": {
+                        "quote": [{
+                            "open":   [100.0, 101.0, 102.0],
+                            "high":   [105.0, 106.0, 107.0],
+                            "low":    [ 99.0, 100.0, 101.0],
+                            "close":  [103.0, 104.0, 105.0],
+                            "volume": [1000000, 1100000, 1200000]
+                        }]
+                    }
+                }],
+                "error": null
+            }
+        }"#
+    }
+
+    #[test]
+    fn test_parse_historical_prices_normal() {
+        let prices = parse_historical_prices(chart_fixture_normal(), "AAPL").unwrap();
+        assert_eq!(prices.len(), 3);
+        assert_eq!(prices[0].open, 100.0);
+        assert_eq!(prices[0].close, 103.0);
+        assert_eq!(prices[0].volume, 1_000_000.0);
+        assert_eq!(prices[2].close, 105.0);
+    }
+
+    #[test]
+    fn test_parse_historical_prices_skips_null_rows() {
+        // Second row has all nulls (a holiday / missing bar). It must be skipped,
+        // not turned into a 0.0 price which would break RSI.
+        let json = r#"{
+            "chart": {
+                "result": [{
+                    "timestamp": [1700000000, 1700086400, 1700172800],
+                    "indicators": {
+                        "quote": [{
+                            "open":   [100.0, null, 102.0],
+                            "high":   [105.0, null, 107.0],
+                            "low":    [ 99.0, null, 101.0],
+                            "close":  [103.0, null, 105.0],
+                            "volume": [1000000, null, 1200000]
+                        }]
+                    }
+                }],
+                "error": null
+            }
+        }"#;
+        let prices = parse_historical_prices(json, "AAPL").unwrap();
+        assert_eq!(prices.len(), 2, "null OHLC rows must be dropped");
+        assert_eq!(prices[0].close, 103.0);
+        assert_eq!(prices[1].close, 105.0);
+        // No 0.0 close sneaking in.
+        assert!(prices.iter().all(|p| p.close > 0.0));
+    }
+
+    #[test]
+    fn test_parse_historical_prices_missing_volume_defaults_to_zero() {
+        let json = r#"{
+            "chart": {
+                "result": [{
+                    "timestamp": [1700000000],
+                    "indicators": {
+                        "quote": [{
+                            "open":   [100.0],
+                            "high":   [105.0],
+                            "low":    [ 99.0],
+                            "close":  [103.0],
+                            "volume": [null]
+                        }]
+                    }
+                }],
+                "error": null
+            }
+        }"#;
+        let prices = parse_historical_prices(json, "AAPL").unwrap();
+        assert_eq!(prices.len(), 1);
+        assert_eq!(prices[0].volume, 0.0);
+    }
+
+    #[test]
+    fn test_parse_historical_prices_error_block() {
+        let json = r#"{
+            "chart": {
+                "result": null,
+                "error": {
+                    "code": "Not Found",
+                    "description": "No data found, symbol may be delisted"
+                }
+            }
+        }"#;
+        let err = parse_historical_prices(json, "ZZZZ").unwrap_err();
+        assert!(err.to_string().contains("Not Found"));
+        assert!(err.to_string().contains("delisted"));
+    }
+
+    #[test]
+    fn test_parse_historical_prices_empty_result() {
+        let json = r#"{"chart": {"result": [], "error": null}}"#;
+        let err = parse_historical_prices(json, "ZZZZ").unwrap_err();
+        assert!(err.to_string().contains("No data returned"));
+    }
+
+    #[test]
+    fn test_parse_historical_prices_all_null_rows_returns_error() {
+        // A stock whose Yahoo payload is structurally valid but has only null bars
+        // must NOT produce a StockAnalysis. This prevents polluting the feed.
+        let json = r#"{
+            "chart": {
+                "result": [{
+                    "timestamp": [1700000000, 1700086400],
+                    "indicators": {
+                        "quote": [{
+                            "open":   [null, null],
+                            "high":   [null, null],
+                            "low":    [null, null],
+                            "close":  [null, null],
+                            "volume": [null, null]
+                        }]
+                    }
+                }],
+                "error": null
+            }
+        }"#;
+        let err = parse_historical_prices(json, "ZZZZ").unwrap_err();
+        assert!(err.to_string().contains("No valid price data"));
+    }
+
+    #[test]
+    fn test_parse_historical_prices_invalid_json() {
+        let err = parse_historical_prices("not json", "AAPL").unwrap_err();
+        assert!(err.to_string().contains("Failed to parse JSON"));
+    }
+
+    // ---- parse_company_profile ----------------------------------------------
+
+    fn profile_fixture_full() -> &'static str {
+        r#"{
+            "quoteSummary": {
+                "result": [{
+                    "assetProfile": {
+                        "longBusinessSummary": "Makes phones.",
+                        "industry": "Consumer Electronics",
+                        "sector": "Technology",
+                        "website": "https://apple.com",
+                        "fullTimeEmployees": 164000,
+                        "city": "Cupertino",
+                        "state": "CA",
+                        "country": "USA",
+                        "phone": "408-996-1010"
+                    },
+                    "financialData": {
+                        "currentPrice":           {"raw": 190.25, "fmt": "190.25"},
+                        "targetHighPrice":        {"raw": 250.0,  "fmt": "250.00"},
+                        "targetLowPrice":         {"raw": 150.0,  "fmt": "150.00"},
+                        "targetMeanPrice":        {"raw": 210.0,  "fmt": "210.00"},
+                        "recommendationKey":      "buy",
+                        "numberOfAnalystOpinions":{"raw": 35.0,   "fmt": "35"},
+                        "totalRevenue":           {"raw": 4.0e11, "fmt": "400B"},
+                        "revenuePerShare":        {"raw": 25.0,   "fmt": "25.00"},
+                        "profitMargins":          {"raw": 0.25,   "fmt": "25%"},
+                        "grossMargins":           {"raw": 0.44,   "fmt": "44%"},
+                        "operatingMargins":       {"raw": 0.30,   "fmt": "30%"},
+                        "returnOnEquity":         {"raw": 1.5,    "fmt": "150%"},
+                        "freeCashflow":           {"raw": 1.0e11, "fmt": "100B"}
+                    }
+                }],
+                "error": null
+            }
+        }"#
+    }
+
+    #[test]
+    fn test_parse_company_profile_full() {
+        let profile = parse_company_profile(profile_fixture_full(), "AAPL").unwrap();
+        assert_eq!(profile.industry.as_deref(), Some("Consumer Electronics"));
+        assert_eq!(profile.sector.as_deref(), Some("Technology"));
+        assert_eq!(profile.full_time_employees, Some(164000));
+        assert_eq!(profile.current_price, Some(190.25));
+        assert_eq!(profile.target_mean_price, Some(210.0));
+        assert_eq!(profile.recommendation_key.as_deref(), Some("buy"));
+        assert_eq!(profile.number_of_analyst_opinions, Some(35));
+        assert_eq!(profile.profit_margins, Some(0.25));
+    }
+
+    #[test]
+    fn test_parse_company_profile_null_asset_profile() {
+        let json = r#"{
+            "quoteSummary": {
+                "result": [{
+                    "assetProfile": null,
+                    "financialData": {
+                        "currentPrice": {"raw": 50.0, "fmt": "50.00"}
+                    }
+                }],
+                "error": null
+            }
+        }"#;
+        let profile = parse_company_profile(json, "XYZ").unwrap();
+        assert!(profile.industry.is_none());
+        assert!(profile.long_business_summary.is_none());
+        assert_eq!(profile.current_price, Some(50.0));
+    }
+
+    #[test]
+    fn test_parse_company_profile_null_financial_data() {
+        let json = r#"{
+            "quoteSummary": {
+                "result": [{
+                    "assetProfile": {
+                        "sector": "Utilities"
+                    },
+                    "financialData": null
+                }],
+                "error": null
+            }
+        }"#;
+        let profile = parse_company_profile(json, "XYZ").unwrap();
+        assert_eq!(profile.sector.as_deref(), Some("Utilities"));
+        assert!(profile.current_price.is_none());
+        assert!(profile.target_mean_price.is_none());
+    }
+
+    #[test]
+    fn test_parse_company_profile_error_block() {
+        let json = r#"{
+            "quoteSummary": {
+                "result": null,
+                "error": {
+                    "code": "Unauthorized",
+                    "description": "Invalid crumb"
+                }
+            }
+        }"#;
+        let err = parse_company_profile(json, "AAPL").unwrap_err();
+        assert!(err.to_string().contains("Unauthorized"));
+    }
+
+    #[test]
+    fn test_parse_company_profile_empty_result() {
+        let json = r#"{"quoteSummary": {"result": [], "error": null}}"#;
+        let err = parse_company_profile(json, "AAPL").unwrap_err();
+        assert!(err.to_string().contains("No data returned"));
+    }
+
+    // ---- parse_earnings_data -------------------------------------------------
+
+    #[test]
+    fn test_parse_earnings_data_full() {
+        let json = r#"{
+            "quoteSummary": {
+                "result": [{
+                    "calendarEvents": {
+                        "earnings": {
+                            "earningsDate": [
+                                {"raw": 1700000000, "fmt": "2023-11-14"}
+                            ],
+                            "earningsAverage": {"raw": 2.15, "fmt": "2.15"},
+                            "revenueAverage": {"raw": 95000000000.0, "fmt": "95B"}
+                        }
+                    }
+                }],
+                "error": null
+            }
+        }"#;
+        let earnings = parse_earnings_data(json, "AAPL").unwrap();
+        assert!(earnings.earnings_date.is_some());
+        assert_eq!(earnings.eps_estimate, Some(2.15));
+        assert_eq!(earnings.revenue_estimate, Some(95_000_000_000.0));
+    }
+
+    #[test]
+    fn test_parse_earnings_data_missing_fields() {
+        let json = r#"{
+            "quoteSummary": {
+                "result": [{
+                    "calendarEvents": {
+                        "earnings": null
+                    }
+                }],
+                "error": null
+            }
+        }"#;
+        let earnings = parse_earnings_data(json, "AAPL").unwrap();
+        assert!(earnings.earnings_date.is_none());
+        assert!(earnings.eps_estimate.is_none());
+        assert!(earnings.revenue_estimate.is_none());
+    }
+
+    #[test]
+    fn test_parse_earnings_data_no_calendar_events() {
+        let json = r#"{
+            "quoteSummary": {
+                "result": [{}],
+                "error": null
+            }
+        }"#;
+        let earnings = parse_earnings_data(json, "AAPL").unwrap();
+        assert!(earnings.earnings_date.is_none());
     }
 }

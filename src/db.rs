@@ -8,6 +8,59 @@ use mongodb::{
     Client, Collection, Database,
 };
 
+/// Insert a `$gte` / `$lte` range predicate for `field`. Previous versions
+/// called `filter_doc.insert(field, ...)` twice which silently overwrote the
+/// min bound with the max bound; this helper merges them into a single doc.
+fn insert_range(filter_doc: &mut Document, field: &str, min: Option<f64>, max: Option<f64>) {
+    if min.is_none() && max.is_none() {
+        return;
+    }
+    let mut range = Document::new();
+    if let Some(lo) = min { range.insert("$gte", lo); }
+    if let Some(hi) = max { range.insert("$lte", hi); }
+    filter_doc.insert(field, range);
+}
+
+/// Build a MongoDB filter document from a `StockFilter`. Pure function so we
+/// can unit-test the shape without a live Mongo.
+pub(crate) fn build_filter_doc(filter: &StockFilter) -> Document {
+    let mut filter_doc = Document::new();
+
+    insert_range(&mut filter_doc, "price", filter.min_price, filter.max_price);
+
+    if let Some(min_volume) = filter.min_volume {
+        filter_doc.insert("volume", doc! { "$gte": min_volume });
+    }
+
+    insert_range(&mut filter_doc, "market_cap", filter.min_market_cap, filter.max_market_cap);
+    insert_range(&mut filter_doc, "rsi", filter.min_rsi, filter.max_rsi);
+    insert_range(&mut filter_doc, "stochastic.k_line", filter.min_stochastic_k, filter.max_stochastic_k);
+    insert_range(&mut filter_doc, "bollinger.bandwidth", filter.min_bandwidth, filter.max_bandwidth);
+
+    if let Some(sectors) = &filter.sectors {
+        if !sectors.is_empty() {
+            filter_doc.insert("sector", doc! { "$in": sectors.clone() });
+        }
+    }
+    if let Some(true) = filter.only_oversold {
+        filter_doc.insert("is_oversold", true);
+    }
+    if let Some(true) = filter.only_overbought {
+        filter_doc.insert("is_overbought", true);
+    }
+
+    // Cap |price_change_percent| to drop runaway gainers/losers from the feed.
+    if let Some(max_abs) = filter.max_abs_price_change_percent {
+        let max_abs = max_abs.abs();
+        filter_doc.insert(
+            "price_change_percent",
+            doc! { "$gte": -max_abs, "$lte": max_abs },
+        );
+    }
+
+    filter_doc
+}
+
 #[derive(Clone)]
 pub struct MongoDB {
     client: Client,
@@ -98,52 +151,7 @@ impl MongoDB {
 
     pub async fn get_latest_analyses(&self, filter: StockFilter) -> Result<Vec<StockAnalysis>> {
         let collection = self.analysis_collection();
-        let mut filter_doc = Document::new();
-
-        if let Some(min_price) = filter.min_price {
-            filter_doc.insert("price", doc! { "$gte": min_price });
-        }
-        if let Some(max_price) = filter.max_price {
-            filter_doc.insert("price", doc! { "$lte": max_price });
-        }
-        if let Some(min_volume) = filter.min_volume {
-            filter_doc.insert("volume", doc! { "$gte": min_volume });
-        }
-        if let Some(min_mc) = filter.min_market_cap {
-            filter_doc.insert("market_cap", doc! { "$gte": min_mc });
-        }
-        if let Some(max_mc) = filter.max_market_cap {
-            filter_doc.insert("market_cap", doc! { "$lte": max_mc });
-        }
-        if let Some(min_rsi) = filter.min_rsi {
-            filter_doc.insert("rsi", doc! { "$gte": min_rsi });
-        }
-        if let Some(max_rsi) = filter.max_rsi {
-            filter_doc.insert("rsi", doc! { "$lte": max_rsi });
-        }
-        if let Some(sectors) = filter.sectors {
-            if !sectors.is_empty() {
-                filter_doc.insert("sector", doc! { "$in": sectors });
-            }
-        }
-        if let Some(true) = filter.only_oversold {
-            filter_doc.insert("is_oversold", true);
-        }
-        if let Some(true) = filter.only_overbought {
-            filter_doc.insert("is_overbought", true);
-        }
-        if let Some(min_k) = filter.min_stochastic_k {
-            filter_doc.insert("stochastic.k_line", doc! { "$gte": min_k });
-        }
-        if let Some(max_k) = filter.max_stochastic_k {
-            filter_doc.insert("stochastic.k_line", doc! { "$lte": max_k });
-        }
-        if let Some(min_bw) = filter.min_bandwidth {
-            filter_doc.insert("bollinger.bandwidth", doc! { "$gte": min_bw });
-        }
-        if let Some(max_bw) = filter.max_bandwidth {
-            filter_doc.insert("bollinger.bandwidth", doc! { "$lte": max_bw });
-        }
+        let filter_doc = build_filter_doc(&filter);
 
         // Build sort document
         let sort_field = filter.sort_by.as_deref().unwrap_or("market_cap");
@@ -178,53 +186,7 @@ impl MongoDB {
     /// Get total count for a filter (for pagination)
     pub async fn get_filtered_count(&self, filter: StockFilter) -> Result<u64> {
         let collection = self.analysis_collection();
-        let mut filter_doc = Document::new();
-
-        if let Some(min_price) = filter.min_price {
-            filter_doc.insert("price", doc! { "$gte": min_price });
-        }
-        if let Some(max_price) = filter.max_price {
-            filter_doc.insert("price", doc! { "$lte": max_price });
-        }
-        if let Some(min_volume) = filter.min_volume {
-            filter_doc.insert("volume", doc! { "$gte": min_volume });
-        }
-        if let Some(min_mc) = filter.min_market_cap {
-            filter_doc.insert("market_cap", doc! { "$gte": min_mc });
-        }
-        if let Some(max_mc) = filter.max_market_cap {
-            filter_doc.insert("market_cap", doc! { "$lte": max_mc });
-        }
-        if let Some(min_rsi) = filter.min_rsi {
-            filter_doc.insert("rsi", doc! { "$gte": min_rsi });
-        }
-        if let Some(max_rsi) = filter.max_rsi {
-            filter_doc.insert("rsi", doc! { "$lte": max_rsi });
-        }
-        if let Some(sectors) = filter.sectors {
-            if !sectors.is_empty() {
-                filter_doc.insert("sector", doc! { "$in": sectors });
-            }
-        }
-        if let Some(true) = filter.only_oversold {
-            filter_doc.insert("is_oversold", true);
-        }
-        if let Some(true) = filter.only_overbought {
-            filter_doc.insert("is_overbought", true);
-        }
-        if let Some(min_k) = filter.min_stochastic_k {
-            filter_doc.insert("stochastic.k_line", doc! { "$gte": min_k });
-        }
-        if let Some(max_k) = filter.max_stochastic_k {
-            filter_doc.insert("stochastic.k_line", doc! { "$lte": max_k });
-        }
-        if let Some(min_bw) = filter.min_bandwidth {
-            filter_doc.insert("bollinger.bandwidth", doc! { "$gte": min_bw });
-        }
-        if let Some(max_bw) = filter.max_bandwidth {
-            filter_doc.insert("bollinger.bandwidth", doc! { "$lte": max_bw });
-        }
-
+        let filter_doc = build_filter_doc(&filter);
         Ok(collection.count_documents(filter_doc).await?)
     }
 
@@ -510,5 +472,177 @@ impl MongoDB {
             }
         }
         Ok(results)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_filter() -> StockFilter {
+        StockFilter {
+            min_price: None,
+            max_price: None,
+            min_volume: None,
+            min_market_cap: None,
+            max_market_cap: None,
+            min_rsi: None,
+            max_rsi: None,
+            sectors: None,
+            only_oversold: None,
+            only_overbought: None,
+            min_stochastic_k: None,
+            max_stochastic_k: None,
+            min_bandwidth: None,
+            max_bandwidth: None,
+            max_abs_price_change_percent: None,
+            sort_by: None,
+            sort_order: None,
+            page: None,
+            page_size: None,
+        }
+    }
+
+    #[test]
+    fn test_build_filter_doc_empty() {
+        let d = build_filter_doc(&empty_filter());
+        assert!(d.is_empty(), "Empty filter should produce empty doc, got {:?}", d);
+    }
+
+    #[test]
+    fn test_price_range_merges_gte_and_lte() {
+        // Regression: prior code called filter_doc.insert("price", ...) twice,
+        // so the second call clobbered the first. The merged doc must contain
+        // BOTH $gte and $lte for the same field.
+        let mut f = empty_filter();
+        f.min_price = Some(10.0);
+        f.max_price = Some(500.0);
+        let d = build_filter_doc(&f);
+
+        let price = d.get_document("price").expect("price field must exist");
+        assert_eq!(price.get_f64("$gte").unwrap(), 10.0);
+        assert_eq!(price.get_f64("$lte").unwrap(), 500.0);
+    }
+
+    #[test]
+    fn test_market_cap_range_merges() {
+        let mut f = empty_filter();
+        f.min_market_cap = Some(1e9);
+        f.max_market_cap = Some(1e12);
+        let d = build_filter_doc(&f);
+        let mc = d.get_document("market_cap").unwrap();
+        assert_eq!(mc.get_f64("$gte").unwrap(), 1e9);
+        assert_eq!(mc.get_f64("$lte").unwrap(), 1e12);
+    }
+
+    #[test]
+    fn test_rsi_range_merges() {
+        let mut f = empty_filter();
+        f.min_rsi = Some(30.0);
+        f.max_rsi = Some(70.0);
+        let d = build_filter_doc(&f);
+        let rsi = d.get_document("rsi").unwrap();
+        assert_eq!(rsi.get_f64("$gte").unwrap(), 30.0);
+        assert_eq!(rsi.get_f64("$lte").unwrap(), 70.0);
+    }
+
+    #[test]
+    fn test_only_min_side() {
+        let mut f = empty_filter();
+        f.min_price = Some(5.0);
+        let d = build_filter_doc(&f);
+        let price = d.get_document("price").unwrap();
+        assert_eq!(price.get_f64("$gte").unwrap(), 5.0);
+        assert!(price.get("$lte").is_none());
+    }
+
+    #[test]
+    fn test_only_max_side() {
+        let mut f = empty_filter();
+        f.max_price = Some(50.0);
+        let d = build_filter_doc(&f);
+        let price = d.get_document("price").unwrap();
+        assert!(price.get("$gte").is_none());
+        assert_eq!(price.get_f64("$lte").unwrap(), 50.0);
+    }
+
+    #[test]
+    fn test_nested_field_paths_merge() {
+        let mut f = empty_filter();
+        f.min_stochastic_k = Some(20.0);
+        f.max_stochastic_k = Some(80.0);
+        f.min_bandwidth = Some(1.0);
+        f.max_bandwidth = Some(40.0);
+        let d = build_filter_doc(&f);
+
+        let stoch = d.get_document("stochastic.k_line").unwrap();
+        assert_eq!(stoch.get_f64("$gte").unwrap(), 20.0);
+        assert_eq!(stoch.get_f64("$lte").unwrap(), 80.0);
+
+        let bw = d.get_document("bollinger.bandwidth").unwrap();
+        assert_eq!(bw.get_f64("$gte").unwrap(), 1.0);
+        assert_eq!(bw.get_f64("$lte").unwrap(), 40.0);
+    }
+
+    #[test]
+    fn test_volume_only_has_gte() {
+        let mut f = empty_filter();
+        f.min_volume = Some(1_000_000.0);
+        let d = build_filter_doc(&f);
+        let vol = d.get_document("volume").unwrap();
+        assert_eq!(vol.get_f64("$gte").unwrap(), 1_000_000.0);
+    }
+
+    #[test]
+    fn test_sectors_in() {
+        let mut f = empty_filter();
+        f.sectors = Some(vec!["Technology".into(), "Healthcare".into()]);
+        let d = build_filter_doc(&f);
+        let sectors = d.get_document("sector").unwrap();
+        let arr = sectors.get_array("$in").unwrap();
+        assert_eq!(arr.len(), 2);
+    }
+
+    #[test]
+    fn test_empty_sectors_skipped() {
+        let mut f = empty_filter();
+        f.sectors = Some(vec![]);
+        let d = build_filter_doc(&f);
+        assert!(d.get("sector").is_none());
+    }
+
+    #[test]
+    fn test_only_oversold_flag() {
+        let mut f = empty_filter();
+        f.only_oversold = Some(true);
+        let d = build_filter_doc(&f);
+        assert_eq!(d.get_bool("is_oversold").unwrap(), true);
+
+        // only_oversold=false should NOT produce a filter (we only filter when explicitly true)
+        let mut f2 = empty_filter();
+        f2.only_oversold = Some(false);
+        let d2 = build_filter_doc(&f2);
+        assert!(d2.get("is_oversold").is_none());
+    }
+
+    #[test]
+    fn test_max_abs_price_change_percent_caps_both_sides() {
+        let mut f = empty_filter();
+        f.max_abs_price_change_percent = Some(25.0);
+        let d = build_filter_doc(&f);
+        let pct = d.get_document("price_change_percent").unwrap();
+        assert_eq!(pct.get_f64("$gte").unwrap(), -25.0);
+        assert_eq!(pct.get_f64("$lte").unwrap(), 25.0);
+    }
+
+    #[test]
+    fn test_max_abs_price_change_percent_normalizes_negative_input() {
+        // Defensive: accept a negative threshold as the absolute value.
+        let mut f = empty_filter();
+        f.max_abs_price_change_percent = Some(-15.0);
+        let d = build_filter_doc(&f);
+        let pct = d.get_document("price_change_percent").unwrap();
+        assert_eq!(pct.get_f64("$gte").unwrap(), -15.0);
+        assert_eq!(pct.get_f64("$lte").unwrap(), 15.0);
     }
 }

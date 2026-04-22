@@ -170,47 +170,34 @@ export const OpportunitiesPage: React.FC = () => {
     try {
       setLoading(true);
 
-      // Fetch oversold stocks (RSI < 30) with global market cap filter
+      // Fetch oversold stocks (RSI < 30) with global market cap + price
+      // change filters applied server-side. Previously we over-fetched and
+      // filtered client-side, which polluted the feed with runaway gainers.
       const oversoldFilter: StockFilter = {
         max_rsi: 30,
         min_market_cap: settings.minMarketCap ?? undefined,
+        max_abs_price_change_percent: settings.maxPriceChangePercent ?? undefined,
         sort_by: 'market_cap',
         sort_order: 'desc',
         page: 1,
         page_size: 50,
       };
       const oversoldResponse = await api.filterStocks(oversoldFilter);
-      
-      // Apply max price change filter client-side if set
-      let filteredOversold = oversoldResponse.stocks;
-      if (settings.maxPriceChangePercent) {
-        filteredOversold = filteredOversold.filter(s => 
-          s.price_change_percent === undefined || 
-          Math.abs(s.price_change_percent) <= settings.maxPriceChangePercent!
-        );
-      }
-      setOversoldStocks(filteredOversold);
+      setOversoldStocks(oversoldResponse.stocks);
 
       // Fetch all stocks and filter for MACD bullish with global market cap filter
       const allFilter: StockFilter = {
         min_market_cap: settings.minMarketCap ?? undefined,
+        max_abs_price_change_percent: settings.maxPriceChangePercent ?? undefined,
         sort_by: 'market_cap',
         sort_order: 'desc',
         page: 1,
         page_size: 200,
       };
       const allResponse = await api.filterStocks(allFilter);
-      let bullish = allResponse.stocks.filter(
+      const bullish = allResponse.stocks.filter(
         s => s.macd && s.macd.histogram > 0 && s.rsi && s.rsi < 50
       );
-      
-      // Apply max price change filter client-side if set
-      if (settings.maxPriceChangePercent) {
-        bullish = bullish.filter(s => 
-          s.price_change_percent === undefined || 
-          Math.abs(s.price_change_percent) <= settings.maxPriceChangePercent!
-        );
-      }
       setMacdBullish(bullish.slice(0, 50));
 
     } catch (err) {
