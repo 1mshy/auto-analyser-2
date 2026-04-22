@@ -1,7 +1,10 @@
 # Backend Dockerfile for Rust application
 
 # Build stage
-FROM rust:1.87 AS builder
+# NOTE: Some transitive deps (darling 0.23, serde_with 3.18, time 0.3.47,
+# time-macros 0.2.27) require rustc >= 1.88, so 1.87 no longer builds.
+# Using the bookworm flavor to match the runtime image's glibc.
+FROM rust:1.95-bookworm AS builder
 
 # Install CA certificates and update SSL  
 RUN apt-get update && apt-get install -y ca-certificates && update-ca-certificates

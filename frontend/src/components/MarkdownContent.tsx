@@ -19,23 +19,23 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
       color={color}
       fontSize={fontSize}
       lineHeight="tall"
-      sx={{
-        'h1, h2, h3, h4': {
+      css={{
+        '& h1, & h2, & h3, & h4': {
           fontWeight: 'semibold',
           mt: 4,
           mb: 2,
           color: 'white',
         },
-        h1: { fontSize: '2xl' },
-        h2: { fontSize: 'xl' },
-        h3: { fontSize: 'lg' },
-        h4: { fontSize: 'md' },
-        p: { mb: 3 },
-        'ul, ol': { pl: 5, mb: 3 },
-        li: { mb: 1 },
-        strong: { color: 'white', fontWeight: 'semibold' },
-        em: { fontStyle: 'italic' },
-        code: {
+        '& h1': { fontSize: '2xl' },
+        '& h2': { fontSize: 'xl' },
+        '& h3': { fontSize: 'lg' },
+        '& h4': { fontSize: 'md' },
+        '& p': { mb: 3 },
+        '& ul, & ol': { pl: 5, mb: 3 },
+        '& li': { mb: 1 },
+        '& strong': { color: 'white', fontWeight: 'semibold' },
+        '& em': { fontStyle: 'italic' },
+        '& code': {
           bg: 'gray.700',
           color: 'purple.300',
           px: 1,
@@ -44,7 +44,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
           fontSize: 'sm',
           fontFamily: 'mono',
         },
-        pre: {
+        '& pre': {
           bg: 'gray.700',
           p: 3,
           borderRadius: 'md',
@@ -53,12 +53,12 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
           fontSize: 'sm',
           fontFamily: 'mono',
         },
-        'pre code': {
+        '& pre code': {
           bg: 'transparent',
           p: 0,
           color: 'gray.100',
         },
-        blockquote: {
+        '& blockquote': {
           borderLeft: '3px solid',
           borderColor: 'purple.500',
           pl: 4,
@@ -67,8 +67,8 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
           color: 'gray.400',
           fontStyle: 'italic',
         },
-        hr: { borderColor: 'gray.600', my: 4 },
-        'p:last-child': { mb: 0 },
+        '& hr': { borderColor: 'gray.600', my: 4 },
+        '& p:last-child': { mb: 0 },
       }}
     >
       <ReactMarkdown>{children}</ReactMarkdown>
