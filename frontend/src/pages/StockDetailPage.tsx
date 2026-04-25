@@ -282,6 +282,7 @@ export const StockDetailPage: React.FC = () => {
   const tierColor = getMarketCapTierColor(tier);
   const isPositive = (stock.price_change_percent ?? 0) >= 0;
   const rsiIntent = stock.rsi && stock.rsi < 30 ? 'up' : stock.rsi && stock.rsi > 70 ? 'down' : 'neutral';
+  const displaySector = companyProfile?.sector || stock.sector || 'Unknown Sector';
 
   return (
     <Container maxW="container.xl" py={8}>
@@ -302,7 +303,7 @@ export const StockDetailPage: React.FC = () => {
             <Heading size="2xl" color="fg.default" letterSpacing="tight">{stock.symbol}</Heading>
             <WatchButton symbol={stock.symbol} size="md" />
           </HStack>
-          <Text color="fg.muted">{stock.sector || 'Unknown Sector'}</Text>
+          <Text color="fg.muted">{displaySector}</Text>
         </VStack>
 
         <VStack align="end" gap={1}>

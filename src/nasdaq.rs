@@ -613,6 +613,29 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_technicals_primary_data_without_summary_data() {
+        let json = r#"{
+            "data": {
+                "symbol": "INTC",
+                "companyName": "Intel Corporation Common Stock",
+                "primaryData": {
+                    "lastSalePrice": "$82.54",
+                    "netChange": "+15.76",
+                    "percentageChange": "+23.60%"
+                }
+            },
+            "status": {"rCode": 200}
+        }"#;
+
+        let t = parse_technicals_response(json, "INTC").unwrap();
+
+        assert_eq!(t.last_sale_price, Some(82.54));
+        assert_eq!(t.net_change, Some(15.76));
+        assert_eq!(t.percentage_change, Some(23.60));
+        assert!(t.sector.is_none());
+    }
+
+    #[test]
     fn test_parse_technicals_warrant_no_summary_data() {
         // Warrants often lack `summaryData`. Must not crash the parser —
         // should return `Ok` with mostly-None fields plus primaryData.

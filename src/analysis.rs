@@ -3,7 +3,7 @@ use crate::{
     cache::CacheLayer,
     db::MongoDB,
     indicators::TechnicalIndicators,
-    models::{AnalysisProgress, HistoricalPrice, NasdaqResponse, StockAnalysis},
+    models::{AnalysisProgress, HistoricalPrice, NasdaqResponse, NasdaqTechnicals, StockAnalysis},
     nasdaq::NasdaqClient,
     notifications::AlertEngine,
 };
@@ -345,34 +345,11 @@ impl AnalysisEngine {
 
         let sector = technicals.as_ref().and_then(|t| t.sector.clone());
 
-        // Calculate price change
-        let (price_change, price_change_percent) = if let Some(ref tech) = technicals {
-            if let (Some(change), Some(pct)) = (tech.net_change, tech.percentage_change) {
-                (Some(change), Some(pct))
-            } else if let Some(prev_close) = tech.previous_close {
-                if prev_close > 0.0 {
-                    let change = latest_price.close - prev_close;
-                    (Some(change), Some((change / prev_close) * 100.0))
-                } else {
-                    (None, None)
-                }
-            } else {
-                (None, None)
-            }
-        } else if historical_prices.len() >= 2 {
-            let prev = &historical_prices[historical_prices.len() - 2];
-            if prev.close > 0.0 && prev.volume > 0.0 {
-                let change = latest_price.close - prev.close;
-                (Some(change), Some((change / prev.close) * 100.0))
-            } else {
-                (None, None)
-            }
-        } else {
-            (None, None)
-        };
+        let previous_price = historical_prices.get(historical_prices.len().saturating_sub(2));
+        let quote = resolve_quote(latest_price, previous_price, technicals.as_ref());
 
         // Drop runaway day-gainers/losers that the user doesn't want in the feed.
-        if let Some(pct) = price_change_percent {
+        if let Some(pct) = quote.price_change_percent {
             if pct.abs() > self.max_abs_price_change_percent {
                 return Err(anyhow::anyhow!(
                     "{}: |price_change_percent| {:.2}% exceeds max {:.2}%",
@@ -384,9 +361,9 @@ impl AnalysisEngine {
         Ok(StockAnalysis {
             id: None,
             symbol: symbol.to_string(),
-            price: latest_price.close,
-            price_change,
-            price_change_percent,
+            price: quote.price,
+            price_change: quote.price_change,
+            price_change_percent: quote.price_change_percent,
             rsi,
             sma_20,
             sma_50,
@@ -493,6 +470,64 @@ impl AnalysisEngine {
     }
 }
 
+#[derive(Debug, PartialEq)]
+struct ResolvedQuote {
+    price: f64,
+    price_change: Option<f64>,
+    price_change_percent: Option<f64>,
+}
+
+fn valid_price(value: f64) -> bool {
+    value.is_finite() && value > 0.0
+}
+
+fn resolve_quote(
+    latest_price: &HistoricalPrice,
+    previous_price: Option<&HistoricalPrice>,
+    technicals: Option<&NasdaqTechnicals>,
+) -> ResolvedQuote {
+    let price = technicals
+        .and_then(|tech| tech.last_sale_price)
+        .filter(|price| valid_price(*price))
+        .unwrap_or(latest_price.close);
+
+    if let Some(tech) = technicals {
+        if let (Some(change), Some(pct)) = (tech.net_change, tech.percentage_change) {
+            return ResolvedQuote {
+                price,
+                price_change: Some(change),
+                price_change_percent: Some(pct),
+            };
+        }
+
+        if let Some(prev_close) = tech.previous_close.filter(|prev_close| valid_price(*prev_close)) {
+            let change = price - prev_close;
+            return ResolvedQuote {
+                price,
+                price_change: Some(change),
+                price_change_percent: Some((change / prev_close) * 100.0),
+            };
+        }
+    }
+
+    if let Some(prev) = previous_price {
+        if valid_price(prev.close) && prev.volume > 0.0 {
+            let change = price - prev.close;
+            return ResolvedQuote {
+                price,
+                price_change: Some(change),
+                price_change_percent: Some((change / prev.close) * 100.0),
+            };
+        }
+    }
+
+    ResolvedQuote {
+        price,
+        price_change: None,
+        price_change_percent: None,
+    }
+}
+
 /// Reject warrants, units, rights, preferred shares, and other non-common-stock
 /// tickers that clutter the NASDAQ screener. Match is case-insensitive on the
 /// *suffix* following a dot/dash/slash so we don't accidentally drop legit
@@ -540,6 +575,99 @@ pub(crate) fn parse_market_cap(market_cap_str: &str) -> Option<f64> {
 mod tests {
     use super::*;
     use crate::models::{NasdaqResponse, NasdaqStock};
+    use chrono::{TimeZone, Utc};
+
+    fn historical_price(close: f64, volume: f64) -> HistoricalPrice {
+        HistoricalPrice {
+            date: Utc.timestamp_opt(1_700_000_000, 0).single().unwrap(),
+            open: close,
+            high: close,
+            low: close,
+            close,
+            volume,
+        }
+    }
+
+    fn technicals(
+        last_sale_price: Option<f64>,
+        net_change: Option<f64>,
+        percentage_change: Option<f64>,
+        previous_close: Option<f64>,
+    ) -> NasdaqTechnicals {
+        NasdaqTechnicals {
+            exchange: None,
+            sector: None,
+            industry: None,
+            one_year_target: None,
+            todays_high: None,
+            todays_low: None,
+            share_volume: None,
+            average_volume: None,
+            previous_close,
+            fifty_two_week_high: None,
+            fifty_two_week_low: None,
+            pe_ratio: None,
+            forward_pe: None,
+            eps: None,
+            annualized_dividend: None,
+            ex_dividend_date: None,
+            dividend_pay_date: None,
+            current_yield: None,
+            last_sale_price,
+            net_change,
+            percentage_change,
+        }
+    }
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 0.000001,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    fn assert_opt_close(actual: Option<f64>, expected: f64) {
+        assert_close(actual.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_resolve_quote_prefers_nasdaq_primary_quote() {
+        let latest = historical_price(66.78, 1_000_000.0);
+        let previous = historical_price(66.50, 1_000_000.0);
+        let tech = technicals(Some(82.54), Some(15.76), Some(23.6), None);
+
+        let quote = resolve_quote(&latest, Some(&previous), Some(&tech));
+
+        assert_close(quote.price, 82.54);
+        assert_opt_close(quote.price_change, 15.76);
+        assert_opt_close(quote.price_change_percent, 23.6);
+    }
+
+    #[test]
+    fn test_resolve_quote_computes_from_nasdaq_previous_close() {
+        let latest = historical_price(66.78, 1_000_000.0);
+        let previous = historical_price(66.50, 1_000_000.0);
+        let tech = technicals(Some(82.54), None, None, Some(66.78));
+
+        let quote = resolve_quote(&latest, Some(&previous), Some(&tech));
+
+        assert_close(quote.price, 82.54);
+        assert_opt_close(quote.price_change, 15.76);
+        assert_opt_close(quote.price_change_percent, (15.76 / 66.78) * 100.0);
+    }
+
+    #[test]
+    fn test_resolve_quote_falls_back_to_yahoo_bars_without_nasdaq_quote() {
+        let latest = historical_price(102.0, 1_000_000.0);
+        let previous = historical_price(100.0, 1_000_000.0);
+        let tech = technicals(None, None, None, None);
+
+        let quote = resolve_quote(&latest, Some(&previous), Some(&tech));
+
+        assert_close(quote.price, 102.0);
+        assert_opt_close(quote.price_change, 2.0);
+        assert_opt_close(quote.price_change_percent, 2.0);
+    }
 
     #[test]
     fn test_parse_market_cap_valid() {
