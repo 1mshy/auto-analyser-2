@@ -17,7 +17,7 @@ import { api } from './api';
 import { SettingsProvider } from './contexts/SettingsContext';
 
 function App() {
-  const { } = useWebSocket(); // WebSocket for real-time updates
+  useWebSocket(); // WebSocket for real-time updates
   const [progress, setProgress] = useState<AnalysisProgress | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 

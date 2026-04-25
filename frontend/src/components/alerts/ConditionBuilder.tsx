@@ -5,7 +5,6 @@ import {
   HStack,
   VStack,
   Input,
-  Text,
   Badge,
   NativeSelect,
 } from '@chakra-ui/react';

@@ -27,7 +27,7 @@ const StockTableRow: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
   const rsiTone = stock.rsi && stock.rsi < 30 ? 'up' : stock.rsi && stock.rsi > 70 ? 'down' : 'neutral';
 
   return (
-    <Table.Row _hover={{ bg: 'bg.muted' }}>
+    <Table.Row _hover={{ bg: 'bg.muted' }} borderBottomWidth="1px" borderColor="border.subtle">
       <Table.Cell>
         <Link to={`/stocks/${stock.symbol}`}>
           <HStack>
@@ -38,10 +38,10 @@ const StockTableRow: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
           </HStack>
         </Link>
       </Table.Cell>
-      <Table.Cell>
+      <Table.Cell textAlign="right">
         <Num value={stock.price} prefix="$" color="fg.default" />
       </Table.Cell>
-      <Table.Cell>
+      <Table.Cell textAlign="right">
         <Num
           value={stock.price_change_percent}
           intent="auto"
@@ -50,12 +50,12 @@ const StockTableRow: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
           fontWeight="semibold"
         />
       </Table.Cell>
-      <Table.Cell>
+      <Table.Cell textAlign="right">
         <SignalBadge tone={rsiTone} className="num" data-num="">
           {stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'}
         </SignalBadge>
       </Table.Cell>
-      <Table.Cell>
+      <Table.Cell textAlign="right">
         <Num
           value={stock.market_cap}
           prefix="$"
@@ -289,15 +289,39 @@ export const StocksPage: React.FC = () => {
   const currentOrder = searchParams.get('sort_order') || 'desc';
 
   return (
-    <Container maxW="container.xl" py={8}>
+    <Container maxW="page" py={{ base: 5, md: 8 }}>
       <PageHeader
+        eyebrow="Universe"
         title="All Stocks"
-        subtitle="Browse and filter all analyzed stocks"
+        subtitle={`${pagination.total.toLocaleString()} analyzed stocks · ${filteredStocks.length.toLocaleString()} visible in this view`}
+        actions={
+          <HStack>
+            <IconButton
+              aria-label="Table view"
+              variant={viewMode === 'table' ? 'solid' : 'outline'}
+              colorPalette={viewMode === 'table' ? 'blue' : 'gray'}
+              size="sm"
+              onClick={() => setViewMode('table')}
+            >
+              <List />
+            </IconButton>
+            <IconButton
+              aria-label="Card view"
+              variant={viewMode === 'card' ? 'solid' : 'outline'}
+              colorPalette={viewMode === 'card' ? 'blue' : 'gray'}
+              size="sm"
+              onClick={() => setViewMode('card')}
+            >
+              <Grid />
+            </IconButton>
+          </HStack>
+        }
       />
 
       {/* Controls */}
-      <Flex justify="space-between" align="center" mb={6} wrap="wrap" gap={4}>
-        <HStack flex={1} maxW="300px">
+      <Surface p={3} mb={5} variant="raised">
+      <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+        <HStack flex={1} minW={{ base: '100%', md: '260px' }} maxW={{ base: '100%', md: '360px' }}>
           <Box position="relative" flex={1}>
             <Box
               position="absolute"
@@ -323,7 +347,7 @@ export const StocksPage: React.FC = () => {
         </HStack>
 
         {/* Sort Buttons */}
-        <HStack>
+        <HStack wrap="wrap">
           <Button
             size="sm"
             variant={currentSort === 'market_cap' ? 'solid' : 'outline'}
@@ -352,6 +376,7 @@ export const StocksPage: React.FC = () => {
 
         {/* Page Size */}
         <HStack>
+          <Text color="fg.subtle" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Rows</Text>
           {[25, 50, 100].map(size => (
             <Button
               key={size}
@@ -364,29 +389,8 @@ export const StocksPage: React.FC = () => {
             </Button>
           ))}
         </HStack>
-
-        {/* View Toggle */}
-        <HStack>
-          <IconButton
-            aria-label="Table view"
-            variant={viewMode === 'table' ? 'solid' : 'outline'}
-            colorPalette={viewMode === 'table' ? 'blue' : 'gray'}
-            size="sm"
-            onClick={() => setViewMode('table')}
-          >
-            <List />
-          </IconButton>
-          <IconButton
-            aria-label="Card view"
-            variant={viewMode === 'card' ? 'solid' : 'outline'}
-            colorPalette={viewMode === 'card' ? 'blue' : 'gray'}
-            size="sm"
-            onClick={() => setViewMode('card')}
-          >
-            <Grid />
-          </IconButton>
-        </HStack>
       </Flex>
+      </Surface>
 
       {/* Content */}
       {loading ? (
@@ -394,15 +398,15 @@ export const StocksPage: React.FC = () => {
           <Spinner size="xl" color="accent.solid" />
         </Flex>
       ) : viewMode === 'table' ? (
-        <Surface overflowX="auto" p={0}>
+        <Surface overflowX="auto" p={0} variant="raised">
           <Table.Root size="sm">
-            <Table.Header>
+            <Table.Header bg="bg.inset" position="sticky" top={0} zIndex={1}>
               <Table.Row>
                 <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Symbol</Table.ColumnHeader>
-                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Price</Table.ColumnHeader>
-                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Change</Table.ColumnHeader>
-                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">RSI</Table.ColumnHeader>
-                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Market Cap</Table.ColumnHeader>
+                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider" textAlign="right">Price</Table.ColumnHeader>
+                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider" textAlign="right">Change</Table.ColumnHeader>
+                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider" textAlign="right">RSI</Table.ColumnHeader>
+                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider" textAlign="right">Market Cap</Table.ColumnHeader>
                 <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Sector</Table.ColumnHeader>
                 <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Signals</Table.ColumnHeader>
               </Table.Row>

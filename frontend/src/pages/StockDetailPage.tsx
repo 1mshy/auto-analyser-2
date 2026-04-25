@@ -77,7 +77,7 @@ const TradingViewWidget: React.FC<{ symbol: string }> = ({ symbol }) => {
 };
 
 const StatCard: React.FC<{ label: string; value: string | number; color?: string }> = ({ label, value, color }) => (
-  <Surface p={4}>
+  <Surface p={4} variant="raised">
     <Text color="fg.muted" fontSize="xs" mb={1} textTransform="uppercase" letterSpacing="wider">{label}</Text>
     <Text className="num" data-num="" color={color || 'fg.default'} fontSize="xl" fontWeight="semibold">{value}</Text>
   </Surface>
@@ -246,7 +246,7 @@ export const StockDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <Container maxW="container.xl" py={8}>
+      <Container maxW="page" py={{ base: 5, md: 8 }}>
         <Flex justify="center" align="center" minH="50vh">
           <Spinner size="xl" color="accent.solid" />
         </Flex>
@@ -256,7 +256,7 @@ export const StockDetailPage: React.FC = () => {
 
   if (!stock) {
     return (
-      <Container maxW="container.xl" py={8}>
+      <Container maxW="page" py={{ base: 5, md: 8 }}>
         <VStack py={12}>
           <Heading color="fg.subtle">Stock Not Found</Heading>
           <Text color="fg.subtle" textAlign="center" maxW="md">
@@ -285,59 +285,70 @@ export const StockDetailPage: React.FC = () => {
   const displaySector = companyProfile?.sector || stock.sector || 'Unknown Sector';
 
   return (
-    <Container maxW="container.xl" py={8}>
+    <Container maxW="page" py={{ base: 5, md: 8 }}>
       <Link to="/stocks">
         <Button variant="ghost" mb={4} size="sm">
           <ArrowLeft size={16} /> Back to Stocks
         </Button>
       </Link>
 
-      <Flex justify="space-between" align="start" mb={6} wrap="wrap" gap={4}>
-        <VStack align="start" gap={2}>
-          <HStack>
-            <Badge colorPalette={tierColor} size="md" variant="subtle">{getMarketCapTierLabel(tier)}</Badge>
-            {stock.is_oversold && <SignalBadge tone="up" size="md">Oversold</SignalBadge>}
-            {stock.is_overbought && <SignalBadge tone="down" size="md">Overbought</SignalBadge>}
-          </HStack>
-          <HStack>
-            <Heading size="2xl" color="fg.default" letterSpacing="tight">{stock.symbol}</Heading>
-            <WatchButton symbol={stock.symbol} size="md" />
-          </HStack>
-          <Text color="fg.muted">{displaySector}</Text>
-        </VStack>
+      <Surface p={{ base: 4, md: 5 }} mb={4} variant="raised">
+        <Flex justify="space-between" align={{ base: 'stretch', md: 'start' }} direction={{ base: 'column', md: 'row' }} gap={5}>
+          <VStack align="start" gap={3}>
+            <HStack wrap="wrap">
+              <Badge colorPalette={tierColor} size="md" variant="subtle">{getMarketCapTierLabel(tier)}</Badge>
+              <SignalBadge tone="info" size="md">{displaySector}</SignalBadge>
+              {stock.is_oversold && <SignalBadge tone="up" size="md">Oversold</SignalBadge>}
+              {stock.is_overbought && <SignalBadge tone="down" size="md">Overbought</SignalBadge>}
+            </HStack>
+            <HStack align="center">
+              <Heading size="2xl" color="fg.default" letterSpacing="tight">{stock.symbol}</Heading>
+              <WatchButton symbol={stock.symbol} size="md" />
+            </HStack>
+            <Text color="fg.muted" maxW="2xl">
+              {companyProfile?.long_business_summary
+                ? companyProfile.long_business_summary.slice(0, 180) + (companyProfile.long_business_summary.length > 180 ? '...' : '')
+                : 'Real-time technical profile, company context, charting, news, AI analysis, and insider activity.'}
+            </Text>
+          </VStack>
 
-        <VStack align="end" gap={1}>
-          <Num value={stock.price} prefix="$" fontSize="3xl" fontWeight="semibold" color="fg.default" />
-          <HStack>
-            <Box color={isPositive ? 'signal.up.fg' : 'signal.down.fg'}>
-              {isPositive ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
-            </Box>
-            <Num
-              value={stock.price_change}
-              intent="auto"
-              sign="always"
-              prefix="$"
-              fontSize="md"
-              fontWeight="semibold"
-            />
-            <Num
-              value={stock.price_change_percent}
-              intent="auto"
-              sign="always"
-              prefix="("
-              suffix="%)"
-              fontSize="md"
-              fontWeight="semibold"
-            />
-          </HStack>
-        </VStack>
-      </Flex>
+          <VStack align={{ base: 'start', md: 'end' }} gap={1}>
+            <Num value={stock.price} prefix="$" fontSize={{ base: '3xl', md: '4xl' }} fontWeight="semibold" color="fg.default" lineHeight="1" />
+            <HStack>
+              <Box color={isPositive ? 'signal.up.fg' : 'signal.down.fg'}>
+                {isPositive ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+              </Box>
+              <Num
+                value={stock.price_change}
+                intent="auto"
+                sign="always"
+                prefix="$"
+                fontSize="md"
+                fontWeight="semibold"
+              />
+              <Num
+                value={stock.price_change_percent}
+                intent="auto"
+                sign="always"
+                prefix="("
+                suffix="%)"
+                fontSize="md"
+                fontWeight="semibold"
+              />
+            </HStack>
+            <Text color="fg.subtle" fontSize="xs" className="num" data-num="">
+              Updated {new Date(stock.analyzed_at).toLocaleString()}
+            </Text>
+          </VStack>
+        </Flex>
+      </Surface>
 
       {/* Tab Buttons */}
-      <HStack gap={2} mb={6} wrap="wrap">
+      <Surface p={2} mb={5} overflowX="auto" variant="inset">
+      <HStack gap={2} wrap="nowrap" minW="max-content">
         <Button
           size="sm"
-          variant={activeTab === 'overview' ? 'solid' : 'outline'}
+          variant={activeTab === 'overview' ? 'solid' : 'ghost'}
           colorPalette={activeTab === 'overview' ? 'blue' : 'gray'}
           onClick={() => setActiveTab('overview')}
         >
@@ -345,15 +356,15 @@ export const StockDetailPage: React.FC = () => {
         </Button>
         <Button
           size="sm"
-          variant={activeTab === 'about' ? 'solid' : 'outline'}
-          colorPalette={activeTab === 'about' ? 'teal' : 'gray'}
+          variant={activeTab === 'about' ? 'solid' : 'ghost'}
+          colorPalette={activeTab === 'about' ? 'blue' : 'gray'}
           onClick={() => setActiveTab('about')}
         >
           About
         </Button>
         <Button
           size="sm"
-          variant={activeTab === 'technicals' ? 'solid' : 'outline'}
+          variant={activeTab === 'technicals' ? 'solid' : 'ghost'}
           colorPalette={activeTab === 'technicals' ? 'blue' : 'gray'}
           onClick={() => setActiveTab('technicals')}
         >
@@ -361,7 +372,7 @@ export const StockDetailPage: React.FC = () => {
         </Button>
         <Button
           size="sm"
-          variant={activeTab === 'chart' ? 'solid' : 'outline'}
+          variant={activeTab === 'chart' ? 'solid' : 'ghost'}
           colorPalette={activeTab === 'chart' ? 'blue' : 'gray'}
           onClick={() => setActiveTab('chart')}
         >
@@ -369,8 +380,8 @@ export const StockDetailPage: React.FC = () => {
         </Button>
         <Button
           size="sm"
-          variant={activeTab === 'ai' ? 'solid' : 'outline'}
-          colorPalette={activeTab === 'ai' ? 'purple' : 'gray'}
+          variant={activeTab === 'ai' ? 'solid' : 'ghost'}
+          colorPalette={activeTab === 'ai' ? 'blue' : 'gray'}
           onClick={() => setActiveTab('ai')}
         >
           <Zap size={14} /> AI Analysis
@@ -378,7 +389,7 @@ export const StockDetailPage: React.FC = () => {
         {stock.news && stock.news.length > 0 && (
           <Button
             size="sm"
-            variant={activeTab === 'news' ? 'solid' : 'outline'}
+            variant={activeTab === 'news' ? 'solid' : 'ghost'}
             colorPalette={activeTab === 'news' ? 'blue' : 'gray'}
             onClick={() => setActiveTab('news')}
           >
@@ -387,13 +398,14 @@ export const StockDetailPage: React.FC = () => {
         )}
         <Button
           size="sm"
-          variant={activeTab === 'insiders' ? 'solid' : 'outline'}
-          colorPalette={activeTab === 'insiders' ? 'teal' : 'gray'}
+          variant={activeTab === 'insiders' ? 'solid' : 'ghost'}
+          colorPalette={activeTab === 'insiders' ? 'blue' : 'gray'}
           onClick={() => { setActiveTab('insiders'); if (insiderTrades.length === 0 && !insidersLoading) fetchInsiderTrades(); }}
         >
           Insider Trades
         </Button>
       </HStack>
+      </Surface>
 
       {/* Earnings Card (shown on overview) */}
       {activeTab === 'overview' && stockEarnings && stockEarnings.earnings_date && (
@@ -456,7 +468,7 @@ export const StockDetailPage: React.FC = () => {
 
       {/* About Tab */}
       {activeTab === 'about' && (
-        <Card.Root bg="bg.surface" borderColor="border.subtle">
+        <Card.Root bg="bg.surface" borderColor="border.default" borderRadius="lg" boxShadow="elevation.raised">
           <Card.Header>
             <Heading size="md" color="fg.default">About {stock.symbol}</Heading>
           </Card.Header>
@@ -691,7 +703,7 @@ export const StockDetailPage: React.FC = () => {
       {activeTab === 'technicals' && (
         <SimpleGrid columns={{ base: 1, md: 2 }} gap={6}>
           {/* MACD Details */}
-          <Card.Root bg="bg.surface" borderColor="border.subtle">
+          <Card.Root bg="bg.surface" borderColor="border.default" borderRadius="lg" boxShadow="elevation.raised">
             <Card.Header>
               <Heading size="sm" color="fg.default">MACD Indicator</Heading>
             </Card.Header>
@@ -724,7 +736,7 @@ export const StockDetailPage: React.FC = () => {
           </Card.Root>
 
           {/* Moving Averages */}
-          <Card.Root bg="bg.surface" borderColor="border.subtle">
+          <Card.Root bg="bg.surface" borderColor="border.default" borderRadius="lg" boxShadow="elevation.raised">
             <Card.Header>
               <Heading size="sm" color="fg.default">Moving Averages</Heading>
             </Card.Header>
@@ -758,7 +770,7 @@ export const StockDetailPage: React.FC = () => {
 
           {/* 52-Week Range */}
           {stock.technicals && (
-            <Card.Root bg="bg.surface" borderColor="border.subtle">
+            <Card.Root bg="bg.surface" borderColor="border.default" borderRadius="lg" boxShadow="elevation.raised">
               <Card.Header>
                 <Heading size="sm" color="fg.default">52-Week Range</Heading>
               </Card.Header>
@@ -782,7 +794,7 @@ export const StockDetailPage: React.FC = () => {
           )}
 
           {/* Bollinger Bands */}
-          <Card.Root bg="bg.surface" borderColor="border.subtle">
+          <Card.Root bg="bg.surface" borderColor="border.default" borderRadius="lg" boxShadow="elevation.raised">
             <Card.Header>
               <Heading size="sm" color="fg.default">Bollinger Bands (20, 2)</Heading>
             </Card.Header>
@@ -825,7 +837,7 @@ export const StockDetailPage: React.FC = () => {
           </Card.Root>
 
           {/* Stochastic Oscillator */}
-          <Card.Root bg="bg.surface" borderColor="border.subtle">
+          <Card.Root bg="bg.surface" borderColor="border.default" borderRadius="lg" boxShadow="elevation.raised">
             <Card.Header>
               <Heading size="sm" color="fg.default">Stochastic Oscillator (14, 3)</Heading>
             </Card.Header>
@@ -867,7 +879,7 @@ export const StockDetailPage: React.FC = () => {
 
           {/* Dividend Info */}
           {stock.technicals && stock.technicals.annualized_dividend && (
-            <Card.Root bg="bg.surface" borderColor="border.subtle">
+            <Card.Root bg="bg.surface" borderColor="border.default" borderRadius="lg" boxShadow="elevation.raised">
               <Card.Header>
                 <Heading size="sm" color="fg.default">Dividend Info</Heading>
               </Card.Header>
@@ -901,7 +913,7 @@ export const StockDetailPage: React.FC = () => {
 
       {/* AI Analysis Tab */}
       {activeTab === 'ai' && (
-        <Card.Root bg="bg.surface" borderColor="border.subtle">
+        <Card.Root bg="bg.surface" borderColor="border.default" borderRadius="lg" boxShadow="elevation.raised">
           <Card.Header>
             <Flex justify="space-between" align="center">
               <HStack>
@@ -1022,7 +1034,7 @@ export const StockDetailPage: React.FC = () => {
       {activeTab === 'news' && stock.news && stock.news.length > 0 && (
         <VStack gap={3} align="stretch">
           {stock.news.map((item, idx) => (
-            <Card.Root key={idx} bg="bg.surface" borderColor="border.subtle">
+            <Card.Root key={idx} bg="bg.surface" borderColor="border.default" borderRadius="lg" boxShadow="elevation.raised">
               <Card.Body p={4}>
                 <a href={item.url} target="_blank" rel="noopener noreferrer">
                   <Flex justify="space-between" align="start">
@@ -1046,7 +1058,7 @@ export const StockDetailPage: React.FC = () => {
 
       {/* Insiders Tab */}
       {activeTab === 'insiders' && (
-        <Card.Root bg="bg.surface" borderColor="border.subtle">
+        <Card.Root bg="bg.surface" borderColor="border.default" borderRadius="lg" boxShadow="elevation.raised">
           <Card.Header>
             <Heading size="md" color="fg.default">Insider Trades</Heading>
           </Card.Header>

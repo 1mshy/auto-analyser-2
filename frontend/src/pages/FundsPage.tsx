@@ -132,7 +132,7 @@ const ContributorsList: React.FC<ContributorsListProps> = ({ stocks, type }) => 
     const top5 = sorted.slice(0, 5);
 
     return (
-        <Surface p={4}>
+        <Surface p={4} variant="raised">
             <HStack mb={3}>
                 <Box color={type === 'contributors' ? 'signal.up.fg' : 'signal.down.fg'}>
                     {type === 'contributors' ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
@@ -225,14 +225,15 @@ export const FundsPage: React.FC = () => {
     const currentIndex = indexes.find(i => i.id === selectedIndex);
 
     return (
-        <Container maxW="container.xl" py={8}>
+        <Container maxW="page" py={{ base: 5, md: 8 }}>
             <PageHeader
+                eyebrow="Indexes"
                 icon={<BarChart3 size={22} />}
                 title="Market Index Heatmaps"
                 subtitle="Visualize stock performance and contributions across major market indexes"
             />
 
-            <Surface mb={4} p={4}>
+            <Surface mb={4} p={4} variant="raised">
                 <VStack gap={4} align="stretch">
                     <HStack gap={2} flexWrap="wrap">
                         {indexes.map((index) => (
@@ -298,7 +299,7 @@ export const FundsPage: React.FC = () => {
                 </SimpleGrid>
             )}
 
-            <Surface mb={4}>
+            <Surface mb={4} variant="raised">
                 <Flex justify="space-between" align="center" p={4} borderBottomWidth="1px" borderColor="border.subtle">
                     <HStack>
                         <Text fontSize="sm" fontWeight="semibold" color="fg.default" textTransform="uppercase" letterSpacing="wider">
@@ -334,7 +335,7 @@ export const FundsPage: React.FC = () => {
                 </SimpleGrid>
             )}
 
-            <Surface mt={4} p={4}>
+            <Surface mt={4} p={4} variant="inset">
                 <VStack gap={3} align="start">
                     <Text color="fg.muted" fontSize="xs" fontWeight="semibold" textTransform="uppercase" letterSpacing="wider">
                         Legend

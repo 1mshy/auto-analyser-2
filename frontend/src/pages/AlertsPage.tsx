@@ -16,7 +16,7 @@ import {
   Switch,
   Textarea,
 } from '@chakra-ui/react';
-import { SignalBadge, PageHeader, EmptyState } from '../components/ui/primitives';
+import { SignalBadge, PageHeader, EmptyState, Surface } from '../components/ui/primitives';
 import { Bell, Plus, Trash2, Send, RefreshCw, Save, CheckCircle, XCircle } from 'lucide-react';
 import { Link as RouterLink } from 'react-router-dom';
 import { api } from '../api';
@@ -42,18 +42,23 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'inbox', label: 'Inbox' },
 ];
 
+const DOLLAR_SIGN = '$';
+const MESSAGE_TEMPLATE_PLACEHOLDER = `{{symbol}} hit {{rule_name}} at ${DOLLAR_SIGN}{{price}} (RSI {{rsi}}, Δ {{change_pct}}%)`;
+
 export const AlertsPage: React.FC = () => {
   const [tab, setTab] = useState<TabId>('watchlists');
 
   return (
-    <Container maxW="container.xl" py={8}>
+    <Container maxW="page" py={{ base: 5, md: 8 }}>
       <PageHeader
+        eyebrow="Notifications"
         icon={<Bell size={22} />}
         title="Alerts"
         subtitle="Get notified when watched stocks hit your defined conditions."
       />
 
-      <HStack gap={2} mb={4} borderBottomWidth="1px" borderColor="border.subtle" pb={2}>
+      <Surface p={2} mb={4} variant="inset" overflowX="auto">
+      <HStack gap={2} minW="max-content">
         {TABS.map(t => (
           <Button
             key={t.id}
@@ -66,6 +71,7 @@ export const AlertsPage: React.FC = () => {
           </Button>
         ))}
       </HStack>
+      </Surface>
 
       {tab === 'watchlists' && <WatchlistsTab />}
       {tab === 'rules' && <RulesTab />}
@@ -144,9 +150,9 @@ const WatchlistsTab: React.FC = () => {
   if (loading) return <Spinner color="accent.solid" />;
 
   return (
-    <Flex gap={4} align="stretch">
+    <Flex gap={4} align="stretch" direction={{ base: 'column', lg: 'row' }}>
       {/* Left: list */}
-      <Box w="280px" bg="bg.surface" borderRadius="md" p={3}>
+      <Surface w={{ base: '100%', lg: '300px' }} variant="raised" p={3} flexShrink={0}>
         <VStack align="stretch" gap={2} mb={3}>
           <Input
             size="sm"
@@ -191,10 +197,10 @@ const WatchlistsTab: React.FC = () => {
             </HStack>
           ))}
         </VStack>
-      </Box>
+      </Surface>
 
       {/* Right: detail */}
-      <Box flex={1} bg="bg.surface" borderRadius="md" p={4}>
+      <Surface flex={1} variant="raised" p={4}>
         {!selected ? (
           <Text color="fg.muted">Select a watchlist to view its symbols.</Text>
         ) : (
@@ -235,7 +241,7 @@ const WatchlistsTab: React.FC = () => {
             </Flex>
           </VStack>
         )}
-      </Box>
+      </Surface>
     </Flex>
   );
 };
@@ -262,7 +268,6 @@ const RulesTab: React.FC = () => {
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<AlertRule | Omit<AlertRule, '_id' | 'created_at' | 'updated_at'> | null>(null);
-  const isExisting = editing && (editing as AlertRule)._id;
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -354,7 +359,7 @@ const RulesTab: React.FC = () => {
         />
       )}
       {rules.map(r => (
-        <Box key={r._id} bg="bg.surface" p={4} borderRadius="md" borderWidth="1px" borderColor={r.enabled ? 'signal.up.muted' : 'border.subtle'}>
+        <Surface key={r._id} p={4} variant="raised" borderColor={r.enabled ? 'signal.up.muted' : 'border.subtle'}>
           <HStack justify="space-between" mb={2}>
             <HStack>
               <SignalBadge tone={r.enabled ? 'up' : 'neutral'} size="sm">{r.enabled ? 'Enabled' : 'Paused'}</SignalBadge>
@@ -389,7 +394,7 @@ const RulesTab: React.FC = () => {
               </Text>
             )}
           </HStack>
-        </Box>
+        </Surface>
       ))}
     </VStack>
   );
@@ -431,7 +436,8 @@ const RuleEditor: React.FC<{
   };
 
   return (
-    <VStack align="stretch" gap={4} bg="bg.surface" p={4} borderRadius="md">
+    <Surface p={4} variant="raised">
+    <VStack align="stretch" gap={4}>
       <HStack justify="space-between">
         <Heading size="md" color="fg.default">
           {(rule as AlertRule)._id ? 'Edit rule' : 'New rule'}
@@ -590,7 +596,7 @@ const RuleEditor: React.FC<{
           bg="bg.inset"
           color="fg.default"
           rows={3}
-          placeholder="{{symbol}} hit {{rule_name}} at ${{price}} (RSI {{rsi}}, Δ {{change_pct}}%)"
+          placeholder={MESSAGE_TEMPLATE_PLACEHOLDER}
           value={(rule as any).message_template || ''}
           onChange={e => setField('message_template', (e.target.value || null) as any)}
         />
@@ -650,6 +656,7 @@ const RuleEditor: React.FC<{
         </HStack>
       </Box>
     </VStack>
+    </Surface>
   );
 };
 
@@ -714,7 +721,7 @@ const ChannelsTab: React.FC = () => {
 
   return (
     <VStack align="stretch" gap={4}>
-      <Box bg="bg.surface" p={4} borderRadius="md">
+      <Surface p={4} variant="raised">
         <Heading size="sm" color="fg.default" mb={2}>Add Discord webhook</Heading>
         <VStack align="stretch" gap={2}>
           <Input size="sm" bg="bg.inset" color="fg.default" placeholder="Channel name (e.g. #alerts)" value={newName} onChange={e => setNewName(e.target.value)} />
@@ -724,11 +731,11 @@ const ChannelsTab: React.FC = () => {
             <Plus size={14} /> Add channel
           </Button>
         </VStack>
-      </Box>
+      </Surface>
 
       {items.length === 0 && <Text color="fg.muted">No channels yet.</Text>}
       {items.map(c => (
-        <Box key={c._id} bg="bg.surface" p={4} borderRadius="md">
+        <Surface key={c._id} p={4} variant="raised">
           <HStack justify="space-between">
             <HStack>
               <SignalBadge tone={c.enabled ? 'up' : 'neutral'} size="sm">{c.enabled ? 'enabled' : 'disabled'}</SignalBadge>
@@ -750,7 +757,7 @@ const ChannelsTab: React.FC = () => {
           <Text color="fg.subtle" fontSize="xs" fontFamily="mono" mt={1}>
             {c.webhook_url}
           </Text>
-        </Box>
+        </Surface>
       ))}
     </VStack>
   );
@@ -812,12 +819,10 @@ const InboxTab: React.FC = () => {
           <Text color="fg.muted" fontSize="sm" fontWeight="bold" mb={2}>{day}</Text>
           <VStack align="stretch" gap={2}>
             {entries.map(e => (
-              <Box
+              <Surface
                 key={e._id}
-                bg={e.read ? 'bg.inset' : 'bg.surface'}
+                variant={e.read ? 'inset' : 'raised'}
                 p={3}
-                borderRadius="md"
-                borderWidth="1px"
                 borderColor={e.read ? 'border.subtle' : 'accent.emphasis'}
                 onClick={() => e._id && !e.read && markRead(e._id)}
                 cursor={e.read ? 'default' : 'pointer'}
@@ -848,7 +853,7 @@ const InboxTab: React.FC = () => {
                     </HStack>
                   ))}
                 </HStack>
-              </Box>
+              </Surface>
             ))}
           </VStack>
         </Box>

@@ -167,8 +167,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
       <Drawer.Root open={open} onOpenChange={(e: any) => e.open ? null : onClose()} placement="end" size="md">
         <Drawer.Backdrop />
         <Drawer.Positioner>
-          <Drawer.Content>
-            <Drawer.Header>
+          <Drawer.Content bg="bg.surface" borderLeftWidth="1px" borderColor="border.default">
+            <Drawer.Header borderBottomWidth="1px" borderColor="border.subtle">
               <Drawer.Title>Filter Stocks</Drawer.Title>
               <Drawer.CloseTrigger />
             </Drawer.Header>
@@ -201,7 +201,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                   </Text>
                   <VStack gap={2} align="stretch">
                     {savedFilters.map((sf) => (
-                      <HStack key={sf.id} justify="space-between" p={2} bg="bg.muted" borderRadius="md">
+                      <HStack key={sf.id} justify="space-between" p={2} bg="bg.inset" borderRadius="md" borderWidth="1px" borderColor="border.subtle">
                         <Button
                           size="sm"
                           variant="ghost"
@@ -360,7 +360,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
             </VStack>
           </Drawer.Body>
 
-          <Drawer.Footer>
+          <Drawer.Footer borderTopWidth="1px" borderColor="border.subtle">
             <VStack gap={3} width="100%">
               {/* Save Current Filter */}
               <HStack width="100%">

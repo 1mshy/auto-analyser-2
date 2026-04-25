@@ -31,9 +31,16 @@ const NavItem: React.FC<NavItemProps> = ({ to, icon, label, isActive, badge }) =
       transition="background 120ms ease, color 120ms ease"
       cursor="pointer"
       position="relative"
+      whiteSpace="nowrap"
     >
       {icon}
-      <Text fontSize="sm" fontWeight={isActive ? 'semibold' : 'medium'}>{label}</Text>
+      <Text
+        fontSize="sm"
+        fontWeight={isActive ? 'semibold' : 'medium'}
+        display={{ base: 'none', xl: 'block' }}
+      >
+        {label}
+      </Text>
       {badge}
     </HStack>
   </Link>
@@ -79,26 +86,58 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
       as="nav"
       bg="bg.canvas"
       borderBottomWidth="1px"
-      borderColor="border.subtle"
+      borderColor="border.default"
       position="sticky"
       top={0}
       zIndex={100}
       backdropFilter="saturate(140%) blur(8px)"
     >
-      <Container maxW="container.xl">
-        <Flex align="center" justify="space-between" h={14}>
+      <Container maxW="page">
+        <Flex
+          align="center"
+          justify="space-between"
+          minH="nav"
+          py={{ base: 2, lg: 0 }}
+          gap={3}
+        >
           {/* Logo */}
           <Link to="/">
             <HStack gap={2}>
-              <Box color="accent.fg"><Activity size={20} /></Box>
-              <Text fontSize="md" fontWeight="semibold" color="fg.default" letterSpacing="tight">
+              <Box
+                color="accent.fg"
+                bg="accent.subtle"
+                borderWidth="1px"
+                borderColor="accent.muted"
+                borderRadius="md"
+                p={1.5}
+                lineHeight={0}
+              >
+                <Activity size={18} />
+              </Box>
+              <Text
+                fontSize="sm"
+                fontWeight="semibold"
+                color="fg.default"
+                letterSpacing="tight"
+                display={{ base: 'none', md: 'block' }}
+              >
                 Stock Analyser
               </Text>
             </HStack>
           </Link>
 
           {/* Navigation Links */}
-          <HStack gap={1}>
+          <HStack
+            gap={1}
+            flex={1}
+            justify={{ base: 'flex-start', lg: 'center' }}
+            overflowX="auto"
+            px={{ base: 1, md: 3 }}
+            css={{
+              scrollbarWidth: 'none',
+              '&::-webkit-scrollbar': { display: 'none' },
+            }}
+          >
             <NavItem
               to="/"
               icon={<Home size={16} />}
@@ -168,10 +207,10 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
           </HStack>
 
           {/* Right Side: Status + Settings */}
-          <HStack gap={2}>
+          <HStack gap={2} flexShrink={0}>
             {/* Filter Active Indicator */}
             {isFiltered && (
-              <SignalBadge tone="warn" size="sm" px={2} py={1}>
+              <SignalBadge tone="warn" size="sm" px={2} py={1} display={{ base: 'none', md: 'inline-flex' }}>
                 <Text className="num" data-num="" fontSize="xs">
                   {settings.minMarketCap && formatMarketCap(settings.minMarketCap)}
                   {settings.minMarketCap && settings.maxPriceChangePercent && ' | '}
@@ -182,7 +221,7 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
 
             {/* Status Badge */}
             {totalStocks !== undefined && (
-              <SignalBadge tone="up" size="sm" px={2} py={1}>
+              <SignalBadge tone="up" size="sm" px={2} py={1} display={{ base: 'none', lg: 'inline-flex' }}>
                 <HStack gap={1} fontSize="xs">
                   <Num
                     value={analyzedCount ?? 0}

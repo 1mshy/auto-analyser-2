@@ -148,16 +148,17 @@ export const ScreenerPage: React.FC = () => {
   );
 
   return (
-    <Container maxW="container.xl" py={8}>
+    <Container maxW="page" py={{ base: 5, md: 8 }}>
       <PageHeader
+        eyebrow="Screener"
         title="Stock Screener"
         subtitle={total > 0 ? `${total.toLocaleString()} results` : 'Tune indicators and filters to surface matches'}
         icon={<Search size={22} />}
       />
 
-      <Surface p={5} mb={6}>
+      <Surface p={4} mb={5} variant="raised">
         <VStack gap={4} align="stretch">
-          <SimpleGrid columns={{ base: 2, md: 4, lg: 6 }} gap={3}>
+          <SimpleGrid columns={{ base: 2, md: 3, xl: 6 }} gap={3}>
             <FilterInput label="Min RSI" value={minRsi} onChange={setMinRsi} placeholder="0" />
             <FilterInput label="Max RSI" value={maxRsi} onChange={setMaxRsi} placeholder="100" />
             <FilterInput label="Min Stoch %K" value={minStochK} onChange={setMinStochK} placeholder="0" />
@@ -183,8 +184,8 @@ export const ScreenerPage: React.FC = () => {
             </HStack>
           </Box>
 
-          <Flex justify="space-between" wrap="wrap" gap={3}>
-            <HStack gap={2}>
+          <Flex justify="space-between" wrap="wrap" gap={3} align="center">
+            <HStack gap={2} wrap="wrap">
               <Button
                 size="xs"
                 variant={onlyOversold ? 'solid' : 'outline'}
@@ -203,7 +204,7 @@ export const ScreenerPage: React.FC = () => {
               </Button>
             </HStack>
 
-            <HStack gap={2}>
+            <HStack gap={2} wrap="wrap">
               <Text color="fg.muted" fontSize="xs">Sort:</Text>
               {['market_cap', 'price_change_percent', 'rsi', 'price'].map(field => (
                 <Button
@@ -222,12 +223,12 @@ export const ScreenerPage: React.FC = () => {
             </HStack>
           </Flex>
 
-          <Flex justify="space-between" wrap="wrap" gap={3}>
+          <Flex justify="space-between" wrap="wrap" gap={3} align="center">
             <Button colorPalette="blue" onClick={() => { setPage(1); runScreener(); }}>
               <Search size={16} /> Run Screener
             </Button>
 
-            <HStack gap={2}>
+            <HStack gap={2} wrap="wrap">
               <Input
                 size="sm"
                 placeholder="Preset name..."
@@ -286,8 +287,8 @@ export const ScreenerPage: React.FC = () => {
           description="Try adjusting filters and run again."
         />
       ) : (
-        <Surface p={0} overflow="hidden">
-          <Flex px={4} py={2} bg="bg.inset" borderBottomWidth="1px" borderColor="border.subtle" color="fg.muted" fontSize="xs" fontWeight="semibold" textTransform="uppercase" letterSpacing="wider">
+        <Surface p={0} overflowX="auto" variant="raised">
+          <Flex minW="860px" px={4} py={2} bg="bg.inset" borderBottomWidth="1px" borderColor="border.subtle" color="fg.muted" fontSize="xs" fontWeight="semibold" textTransform="uppercase" letterSpacing="wider" position="sticky" top={0} zIndex={1}>
             <Text w="100px">Symbol</Text>
             <Text w="100px" textAlign="right">Price</Text>
             <Text w="100px" textAlign="right">Change</Text>
@@ -305,6 +306,7 @@ export const ScreenerPage: React.FC = () => {
             return (
               <Link key={stock.symbol} to={`/stocks/${stock.symbol}`}>
                 <Flex
+                  minW="860px"
                   px={4}
                   py={3}
                   align="center"

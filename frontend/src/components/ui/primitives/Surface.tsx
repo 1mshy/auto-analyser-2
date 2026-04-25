@@ -10,8 +10,8 @@ export interface SurfaceProps extends BoxProps {
 }
 
 /**
- * Canonical card/panel. Linear-style: hairline border, flat bg, subtle hover
- * that shifts the border — never the background.
+ * Canonical card/panel for the finance workspace: flat, bordered, compact,
+ * and quiet until interaction or signal state needs emphasis.
  */
 export const Surface = React.forwardRef<HTMLDivElement, SurfaceProps>(
   function Surface(
@@ -39,14 +39,19 @@ export const Surface = React.forwardRef<HTMLDivElement, SurfaceProps>(
         ref={ref}
         bg={bgMap[variant]}
         borderWidth="1px"
-        borderColor="border.subtle"
-        borderRadius="md"
-        borderLeftWidth={accentBorder ? "2px" : undefined}
+        borderColor={variant === "raised" ? "border.default" : "border.subtle"}
+        borderRadius="lg"
+        boxShadow={variant === "raised" ? "elevation.raised" : undefined}
+        borderLeftWidth={accentBorder ? "3px" : undefined}
         borderLeftColor={accentBorder}
-        transition="border-color 120ms ease, background 120ms ease"
+        transition="border-color 120ms ease, background 120ms ease, box-shadow 120ms ease, transform 120ms ease"
         {...(interactive && {
           cursor: "pointer",
-          _hover: { borderColor: "border.emphasis" },
+          _hover: {
+            bg: variant === "inset" ? "bg.emphasized" : "bg.muted",
+            borderColor: "border.emphasis",
+          },
+          _active: { transform: "translateY(1px)" },
         })}
         {...rest}
       >

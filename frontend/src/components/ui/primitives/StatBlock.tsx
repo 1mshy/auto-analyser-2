@@ -85,13 +85,13 @@ export const StatBlock = React.forwardRef<HTMLDivElement, StatBlockProps>(
 
     const content = (
       <VStack align="stretch" gap={sizing.labelGap}>
-        <HStack gap={2} color="fg.muted">
+        <HStack gap={2} color="fg.muted" minH="18px">
           {icon}
           <Text
             fontSize={sizing.labelSize}
             fontWeight="medium"
             textTransform="uppercase"
-            letterSpacing="wider"
+            letterSpacing="0.11em"
           >
             {label}
           </Text>
@@ -124,7 +124,7 @@ export const StatBlock = React.forwardRef<HTMLDivElement, StatBlockProps>(
     }
 
     return (
-      <Surface ref={ref} p={sizing.p} {...rest}>
+      <Surface ref={ref} variant="raised" p={sizing.p} {...rest}>
         {content}
       </Surface>
     );

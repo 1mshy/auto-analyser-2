@@ -69,14 +69,15 @@ export const NewsPage: React.FC = () => {
   };
 
   return (
-    <Container maxW="container.xl" py={8}>
+    <Container maxW="page" py={{ base: 5, md: 8 }}>
       <PageHeader
+        eyebrow="Market Feed"
         icon={<Newspaper size={22} />}
         title="News Feed"
         subtitle={`${pagination.total.toLocaleString()} articles`}
       />
 
-      <Surface mb={4} p={4}>
+      <Surface mb={4} p={4} variant="raised">
         <Flex gap={4} wrap="wrap" align="center">
           <HStack flex={1} minW="250px">
             <Input
@@ -132,7 +133,7 @@ export const NewsPage: React.FC = () => {
       ) : (
         <VStack gap={2} align="stretch">
           {news.map((item, idx) => (
-            <Surface key={idx} interactive p={4}>
+            <Surface key={idx} interactive p={4} variant="raised">
               <a href={item.url} target="_blank" rel="noopener noreferrer">
                 <Flex justify="space-between" align="start">
                   <VStack align="start" gap={2} flex={1}>

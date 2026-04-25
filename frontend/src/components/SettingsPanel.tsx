@@ -113,7 +113,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
       <Drawer.Root open={open} onOpenChange={(e: any) => e.open ? null : onClose()} placement="end" size="md">
         <Drawer.Backdrop />
         <Drawer.Positioner>
-          <Drawer.Content bg="bg.surface">
+          <Drawer.Content bg="bg.surface" borderLeftWidth="1px" borderColor="border.default">
             <Drawer.Header borderBottomWidth="1px" borderColor="border.subtle">
               <Drawer.Title color="fg.default">
                 <HStack gap={2}>
@@ -139,6 +139,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                       bg={settings.preset === 'all' ? 'accent.muted' : 'bg.inset'}
                       borderColor={settings.preset === 'all' ? 'accent.solid' : 'border.subtle'}
                       borderWidth="1px"
+                      borderRadius="lg"
                       cursor="pointer"
                       onClick={() => handlePreset('all')}
                       _hover={{ borderColor: 'border.emphasis' }}
@@ -157,6 +158,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                       bg={settings.preset === 'quality' ? 'signal.up.muted' : 'bg.inset'}
                       borderColor={settings.preset === 'quality' ? 'signal.up.solid' : 'border.subtle'}
                       borderWidth="1px"
+                      borderRadius="lg"
                       cursor="pointer"
                       onClick={() => handlePreset('quality')}
                       _hover={{ borderColor: 'border.emphasis' }}
@@ -175,6 +177,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                       bg={settings.preset === 'large_cap' ? 'accent.muted' : 'bg.inset'}
                       borderColor={settings.preset === 'large_cap' ? 'accent.solid' : 'border.subtle'}
                       borderWidth="1px"
+                      borderRadius="lg"
                       cursor="pointer"
                       onClick={() => handlePreset('large_cap')}
                       _hover={{ borderColor: 'border.emphasis' }}

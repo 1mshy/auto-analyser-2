@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Box, Text } from '@chakra-ui/react';
+import { Box } from '@chakra-ui/react';
 
 interface MarkdownContentProps {
   children: string;
@@ -11,7 +11,7 @@ interface MarkdownContentProps {
 const MarkdownContent: React.FC<MarkdownContentProps> = ({
   children,
   fontSize = 'md',
-  color = 'gray.200',
+  color = 'fg.muted',
 }) => {
   return (
     <Box
@@ -24,7 +24,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
           fontWeight: 'semibold',
           mt: 4,
           mb: 2,
-          color: 'white',
+          color: 'fg.default',
         },
         '& h1': { fontSize: '2xl' },
         '& h2': { fontSize: 'xl' },
@@ -33,11 +33,11 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
         '& p': { mb: 3 },
         '& ul, & ol': { pl: 5, mb: 3 },
         '& li': { mb: 1 },
-        '& strong': { color: 'white', fontWeight: 'semibold' },
+        '& strong': { color: 'fg.default', fontWeight: 'semibold' },
         '& em': { fontStyle: 'italic' },
         '& code': {
-          bg: 'gray.700',
-          color: 'purple.300',
+          bg: 'bg.inset',
+          color: 'accent.fg',
           px: 1,
           py: 0.5,
           borderRadius: 'sm',
@@ -45,7 +45,9 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
           fontFamily: 'mono',
         },
         '& pre': {
-          bg: 'gray.700',
+          bg: 'bg.inset',
+          border: '1px solid',
+          borderColor: 'border.subtle',
           p: 3,
           borderRadius: 'md',
           overflowX: 'auto',
@@ -56,18 +58,18 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
         '& pre code': {
           bg: 'transparent',
           p: 0,
-          color: 'gray.100',
+          color: 'fg.default',
         },
         '& blockquote': {
           borderLeft: '3px solid',
-          borderColor: 'purple.500',
+          borderColor: 'accent.solid',
           pl: 4,
           py: 1,
           mb: 3,
-          color: 'gray.400',
+          color: 'fg.muted',
           fontStyle: 'italic',
         },
-        '& hr': { borderColor: 'gray.600', my: 4 },
+        '& hr': { borderColor: 'border.subtle', my: 4 },
         '& p:last-child': { mb: 0 },
       }}
     >

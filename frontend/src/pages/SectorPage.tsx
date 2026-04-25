@@ -23,7 +23,7 @@ const SectorCard: React.FC<{ sector: SectorPerformance }> = ({ sector }) => {
   const rsiIntent = sector.avg_rsi < 30 ? 'up' : sector.avg_rsi > 70 ? 'down' : 'neutral';
 
   return (
-    <Surface accent={accent} p={5} position="relative" overflow="hidden">
+    <Surface accent={accent} p={5} variant="raised" position="relative" overflow="hidden">
       <VStack align="start" gap={3}>
         <Flex justify="space-between" w="100%" align="center">
           <Text fontSize="md" fontWeight="semibold" color="fg.default" letterSpacing="tight">
@@ -120,8 +120,9 @@ export const SectorPage: React.FC = () => {
   });
 
   return (
-    <Container maxW="container.xl" py={8}>
+    <Container maxW="page" py={{ base: 5, md: 8 }}>
       <PageHeader
+        eyebrow="Market Breadth"
         title="Sector Performance"
         subtitle={`${sectors.length} sectors analyzed`}
         icon={<PieChart size={22} />}

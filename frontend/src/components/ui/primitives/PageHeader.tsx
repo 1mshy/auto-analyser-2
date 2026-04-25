@@ -1,11 +1,12 @@
 import React from "react";
-import { Flex, Heading, HStack, Text, VStack } from "@chakra-ui/react";
+import { Box, Flex, Heading, HStack, Text, VStack } from "@chakra-ui/react";
 
 export interface PageHeaderProps {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
   icon?: React.ReactNode;
   actions?: React.ReactNode;
+  eyebrow?: React.ReactNode;
   mb?: number | string;
 }
 
@@ -18,6 +19,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   subtitle,
   icon,
   actions,
+  eyebrow,
   mb = 6,
 }) => {
   return (
@@ -28,20 +30,47 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
       mb={mb}
       direction={{ base: "column", md: "row" }}
     >
-      <HStack gap={3} align="center">
-        {icon && <span style={{ color: "var(--chakra-colors-accent-fg)" }}>{icon}</span>}
-        <VStack align="flex-start" gap={0.5}>
-          <Heading size="lg" color="fg.default" fontWeight="semibold">
+      <HStack gap={3} align="flex-start">
+        {icon && (
+          <Box
+            color="accent.fg"
+            bg="accent.subtle"
+            borderWidth="1px"
+            borderColor="accent.muted"
+            borderRadius="lg"
+            p={2}
+            lineHeight={0}
+          >
+            {icon}
+          </Box>
+        )}
+        <VStack align="flex-start" gap={1}>
+          {eyebrow && (
+            <Text
+              fontSize="xs"
+              color="fg.subtle"
+              fontWeight="semibold"
+              textTransform="uppercase"
+              letterSpacing="0.12em"
+            >
+              {eyebrow}
+            </Text>
+          )}
+          <Heading size="lg" color="fg.default" fontWeight="semibold" letterSpacing="tight">
             {title}
           </Heading>
           {subtitle && (
-            <Text fontSize="sm" color="fg.muted">
+            <Text fontSize="sm" color="fg.muted" maxW="3xl">
               {subtitle}
             </Text>
           )}
         </VStack>
       </HStack>
-      {actions && <HStack gap={2}>{actions}</HStack>}
+      {actions && (
+        <HStack gap={2} alignSelf={{ base: "stretch", md: "center" }} wrap="wrap">
+          {actions}
+        </HStack>
+      )}
     </Flex>
   );
 };

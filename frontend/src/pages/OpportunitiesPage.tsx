@@ -50,7 +50,7 @@ const OpportunityCard: React.FC<{
   const priorityTone = priority >= 5 ? 'up' : priority >= 3 ? 'warn' : 'neutral';
 
   return (
-    <Surface p={4} accent={accent}>
+    <Surface p={4} accent={accent} variant="raised">
       <Flex justify="space-between" align="start" mb={3}>
         <VStack align="start" gap={1}>
           <HStack>
@@ -254,18 +254,20 @@ export const OpportunitiesPage: React.FC = () => {
   const currentStocks = activeTab === 'oversold' ? oversoldStocks : macdBullish;
 
   return (
-    <Container maxW="container.xl" py={8}>
+    <Container maxW="page" py={{ base: 5, md: 8 }}>
       <PageHeader
+        eyebrow="Signals"
         title="Investment Opportunities"
         subtitle={`Stocks showing potential buying opportunities based on technical indicators.${aiEnabled ? ' AI analysis auto-triggered for top priority stocks.' : ''}`}
         icon={<Target size={22} />}
       />
 
       {/* Tab Buttons */}
-      <HStack gap={2} mb={6}>
+      <Surface p={2} mb={5} variant="inset" overflowX="auto">
+      <HStack gap={2} minW="max-content">
         <Button
           size="sm"
-          variant={activeTab === 'oversold' ? 'solid' : 'outline'}
+          variant={activeTab === 'oversold' ? 'solid' : 'ghost'}
           colorPalette={activeTab === 'oversold' ? 'green' : 'gray'}
           onClick={() => setActiveTab('oversold')}
         >
@@ -275,7 +277,7 @@ export const OpportunitiesPage: React.FC = () => {
         </Button>
         <Button
           size="sm"
-          variant={activeTab === 'macd' ? 'solid' : 'outline'}
+          variant={activeTab === 'macd' ? 'solid' : 'ghost'}
           colorPalette={activeTab === 'macd' ? 'blue' : 'gray'}
           onClick={() => setActiveTab('macd')}
         >
@@ -284,6 +286,7 @@ export const OpportunitiesPage: React.FC = () => {
           <SignalBadge ml={2} tone="info" size="sm">{macdBullish.length}</SignalBadge>
         </Button>
       </HStack>
+      </Surface>
 
       {aiEnabled && (
         <Box
