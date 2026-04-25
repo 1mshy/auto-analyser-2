@@ -3,21 +3,18 @@ import { Link } from 'react-router-dom';
 import {
     Box,
     Container,
-    Heading,
     Text,
     Flex,
-    Badge,
     Spinner,
     HStack,
     VStack,
-    Card,
     Button,
     SimpleGrid,
-    Stat,
 } from '@chakra-ui/react';
 import { TrendingUp, TrendingDown, BarChart3, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { IndexInfo, IndexHeatmapData, StockHeatmapItem, HeatmapPeriod, HEATMAP_PERIODS } from '../types';
+import { Surface, Num, SignalBadge, PageHeader, StatBlock, EmptyState } from '../components/ui/primitives';
 
 // ============================================================================
 // Heatmap Component
@@ -35,18 +32,17 @@ const HeatmapCell: React.FC<HeatmapCellProps> = ({ stock, maxMarketCap }) => {
     const maxSize = 120;
     const size = minSize + sizeRatio * (maxSize - minSize);
 
-    // Color based on performance (gradient from red to green)
     const getColor = (changePercent: number): string => {
-        if (changePercent >= 3) return 'green.400';
-        if (changePercent >= 2) return 'green.500';
-        if (changePercent >= 1) return 'green.600';
-        if (changePercent >= 0.5) return 'green.700';
-        if (changePercent >= 0) return 'green.800';
-        if (changePercent >= -0.5) return 'red.800';
-        if (changePercent >= -1) return 'red.700';
-        if (changePercent >= -2) return 'red.600';
-        if (changePercent >= -3) return 'red.500';
-        return 'red.400';
+        if (changePercent >= 3) return 'signalUp.400';
+        if (changePercent >= 2) return 'signalUp.500';
+        if (changePercent >= 1) return 'signalUp.600';
+        if (changePercent >= 0.5) return 'signalUp.700';
+        if (changePercent >= 0) return 'signalUp.800';
+        if (changePercent >= -0.5) return 'signalDown.800';
+        if (changePercent >= -1) return 'signalDown.700';
+        if (changePercent >= -2) return 'signalDown.600';
+        if (changePercent >= -3) return 'signalDown.500';
+        return 'signalDown.400';
     };
 
     const bgColor = getColor(stock.change_percent);
@@ -56,7 +52,7 @@ const HeatmapCell: React.FC<HeatmapCellProps> = ({ stock, maxMarketCap }) => {
             <Box
                 bg={bgColor}
                 p={2}
-                borderRadius="md"
+                borderRadius="sm"
                 width={`${size}px`}
                 height={`${size}px`}
                 display="flex"
@@ -64,26 +60,29 @@ const HeatmapCell: React.FC<HeatmapCellProps> = ({ stock, maxMarketCap }) => {
                 justifyContent="center"
                 alignItems="center"
                 cursor="pointer"
-                transition="all 0.2s"
-                _hover={{ transform: 'scale(1.05)', zIndex: 10, boxShadow: 'lg' }}
+                transition="all 0.15s"
+                _hover={{ transform: 'scale(1.04)', zIndex: 10, outline: '1px solid', outlineColor: 'fg.default' }}
                 position="relative"
                 title={`${stock.symbol}: ${stock.change_percent >= 0 ? '+' : ''}${stock.change_percent.toFixed(2)}% | Contribution: ${stock.contribution >= 0 ? '+' : ''}${stock.contribution.toFixed(3)}%`}
             >
                 <Text
-                    fontWeight="bold"
+                    fontWeight="semibold"
                     color="white"
                     fontSize={size > 80 ? 'md' : 'sm'}
-                    textShadow="0 1px 2px rgba(0,0,0,0.5)"
+                    letterSpacing="tight"
+                    textShadow="0 1px 2px rgba(0,0,0,0.55)"
                 >
                     {stock.symbol}
                 </Text>
-                <Text
+                <Num
+                    value={stock.change_percent}
+                    sign="always"
+                    suffix="%"
+                    decimals={2}
                     color="whiteAlpha.900"
                     fontSize={size > 80 ? 'sm' : 'xs'}
-                    textShadow="0 1px 2px rgba(0,0,0,0.5)"
-                >
-                    {stock.change_percent >= 0 ? '+' : ''}{stock.change_percent.toFixed(2)}%
-                </Text>
+                    textShadow="0 1px 2px rgba(0,0,0,0.55)"
+                />
             </Box>
         </Link>
     );
@@ -96,19 +95,18 @@ interface HeatmapProps {
 const Heatmap: React.FC<HeatmapProps> = ({ data }) => {
     if (!data.stocks || data.stocks.length === 0) {
         return (
-            <Box textAlign="center" py={10}>
-                <Text color="gray.400">No stock data available for this index.</Text>
-                <Text color="gray.500" fontSize="sm" mt={2}>
-                    Stock data may still be loading. Please check back later.
-                </Text>
-            </Box>
+            <EmptyState
+                icon={<BarChart3 size={32} />}
+                title="No stock data available"
+                description="Stock data may still be loading. Please check back later."
+            />
         );
     }
 
     const maxMarketCap = Math.max(...data.stocks.map(s => s.market_cap || 0));
 
     return (
-        <Flex flexWrap="wrap" gap={2} justifyContent="center" p={4}>
+        <Flex flexWrap="wrap" gap={1} justifyContent="center" p={4}>
             {data.stocks.map((stock) => (
                 <HeatmapCell key={stock.symbol} stock={stock} maxMarketCap={maxMarketCap} />
             ))}
@@ -134,46 +132,44 @@ const ContributorsList: React.FC<ContributorsListProps> = ({ stocks, type }) => 
     const top5 = sorted.slice(0, 5);
 
     return (
-        <Card.Root bg="gray.800" borderColor="gray.700">
-            <Card.Header>
-                <HStack>
-                    <Box color={type === 'contributors' ? 'green.400' : 'red.400'}>
-                        {type === 'contributors' ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
-                    </Box>
-                    <Heading size="sm" color="white">
-                        Top {type === 'contributors' ? 'Contributors' : 'Detractors'}
-                    </Heading>
-                </HStack>
-            </Card.Header>
-            <Card.Body>
-                <VStack gap={2} align="stretch">
-                    {top5.map((stock, index) => (
-                        <Link key={stock.symbol} to={`/stocks/${stock.symbol}`}>
-                            <Flex
-                                justify="space-between"
-                                align="center"
-                                p={2}
-                                borderRadius="md"
-                                bg="whiteAlpha.50"
-                                _hover={{ bg: 'whiteAlpha.100' }}
-                            >
-                                <HStack>
-                                    <Text color="gray.500" fontSize="sm" width="20px">{index + 1}.</Text>
-                                    <Text color="white" fontWeight="bold">{stock.symbol}</Text>
-                                </HStack>
-                                <Text
-                                    color={stock.contribution >= 0 ? 'green.400' : 'red.400'}
-                                    fontWeight="bold"
-                                    fontSize="sm"
-                                >
-                                    {stock.contribution >= 0 ? '+' : ''}{stock.contribution.toFixed(3)}%
-                                </Text>
-                            </Flex>
-                        </Link>
-                    ))}
-                </VStack>
-            </Card.Body>
-        </Card.Root>
+        <Surface p={4}>
+            <HStack mb={3}>
+                <Box color={type === 'contributors' ? 'signal.up.fg' : 'signal.down.fg'}>
+                    {type === 'contributors' ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                </Box>
+                <Text fontSize="sm" fontWeight="semibold" color="fg.default" textTransform="uppercase" letterSpacing="wider">
+                    Top {type === 'contributors' ? 'Contributors' : 'Detractors'}
+                </Text>
+            </HStack>
+            <VStack gap={1} align="stretch">
+                {top5.map((stock, index) => (
+                    <Link key={stock.symbol} to={`/stocks/${stock.symbol}`}>
+                        <Flex
+                            justify="space-between"
+                            align="center"
+                            px={2}
+                            py={1.5}
+                            borderRadius="sm"
+                            _hover={{ bg: 'bg.muted' }}
+                        >
+                            <HStack>
+                                <Text color="fg.subtle" fontSize="xs" width="20px" className="num" data-num="">{index + 1}.</Text>
+                                <Text color="fg.default" fontWeight="semibold">{stock.symbol}</Text>
+                            </HStack>
+                            <Num
+                                value={stock.contribution}
+                                intent="auto"
+                                sign="always"
+                                suffix="%"
+                                decimals={3}
+                                fontWeight="semibold"
+                                fontSize="sm"
+                            />
+                        </Flex>
+                    </Link>
+                ))}
+            </VStack>
+        </Surface>
     );
 };
 
@@ -230,189 +226,150 @@ export const FundsPage: React.FC = () => {
 
     return (
         <Container maxW="container.xl" py={8}>
-            {/* Page Header */}
-            <Box mb={6}>
-                <HStack gap={3} mb={2}>
-                    <Box color="blue.400"><BarChart3 size={28} /></Box>
-                    <Heading size="lg" color="white">Market Index Heatmaps</Heading>
-                </HStack>
-                <Text color="gray.400">
-                    Visualize stock performance and contributions across major market indexes
-                </Text>
-            </Box>
+            <PageHeader
+                icon={<BarChart3 size={22} />}
+                title="Market Index Heatmaps"
+                subtitle="Visualize stock performance and contributions across major market indexes"
+            />
 
-            {/* Index Selector */}
-            <Card.Root bg="gray.800" borderColor="gray.700" mb={6}>
-                <Card.Body>
-                    <VStack gap={4} align="stretch">
-                        {/* Index Tabs */}
-                        <HStack gap={2} flexWrap="wrap">
-                            {indexes.map((index) => (
-                                <Button
-                                    key={index.id}
-                                    size="md"
-                                    variant={selectedIndex === index.id ? 'solid' : 'outline'}
-                                    colorPalette={selectedIndex === index.id ? 'blue' : 'gray'}
-                                    onClick={() => setSelectedIndex(index.id)}
-                                >
-                                    {index.name}
-                                </Button>
-                            ))}
-                        </HStack>
-
-                        {/* Period Selector */}
-                        <HStack gap={2}>
-                            <Text color="gray.400" fontSize="sm">Period:</Text>
-                            {HEATMAP_PERIODS.map((period) => (
-                                <Button
-                                    key={period.value}
-                                    size="sm"
-                                    variant={selectedPeriod === period.value ? 'solid' : 'ghost'}
-                                    colorPalette={selectedPeriod === period.value ? 'green' : 'gray'}
-                                    onClick={() => setSelectedPeriod(period.value)}
-                                >
-                                    {period.label}
-                                </Button>
-                            ))}
-                            <Box flex={1} />
+            <Surface mb={4} p={4}>
+                <VStack gap={4} align="stretch">
+                    <HStack gap={2} flexWrap="wrap">
+                        {indexes.map((index) => (
                             <Button
+                                key={index.id}
                                 size="sm"
-                                variant="ghost"
-                                colorPalette="gray"
-                                onClick={fetchHeatmapData}
-                                disabled={loading}
+                                variant={selectedIndex === index.id ? 'solid' : 'outline'}
+                                colorPalette={selectedIndex === index.id ? 'accent' : 'gray'}
+                                onClick={() => setSelectedIndex(index.id)}
                             >
-                                <RefreshCw size={16} />
+                                {index.name}
                             </Button>
-                        </HStack>
-                    </VStack>
-                </Card.Body>
-            </Card.Root>
+                        ))}
+                    </HStack>
 
-            {/* Index Summary Stats */}
+                    <HStack gap={2} flexWrap="wrap">
+                        <Text color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Period</Text>
+                        {HEATMAP_PERIODS.map((period) => (
+                            <Button
+                                key={period.value}
+                                size="xs"
+                                variant={selectedPeriod === period.value ? 'subtle' : 'ghost'}
+                                colorPalette={selectedPeriod === period.value ? 'accent' : 'gray'}
+                                onClick={() => setSelectedPeriod(period.value)}
+                            >
+                                {period.label}
+                            </Button>
+                        ))}
+                        <Box flex={1} />
+                        <Button
+                            size="xs"
+                            variant="ghost"
+                            colorPalette="gray"
+                            onClick={fetchHeatmapData}
+                            disabled={loading}
+                        >
+                            <RefreshCw size={14} />
+                        </Button>
+                    </HStack>
+                </VStack>
+            </Surface>
+
             {!loading && heatmapData && (
-                <SimpleGrid columns={{ base: 2, md: 4 }} gap={4} mb={6}>
-                    <Card.Root bg="gray.800" borderColor="gray.700">
-                        <Card.Body>
-                            <Stat.Root>
-                                <Stat.Label color="gray.400">{currentIndex?.name || 'Index'}</Stat.Label>
-                                <Stat.ValueText
-                                    color={heatmapData.index_performance >= 0 ? 'green.400' : 'red.400'}
-                                >
-                                    {heatmapData.index_performance >= 0 ? '+' : ''}
-                                    {heatmapData.index_performance.toFixed(2)}%
-                                </Stat.ValueText>
-                            </Stat.Root>
-                        </Card.Body>
-                    </Card.Root>
-                    <Card.Root bg="gray.800" borderColor="gray.700">
-                        <Card.Body>
-                            <Stat.Root>
-                                <Stat.Label color="gray.400">Stocks Tracked</Stat.Label>
-                                <Stat.ValueText color="white">{heatmapData.stocks.length}</Stat.ValueText>
-                            </Stat.Root>
-                        </Card.Body>
-                    </Card.Root>
-                    <Card.Root bg="gray.800" borderColor="gray.700">
-                        <Card.Body>
-                            <Stat.Root>
-                                <Stat.Label color="gray.400">Gainers</Stat.Label>
-                                <Stat.ValueText color="green.400">
-                                    {heatmapData.stocks.filter(s => s.change_percent > 0).length}
-                                </Stat.ValueText>
-                            </Stat.Root>
-                        </Card.Body>
-                    </Card.Root>
-                    <Card.Root bg="gray.800" borderColor="gray.700">
-                        <Card.Body>
-                            <Stat.Root>
-                                <Stat.Label color="gray.400">Losers</Stat.Label>
-                                <Stat.ValueText color="red.400">
-                                    {heatmapData.stocks.filter(s => s.change_percent < 0).length}
-                                </Stat.ValueText>
-                            </Stat.Root>
-                        </Card.Body>
-                    </Card.Root>
+                <SimpleGrid columns={{ base: 2, md: 4 }} gap={3} mb={4}>
+                    <StatBlock
+                        label={currentIndex?.name || 'Index'}
+                        value={heatmapData.index_performance}
+                        valueIntent="auto"
+                        valueSign="always"
+                        valueSuffix="%"
+                    />
+                    <StatBlock label="Stocks Tracked" value={heatmapData.stocks.length} />
+                    <StatBlock
+                        label="Gainers"
+                        value={heatmapData.stocks.filter(s => s.change_percent > 0).length}
+                        valueIntent="up"
+                    />
+                    <StatBlock
+                        label="Losers"
+                        value={heatmapData.stocks.filter(s => s.change_percent < 0).length}
+                        valueIntent="down"
+                    />
                 </SimpleGrid>
             )}
 
-            {/* Heatmap */}
-            <Card.Root bg="gray.800" borderColor="gray.700" mb={6}>
-                <Card.Header>
-                    <Flex justify="space-between" align="center">
-                        <HStack>
-                            <Heading size="sm" color="white">Performance Heatmap</Heading>
-                            {!loading && heatmapData && (
-                                <Badge colorPalette="blue">{selectedPeriod.toUpperCase()}</Badge>
-                            )}
-                        </HStack>
+            <Surface mb={4}>
+                <Flex justify="space-between" align="center" p={4} borderBottomWidth="1px" borderColor="border.subtle">
+                    <HStack>
+                        <Text fontSize="sm" fontWeight="semibold" color="fg.default" textTransform="uppercase" letterSpacing="wider">
+                            Performance Heatmap
+                        </Text>
                         {!loading && heatmapData && (
-                            <Text color="gray.500" fontSize="xs">
-                                Updated: {new Date(heatmapData.generated_at).toLocaleTimeString()}
-                            </Text>
+                            <SignalBadge tone="info" size="xs">{selectedPeriod.toUpperCase()}</SignalBadge>
                         )}
+                    </HStack>
+                    {!loading && heatmapData && (
+                        <Text color="fg.subtle" fontSize="xs" className="num" data-num="">
+                            Updated {new Date(heatmapData.generated_at).toLocaleTimeString()}
+                        </Text>
+                    )}
+                </Flex>
+                {loading ? (
+                    <Flex justify="center" py={20}>
+                        <Spinner size="xl" color="accent.solid" />
                     </Flex>
-                </Card.Header>
-                <Card.Body>
-                    {loading ? (
-                        <Flex justify="center" py={20}>
-                            <Spinner size="xl" color="blue.400" />
-                        </Flex>
-                    ) : error ? (
-                        <Box textAlign="center" py={10}>
-                            <Text color="red.400">{error}</Text>
-                        </Box>
-                    ) : heatmapData ? (
-                        <Heatmap data={heatmapData} />
-                    ) : null}
-                </Card.Body>
-            </Card.Root>
+                ) : error ? (
+                    <Box textAlign="center" py={10}>
+                        <Text color="signal.down.fg">{error}</Text>
+                    </Box>
+                ) : heatmapData ? (
+                    <Heatmap data={heatmapData} />
+                ) : null}
+            </Surface>
 
-            {/* Top Contributors and Detractors */}
             {!loading && heatmapData && heatmapData.stocks.length > 0 && (
-                <SimpleGrid columns={{ base: 1, md: 2 }} gap={6}>
+                <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
                     <ContributorsList stocks={heatmapData.stocks} type="contributors" />
                     <ContributorsList stocks={heatmapData.stocks} type="detractors" />
                 </SimpleGrid>
             )}
 
-            {/* Legend */}
-            <Card.Root bg="gray.800" borderColor="gray.700" mt={6}>
-                <Card.Body>
-                    <VStack gap={3} align="start">
-                        <Text color="gray.400" fontSize="sm" fontWeight="bold">How to read this heatmap:</Text>
-                        <HStack gap={4} flexWrap="wrap">
-                            <HStack>
-                                <Box w={4} h={4} bg="green.400" borderRadius="sm" />
-                                <Text color="gray.400" fontSize="sm">+3%+</Text>
-                            </HStack>
-                            <HStack>
-                                <Box w={4} h={4} bg="green.600" borderRadius="sm" />
-                                <Text color="gray.400" fontSize="sm">+1% to +3%</Text>
-                            </HStack>
-                            <HStack>
-                                <Box w={4} h={4} bg="green.800" borderRadius="sm" />
-                                <Text color="gray.400" fontSize="sm">0% to +1%</Text>
-                            </HStack>
-                            <HStack>
-                                <Box w={4} h={4} bg="red.800" borderRadius="sm" />
-                                <Text color="gray.400" fontSize="sm">0% to -1%</Text>
-                            </HStack>
-                            <HStack>
-                                <Box w={4} h={4} bg="red.600" borderRadius="sm" />
-                                <Text color="gray.400" fontSize="sm">-1% to -3%</Text>
-                            </HStack>
-                            <HStack>
-                                <Box w={4} h={4} bg="red.400" borderRadius="sm" />
-                                <Text color="gray.400" fontSize="sm">-3%+</Text>
-                            </HStack>
+            <Surface mt={4} p={4}>
+                <VStack gap={3} align="start">
+                    <Text color="fg.muted" fontSize="xs" fontWeight="semibold" textTransform="uppercase" letterSpacing="wider">
+                        Legend
+                    </Text>
+                    <HStack gap={4} flexWrap="wrap">
+                        <HStack>
+                            <Box w={4} h={4} bg="signalUp.400" borderRadius="sm" />
+                            <Text color="fg.muted" fontSize="xs">+3%+</Text>
                         </HStack>
-                        <Text color="gray.500" fontSize="xs">
-                            Cell size is proportional to market cap. Hover over cells for detailed contribution data.
-                        </Text>
-                    </VStack>
-                </Card.Body>
-            </Card.Root>
+                        <HStack>
+                            <Box w={4} h={4} bg="signalUp.600" borderRadius="sm" />
+                            <Text color="fg.muted" fontSize="xs">+1% to +3%</Text>
+                        </HStack>
+                        <HStack>
+                            <Box w={4} h={4} bg="signalUp.800" borderRadius="sm" />
+                            <Text color="fg.muted" fontSize="xs">0% to +1%</Text>
+                        </HStack>
+                        <HStack>
+                            <Box w={4} h={4} bg="signalDown.800" borderRadius="sm" />
+                            <Text color="fg.muted" fontSize="xs">0% to -1%</Text>
+                        </HStack>
+                        <HStack>
+                            <Box w={4} h={4} bg="signalDown.600" borderRadius="sm" />
+                            <Text color="fg.muted" fontSize="xs">-1% to -3%</Text>
+                        </HStack>
+                        <HStack>
+                            <Box w={4} h={4} bg="signalDown.400" borderRadius="sm" />
+                            <Text color="fg.muted" fontSize="xs">-3%+</Text>
+                        </HStack>
+                    </HStack>
+                    <Text color="fg.subtle" fontSize="xs">
+                        Cell size is proportional to market cap. Hover over cells for detailed contribution data.
+                    </Text>
+                </VStack>
+            </Surface>
         </Container>
     );
 };

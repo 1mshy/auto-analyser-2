@@ -1,8 +1,6 @@
 import React, { createElement } from 'react';
 import {
-  Box,
   Text,
-  Badge,
   VStack,
   HStack,
   Grid,
@@ -12,6 +10,8 @@ import {
 import { IoTrendingUp, IoTrendingDown } from 'react-icons/io5';
 import { AiOutlineMinus } from 'react-icons/ai';
 import { StockAnalysis } from '../types';
+import { Surface, Num, SignalBadge } from './ui/primitives';
+import type { SignalTone } from './ui/primitives';
 
 interface StockCardProps {
   stock: StockAnalysis;
@@ -19,163 +19,129 @@ interface StockCardProps {
 }
 
 const StockCard: React.FC<StockCardProps> = ({ stock, onClick }) => {
-  const formatPrice = (price?: number | null) => {
-    if (price === null || price === undefined) return 'N/A';
-    return `$${price.toFixed(2)}`;
-  };
-  
   const formatMarketCap = (cap?: number | null) => {
-    if (!cap || cap === null) return 'N/A';
-    if (cap >= 1e12) return `$${(cap / 1e12).toFixed(2)}T`;
-    if (cap >= 1e9) return `$${(cap / 1e9).toFixed(2)}B`;
-    if (cap >= 1e6) return `$${(cap / 1e6).toFixed(2)}M`;
-    return `$${cap.toFixed(0)}`;
+    if (!cap) return null;
+    return cap;
   };
 
-  const getRsiBadgeColor = (rsi?: number) => {
-    if (!rsi) return 'gray';
-    if (rsi < 30) return 'green';
-    if (rsi > 70) return 'red';
-    return 'blue';
+  const getRsiTone = (rsi?: number): SignalTone => {
+    if (!rsi) return 'neutral';
+    if (rsi < 30) return 'up';
+    if (rsi > 70) return 'down';
+    return 'info';
   };
 
-  const getTrendIcon = () => {
-    if (!stock.price || !stock.sma_20 || !stock.sma_50) return AiOutlineMinus;
-    if (stock.price > stock.sma_20 && stock.sma_20 > stock.sma_50) {
-      return IoTrendingUp;
-    }
-    if (stock.price < stock.sma_20 && stock.sma_20 < stock.sma_50) {
-      return IoTrendingDown;
-    }
-    return AiOutlineMinus;
-  };
+  const trend: 'up' | 'down' | 'neutral' = (() => {
+    if (!stock.price || !stock.sma_20 || !stock.sma_50) return 'neutral';
+    if (stock.price > stock.sma_20 && stock.sma_20 > stock.sma_50) return 'up';
+    if (stock.price < stock.sma_20 && stock.sma_20 < stock.sma_50) return 'down';
+    return 'neutral';
+  })();
 
-  const getTrendColor = () => {
-    if (!stock.price || !stock.sma_20 || !stock.sma_50) return 'gray';
-    if (stock.price > stock.sma_20 && stock.sma_20 > stock.sma_50) return 'green';
-    if (stock.price < stock.sma_20 && stock.sma_20 < stock.sma_50) return 'red';
-    return 'gray';
-  };
+  const trendIcon = trend === 'up' ? IoTrendingUp : trend === 'down' ? IoTrendingDown : AiOutlineMinus;
+  const trendColor =
+    trend === 'up' ? 'signal.up.fg' : trend === 'down' ? 'signal.down.fg' : 'fg.muted';
 
-  const borderColor = stock.is_oversold ? 'green.400' : stock.is_overbought ? 'red.400' : 'border';
-  const bgColor = stock.is_oversold 
-    ? 'green.subtle' 
-    : stock.is_overbought 
-    ? 'red.subtle' 
-    : 'bg.panel';
+  const accent = stock.is_oversold ? 'up' : stock.is_overbought ? 'down' : undefined;
 
   return (
-    <Box
-      borderWidth="2px"
-      borderColor={borderColor}
-      borderRadius="lg"
+    <Surface
       p={5}
-      bg={bgColor}
-      boxShadow="md"
-      cursor={onClick ? 'pointer' : 'default'}
-      _hover={{
-        boxShadow: 'xl',
-        transform: 'translateY(-2px)',
-        transition: 'all 0.2s',
-      }}
-      transition="all 0.2s"
+      interactive={!!onClick}
+      accent={accent}
       onClick={onClick}
     >
       <VStack align="stretch" gap={3}>
-        {/* Header */}
         <HStack justify="space-between" align="center">
-          <Text fontSize="2xl" fontWeight="bold" color="fg">
+          <Text fontSize="xl" fontWeight="semibold" color="fg.default" letterSpacing="tight">
             {stock.symbol}
           </Text>
-          <Text fontSize="xl" fontWeight="semibold" color="blue.400">
-            {formatPrice(stock.price)}
-          </Text>
+          <Num
+            value={stock.price}
+            prefix="$"
+            intent="neutral"
+            fontSize="lg"
+            fontWeight="semibold"
+            color="accent.fg"
+          />
         </HStack>
 
-        <Separator />
+        <Separator borderColor="border.subtle" />
 
-        {/* Indicators Grid */}
         <Grid templateColumns="repeat(2, 1fr)" gap={3}>
           {stock.rsi != null && typeof stock.rsi === 'number' && (
             <GridItem>
-              <Box>
-                <Text fontSize="xs" color="fg.muted" mb={1}>RSI</Text>
-                <Badge colorScheme={getRsiBadgeColor(stock.rsi)} fontSize="sm">
-                  {stock.rsi.toFixed(2)}
-                </Badge>
-              </Box>
+              <Text fontSize="xs" color="fg.muted" mb={1} textTransform="uppercase" letterSpacing="wider">RSI</Text>
+              <SignalBadge tone={getRsiTone(stock.rsi)} fontSize="sm" className="num" data-num="">
+                {stock.rsi.toFixed(2)}
+              </SignalBadge>
             </GridItem>
           )}
 
           {stock.sma_20 !== undefined && (
             <GridItem>
-              <Box>
-                <Text fontSize="xs" color="fg.muted" mb={1}>SMA 20</Text>
-                <Text fontSize="md" fontWeight="semibold">{formatPrice(stock.sma_20)}</Text>
-              </Box>
+              <Text fontSize="xs" color="fg.muted" mb={1} textTransform="uppercase" letterSpacing="wider">SMA 20</Text>
+              <Num value={stock.sma_20} prefix="$" fontSize="md" fontWeight="semibold" />
             </GridItem>
           )}
 
           {stock.sma_50 !== undefined && (
             <GridItem>
-              <Box>
-                <Text fontSize="xs" color="fg.muted" mb={1}>SMA 50</Text>
-                <Text fontSize="md" fontWeight="semibold">{formatPrice(stock.sma_50)}</Text>
-              </Box>
+              <Text fontSize="xs" color="fg.muted" mb={1} textTransform="uppercase" letterSpacing="wider">SMA 50</Text>
+              <Num value={stock.sma_50} prefix="$" fontSize="md" fontWeight="semibold" />
             </GridItem>
           )}
 
           {stock.market_cap !== undefined && (
             <GridItem>
-              <Box>
-                <Text fontSize="xs" color="fg.muted" mb={1}>Market Cap</Text>
-                <Text fontSize="md" fontWeight="semibold">{formatMarketCap(stock.market_cap)}</Text>
-              </Box>
+              <Text fontSize="xs" color="fg.muted" mb={1} textTransform="uppercase" letterSpacing="wider">Market Cap</Text>
+              <Num
+                value={formatMarketCap(stock.market_cap)}
+                prefix="$"
+                compact
+                fontSize="md"
+                fontWeight="semibold"
+              />
             </GridItem>
           )}
 
           {stock.volume != null && typeof stock.volume === 'number' && (
             <GridItem colSpan={2}>
-              <Box>
-                <Text fontSize="xs" color="fg.muted" mb={1}>Volume</Text>
-                <Text fontSize="md" fontWeight="semibold">{(stock.volume / 1e6).toFixed(2)}M</Text>
-              </Box>
+              <Text fontSize="xs" color="fg.muted" mb={1} textTransform="uppercase" letterSpacing="wider">Volume</Text>
+              <Num value={stock.volume} compact fontSize="md" fontWeight="semibold" />
             </GridItem>
           )}
         </Grid>
 
-        {/* Trend Indicator */}
-        <HStack justify="center" py={2}>
-          {createElement(getTrendIcon() as any, { style: { width: '20px', height: '20px', color: `var(--chakra-colors-${getTrendColor()}-500)` } })}
-          <Text fontSize="sm" fontWeight="medium" color={`${getTrendColor()}.600`}>
-            {getTrendColor() === 'green' ? 'Bullish' : getTrendColor() === 'red' ? 'Bearish' : 'Neutral'}
+        <HStack justify="center" py={2} gap={2}>
+          {createElement(trendIcon as any, { style: { width: '18px', height: '18px' } })}
+          <Text fontSize="sm" fontWeight="medium" color={trendColor}>
+            {trend === 'up' ? 'Bullish' : trend === 'down' ? 'Bearish' : 'Neutral'}
           </Text>
         </HStack>
 
-        {/* Alerts */}
         {(stock.is_oversold || stock.is_overbought) && (
           <HStack justify="center" gap={2}>
             {stock.is_oversold && (
-              <Badge colorScheme="green" fontSize="xs" px={2} py={1}>
-                ⚠️ Oversold
-              </Badge>
+              <SignalBadge tone="up" fontSize="xs" px={2} py={1}>
+                Oversold
+              </SignalBadge>
             )}
             {stock.is_overbought && (
-              <Badge colorScheme="red" fontSize="xs" px={2} py={1}>
-                ⚠️ Overbought
-              </Badge>
+              <SignalBadge tone="down" fontSize="xs" px={2} py={1}>
+                Overbought
+              </SignalBadge>
             )}
           </HStack>
         )}
 
-        <Separator />
+        <Separator borderColor="border.subtle" />
 
-        {/* Footer */}
-        <Text fontSize="xs" color="fg.muted" textAlign="center">
+        <Text fontSize="xs" color="fg.subtle" textAlign="center">
           Updated: {new Date(stock.analyzed_at).toLocaleTimeString()}
         </Text>
       </VStack>
-    </Box>
+    </Surface>
   );
 };
 

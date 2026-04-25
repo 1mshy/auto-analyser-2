@@ -85,7 +85,7 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
               theme: 'dark',
               style: '1',
               locale: 'en',
-              toolbar_bg: '#1e222d',
+              toolbar_bg: '#111418',
               enable_publishing: false,
               hide_top_toolbar: false,
               hide_legend: false,
@@ -188,19 +188,21 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
     <Dialog.Root open={isOpen} onOpenChange={(details: any) => !details.open && onClose()}>
       <Dialog.Backdrop />
       <Dialog.Positioner>
-        <Dialog.Content 
-          maxW="95vw" 
-          maxH="95vh" 
+        <Dialog.Content
+          maxW="95vw"
+          maxH="95vh"
           overflowY="auto"
-          bg="black"
+          bg="bg.surface"
+          borderWidth="1px"
+          borderColor="border.subtle"
           p={6}
           borderRadius="lg"
         >
           <Dialog.Header>
             <Dialog.Title>
               <HStack>
-                <Text fontSize="2xl" fontWeight="bold">{stock.symbol}</Text>
-                <Text fontSize="xl" color="blue.400">{formatPrice(stock.price)}</Text>
+                <Text fontSize="xl" fontWeight="semibold" color="fg.default" letterSpacing="tight">{stock.symbol}</Text>
+                <Text className="num" data-num="" fontSize="lg" color="accent.fg">{formatPrice(stock.price)}</Text>
               </HStack>
             </Dialog.Title>
             <Dialog.CloseTrigger />
@@ -259,12 +261,12 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
                     <Text fontSize="sm" fontWeight="semibold" mb={2}>⚠️ Alerts</Text>
                     <HStack gap={2}>
                       {stock.is_oversold && (
-                        <Badge colorScheme="green" fontSize="sm" px={3} py={1}>
+                        <Badge colorPalette="green" fontSize="sm" px={3} py={1}>
                           Oversold - Potential Buy Signal
                         </Badge>
                       )}
                       {stock.is_overbought && (
-                        <Badge colorScheme="red" fontSize="sm" px={3} py={1}>
+                        <Badge colorPalette="red" fontSize="sm" px={3} py={1}>
                           Overbought - Potential Sell Signal
                         </Badge>
                       )}
@@ -282,7 +284,7 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
                   <Box p={4} bg="bg.muted" borderRadius="md">
                     <HStack justify="space-between" mb={2}>
                       <Text fontSize="md" fontWeight="semibold">RSI (Relative Strength Index)</Text>
-                      <Badge colorScheme={getRsiBadgeColor(stock.rsi)} fontSize="lg" px={3} py={1}>
+                      <Badge colorPalette={getRsiBadgeColor(stock.rsi)} fontSize="lg" px={3} py={1}>
                         {stock.rsi.toFixed(2)}
                       </Badge>
                     </HStack>
@@ -335,7 +337,7 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, isOpen, onCl
                       </HStack>
                       <HStack justify="space-between">
                         <Text fontSize="sm">Histogram</Text>
-                        <Badge colorScheme={stock.macd.histogram != null && stock.macd.histogram > 0 ? 'green' : 'red'}>
+                        <Badge colorPalette={stock.macd.histogram != null && stock.macd.histogram > 0 ? 'green' : 'red'}>
                           {stock.macd.histogram != null && typeof stock.macd.histogram === 'number' ? stock.macd.histogram.toFixed(4) : '-'}
                         </Badge>
                       </HStack>

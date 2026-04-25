@@ -3,20 +3,18 @@ import { Link } from 'react-router-dom';
 import {
   Box,
   Container,
-  Heading,
   Text,
   Flex,
-  Badge,
   Spinner,
   HStack,
   VStack,
-  Card,
   Button,
   Input,
 } from '@chakra-ui/react';
 import { Newspaper, ExternalLink, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { api } from '../api';
 import { AggregatedNewsItem, PaginationInfo } from '../types';
+import { Surface, SignalBadge, PageHeader, EmptyState } from '../components/ui/primitives';
 
 export const NewsPage: React.FC = () => {
   const [news, setNews] = useState<AggregatedNewsItem[]>([]);
@@ -72,106 +70,100 @@ export const NewsPage: React.FC = () => {
 
   return (
     <Container maxW="container.xl" py={8}>
-      <Flex align="center" gap={3} mb={6}>
-        <Box color="blue.400"><Newspaper size={28} /></Box>
-        <Heading size="xl" color="white">News Feed</Heading>
-        <Badge colorPalette="blue" size="lg">{pagination.total} articles</Badge>
-      </Flex>
+      <PageHeader
+        icon={<Newspaper size={22} />}
+        title="News Feed"
+        subtitle={`${pagination.total.toLocaleString()} articles`}
+      />
 
-      {/* Filters */}
-      <Card.Root bg="gray.800" borderColor="gray.700" mb={6}>
-        <Card.Body p={4}>
-          <Flex gap={4} wrap="wrap" align="center">
-            <HStack flex={1} minW="250px">
-              <Input
-                placeholder="Search news..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                bg="gray.900"
-                borderColor="gray.600"
-                color="white"
-                _placeholder={{ color: 'gray.500' }}
-              />
-              <Button colorPalette="blue" onClick={handleSearch} size="sm">
-                <Search size={16} />
-              </Button>
-            </HStack>
+      <Surface mb={4} p={4}>
+        <Flex gap={4} wrap="wrap" align="center">
+          <HStack flex={1} minW="250px">
+            <Input
+              placeholder="Search news..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              bg="bg.inset"
+              borderColor="border.subtle"
+              color="fg.default"
+              _placeholder={{ color: 'fg.subtle' }}
+              size="sm"
+            />
+            <Button colorPalette="accent" onClick={handleSearch} size="sm">
+              <Search size={14} />
+            </Button>
+          </HStack>
 
-            <HStack gap={2} wrap="wrap">
+          <HStack gap={2} wrap="wrap">
+            <Button
+              size="xs"
+              variant={selectedSector === '' ? 'subtle' : 'ghost'}
+              colorPalette={selectedSector === '' ? 'accent' : 'gray'}
+              onClick={() => setSelectedSector('')}
+            >
+              All Sectors
+            </Button>
+            {sectors.slice(0, 8).map(sector => (
               <Button
-                size="sm"
-                variant={selectedSector === '' ? 'solid' : 'outline'}
-                colorPalette={selectedSector === '' ? 'blue' : 'gray'}
-                onClick={() => setSelectedSector('')}
+                key={sector}
+                size="xs"
+                variant={selectedSector === sector ? 'subtle' : 'ghost'}
+                colorPalette={selectedSector === sector ? 'accent' : 'gray'}
+                onClick={() => setSelectedSector(sector)}
               >
-                All Sectors
+                {sector}
               </Button>
-              {sectors.slice(0, 8).map(sector => (
-                <Button
-                  key={sector}
-                  size="sm"
-                  variant={selectedSector === sector ? 'solid' : 'outline'}
-                  colorPalette={selectedSector === sector ? 'blue' : 'gray'}
-                  onClick={() => setSelectedSector(sector)}
-                >
-                  {sector}
-                </Button>
-              ))}
-            </HStack>
-          </Flex>
-        </Card.Body>
-      </Card.Root>
+            ))}
+          </HStack>
+        </Flex>
+      </Surface>
 
-      {/* News List */}
       {loading ? (
         <Flex justify="center" py={12}>
-          <Spinner size="xl" color="blue.400" />
+          <Spinner size="xl" color="accent.solid" />
         </Flex>
       ) : news.length === 0 ? (
-        <Flex justify="center" py={12}>
-          <Text color="gray.500">No news articles found.</Text>
-        </Flex>
+        <EmptyState
+          icon={<Newspaper size={32} />}
+          title="No news articles found"
+          description="Try adjusting your search or sector filter."
+        />
       ) : (
-        <VStack gap={3} align="stretch">
+        <VStack gap={2} align="stretch">
           {news.map((item, idx) => (
-            <Card.Root key={idx} bg="gray.800" borderColor="gray.700" _hover={{ borderColor: 'gray.500' }} transition="all 0.2s">
-              <Card.Body p={4}>
-                <a href={item.url} target="_blank" rel="noopener noreferrer">
-                  <Flex justify="space-between" align="start">
-                    <VStack align="start" gap={2} flex={1}>
-                      <Text color="white" fontWeight="semibold" _hover={{ color: 'blue.400' }}>
-                        {item.title}
-                      </Text>
-                      <HStack gap={2} wrap="wrap">
-                        <Link to={`/stocks/${item.symbol}`} onClick={(e) => e.stopPropagation()}>
-                          <Badge colorPalette="blue" size="sm" _hover={{ opacity: 0.8 }}>
-                            {item.symbol}
-                          </Badge>
-                        </Link>
-                        {item.sector && (
-                          <Badge colorPalette="purple" size="sm">{item.sector}</Badge>
-                        )}
-                        {item.publisher && (
-                          <Text color="gray.500" fontSize="sm">{item.publisher}</Text>
-                        )}
-                        {item.ago && (
-                          <Text color="gray.600" fontSize="sm">{item.ago}</Text>
-                        )}
-                      </HStack>
-                    </VStack>
-                    <Box color="gray.500" ml={2} flexShrink={0}><ExternalLink size={16} /></Box>
-                  </Flex>
-                </a>
-              </Card.Body>
-            </Card.Root>
+            <Surface key={idx} interactive p={4}>
+              <a href={item.url} target="_blank" rel="noopener noreferrer">
+                <Flex justify="space-between" align="start">
+                  <VStack align="start" gap={2} flex={1}>
+                    <Text color="fg.default" fontWeight="semibold" _hover={{ color: 'accent.fg' }}>
+                      {item.title}
+                    </Text>
+                    <HStack gap={2} wrap="wrap">
+                      <Link to={`/stocks/${item.symbol}`} onClick={(e) => e.stopPropagation()}>
+                        <SignalBadge tone="accent" size="xs">{item.symbol}</SignalBadge>
+                      </Link>
+                      {item.sector && (
+                        <SignalBadge tone="info" size="xs">{item.sector}</SignalBadge>
+                      )}
+                      {item.publisher && (
+                        <Text color="fg.subtle" fontSize="xs">{item.publisher}</Text>
+                      )}
+                      {item.ago && (
+                        <Text color="fg.subtle" fontSize="xs">• {item.ago}</Text>
+                      )}
+                    </HStack>
+                  </VStack>
+                  <Box color="fg.subtle" ml={2} flexShrink={0}><ExternalLink size={14} /></Box>
+                </Flex>
+              </a>
+            </Surface>
           ))}
         </VStack>
       )}
 
-      {/* Pagination */}
       {pagination.total_pages > 1 && (
-        <Flex justify="center" mt={6} gap={2}>
+        <Flex justify="center" mt={6} gap={2} align="center">
           <Button
             size="sm"
             variant="outline"
@@ -179,10 +171,10 @@ export const NewsPage: React.FC = () => {
             onClick={() => fetchNews(pagination.page - 1)}
             disabled={pagination.page <= 1}
           >
-            <ChevronLeft size={16} /> Prev
+            <ChevronLeft size={14} /> Prev
           </Button>
           <Flex align="center" px={4}>
-            <Text color="gray.400" fontSize="sm">
+            <Text color="fg.muted" fontSize="sm" className="num" data-num="">
               Page {pagination.page} of {pagination.total_pages}
             </Text>
           </Flex>
@@ -193,7 +185,7 @@ export const NewsPage: React.FC = () => {
             onClick={() => fetchNews(pagination.page + 1)}
             disabled={pagination.page >= pagination.total_pages}
           >
-            Next <ChevronRight size={16} />
+            Next <ChevronRight size={14} />
           </Button>
         </Flex>
       )}

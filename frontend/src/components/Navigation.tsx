@@ -1,32 +1,40 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Box, Flex, Text, HStack, Container, Badge } from '@chakra-ui/react';
+import { Box, Flex, Text, HStack, Container } from '@chakra-ui/react';
 import { Home, List, TrendingUp, Activity, BarChart3, Newspaper, PieChart, Search, Bell } from 'lucide-react';
 import SettingsPanel from './SettingsPanel';
 import { useSettings } from '../contexts/SettingsContext';
 import { api } from '../api';
+import { SignalBadge, Num } from './ui/primitives';
 
 interface NavItemProps {
   to: string;
   icon: React.ReactNode;
   label: string;
   isActive: boolean;
+  badge?: React.ReactNode;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ to, icon, label, isActive }) => (
+const NavItem: React.FC<NavItemProps> = ({ to, icon, label, isActive, badge }) => (
   <Link to={to}>
     <HStack
-      px={4}
-      py={2}
+      px={3}
+      py={1.5}
+      gap={2}
       borderRadius="md"
-      bg={isActive ? 'blue.500' : 'transparent'}
-      color={isActive ? 'white' : 'gray.300'}
-      _hover={{ bg: isActive ? 'blue.600' : 'whiteAlpha.200' }}
-      transition="all 0.2s"
+      bg={isActive ? 'accent.muted' : 'transparent'}
+      color={isActive ? 'accent.fg' : 'fg.muted'}
+      _hover={{
+        bg: isActive ? 'accent.muted' : 'bg.muted',
+        color: isActive ? 'accent.fg' : 'fg.default',
+      }}
+      transition="background 120ms ease, color 120ms ease"
       cursor="pointer"
+      position="relative"
     >
       {icon}
-      <Text fontWeight={isActive ? 'semibold' : 'medium'}>{label}</Text>
+      <Text fontSize="sm" fontWeight={isActive ? 'semibold' : 'medium'}>{label}</Text>
+      {badge}
     </HStack>
   </Link>
 );
@@ -41,8 +49,6 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
   const { isFiltered, settings } = useSettings();
   const [unread, setUnread] = useState(0);
 
-  // Poll the alerts inbox for unread count. 30s is plenty given rules fire
-  // at most once per analysis cycle (~hourly by default).
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
@@ -61,7 +67,6 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
     };
   }, []);
 
-  // Format market cap for display
   const formatMarketCap = (value: number | null) => {
     if (!value) return '';
     if (value >= 1_000_000_000_000) return `$${(value / 1_000_000_000_000).toFixed(0)}T+`;
@@ -72,114 +77,131 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
   return (
     <Box
       as="nav"
-      bg="gray.900"
-      borderBottom="1px"
-      borderColor="gray.700"
+      bg="bg.canvas"
+      borderBottomWidth="1px"
+      borderColor="border.subtle"
       position="sticky"
       top={0}
       zIndex={100}
+      backdropFilter="saturate(140%) blur(8px)"
     >
       <Container maxW="container.xl">
-        <Flex align="center" justify="space-between" h={16}>
+        <Flex align="center" justify="space-between" h={14}>
           {/* Logo */}
           <Link to="/">
             <HStack gap={2}>
-              <Box color="blue.400"><Activity size={24} /></Box>
-              <Text fontSize="xl" fontWeight="bold" color="white">
+              <Box color="accent.fg"><Activity size={20} /></Box>
+              <Text fontSize="md" fontWeight="semibold" color="fg.default" letterSpacing="tight">
                 Stock Analyser
               </Text>
             </HStack>
           </Link>
 
           {/* Navigation Links */}
-          <HStack gap={2}>
+          <HStack gap={1}>
             <NavItem
               to="/"
-              icon={<Home size={18} />}
+              icon={<Home size={16} />}
               label="Dashboard"
               isActive={location.pathname === '/'}
             />
             <NavItem
               to="/stocks"
-              icon={<List size={18} />}
+              icon={<List size={16} />}
               label="All Stocks"
               isActive={location.pathname === '/stocks'}
             />
             <NavItem
               to="/opportunities"
-              icon={<TrendingUp size={18} />}
+              icon={<TrendingUp size={16} />}
               label="Opportunities"
               isActive={location.pathname === '/opportunities'}
             />
             <NavItem
               to="/funds"
-              icon={<BarChart3 size={18} />}
+              icon={<BarChart3 size={16} />}
               label="Funds"
               isActive={location.pathname === '/funds'}
             />
             <NavItem
               to="/news"
-              icon={<Newspaper size={18} />}
+              icon={<Newspaper size={16} />}
               label="News"
               isActive={location.pathname === '/news'}
             />
             <NavItem
               to="/sectors"
-              icon={<PieChart size={18} />}
+              icon={<PieChart size={16} />}
               label="Sectors"
               isActive={location.pathname === '/sectors'}
             />
             <NavItem
               to="/screener"
-              icon={<Search size={18} />}
+              icon={<Search size={16} />}
               label="Screener"
               isActive={location.pathname === '/screener'}
             />
-            <Link to="/alerts">
-              <HStack
-                px={3}
-                py={2}
-                borderRadius="md"
-                bg={location.pathname === '/alerts' ? 'blue.500' : 'transparent'}
-                color={location.pathname === '/alerts' ? 'white' : 'gray.300'}
-                _hover={{ bg: location.pathname === '/alerts' ? 'blue.600' : 'whiteAlpha.200' }}
-                position="relative"
-                cursor="pointer"
-              >
-                <Bell size={18} />
-                <Text fontWeight={location.pathname === '/alerts' ? 'semibold' : 'medium'}>Alerts</Text>
-                {unread > 0 && (
-                  <Badge
-                    colorPalette="red"
-                    size="sm"
-                    position="absolute"
-                    top="-1"
-                    right="-1"
-                    borderRadius="full"
-                  >
-                    {unread > 99 ? '99+' : unread}
-                  </Badge>
-                )}
-              </HStack>
-            </Link>
+            <NavItem
+              to="/alerts"
+              icon={<Bell size={16} />}
+              label="Alerts"
+              isActive={location.pathname === '/alerts'}
+              badge={unread > 0 ? (
+                <SignalBadge
+                  tone="down"
+                  variant="solid"
+                  size="xs"
+                  position="absolute"
+                  top="0"
+                  right="-1"
+                  borderRadius="full"
+                  minW="18px"
+                  h="18px"
+                  px={1.5}
+                  fontSize="10px"
+                  lineHeight="18px"
+                >
+                  {unread > 99 ? '99+' : unread}
+                </SignalBadge>
+              ) : undefined}
+            />
           </HStack>
 
           {/* Right Side: Status + Settings */}
-          <HStack gap={3}>
+          <HStack gap={2}>
             {/* Filter Active Indicator */}
             {isFiltered && (
-              <Badge colorPalette="orange" size="lg" px={3} py={1}>
-                {settings.minMarketCap && formatMarketCap(settings.minMarketCap)}
-                {settings.minMarketCap && settings.maxPriceChangePercent && ' | '}
-                {settings.maxPriceChangePercent && `±${settings.maxPriceChangePercent}%`}
-              </Badge>
+              <SignalBadge tone="warn" size="sm" px={2} py={1}>
+                <Text className="num" data-num="" fontSize="xs">
+                  {settings.minMarketCap && formatMarketCap(settings.minMarketCap)}
+                  {settings.minMarketCap && settings.maxPriceChangePercent && ' | '}
+                  {settings.maxPriceChangePercent && `±${settings.maxPriceChangePercent}%`}
+                </Text>
+              </SignalBadge>
             )}
 
             {/* Status Badge */}
             {totalStocks !== undefined && (
-              <Badge colorPalette="green" size="lg" px={3} py={1}>
-                {analyzedCount?.toLocaleString() || 0} / {totalStocks?.toLocaleString()} Analyzed
-              </Badge>
+              <SignalBadge tone="up" size="sm" px={2} py={1}>
+                <HStack gap={1} fontSize="xs">
+                  <Num
+                    value={analyzedCount ?? 0}
+                    intent="neutral"
+                    decimals={0}
+                    fontSize="xs"
+                    fontWeight="medium"
+                  />
+                  <Text>/</Text>
+                  <Num
+                    value={totalStocks}
+                    intent="neutral"
+                    decimals={0}
+                    fontSize="xs"
+                    fontWeight="medium"
+                  />
+                  <Text>Analyzed</Text>
+                </HStack>
+              </SignalBadge>
             )}
 
             {/* Settings Panel */}

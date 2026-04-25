@@ -140,7 +140,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
   return (
     <>
       <Button
-        colorScheme="blue"
+        colorPalette="blue"
         variant="solid"
         onClick={onOpen}
         position="relative"
@@ -155,7 +155,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
             position="absolute"
             top="-2"
             right="-2"
-            colorScheme="red"
+            colorPalette="red"
             borderRadius="full"
             fontSize="xs"
           >
@@ -181,10 +181,10 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                   Quick Presets
                 </Text>
                 <HStack gap={2} flexWrap="wrap">
-                  <Button size="sm" onClick={() => loadPreset('oversold')} colorScheme="green">
+                  <Button size="sm" onClick={() => loadPreset('oversold')} colorPalette="green">
                     Low RSI (&lt;30)
                   </Button>
-                  <Button size="sm" onClick={() => loadPreset('overbought')} colorScheme="red">
+                  <Button size="sm" onClick={() => loadPreset('overbought')} colorPalette="red">
                     High RSI (&gt;70)
                   </Button>
                   <Button size="sm" onClick={() => loadPreset('all')} variant="outline">
@@ -219,7 +219,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                           aria-label="Delete filter"
                           size="sm"
                           variant="ghost"
-                          colorScheme="red"
+                          colorPalette="red"
                           onClick={() => handleDeleteFilter(sf.id)}
                         >
                           {createElement(IoTrash as any)}
@@ -370,7 +370,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                   onChange={(e) => setFilterName(e.target.value)}
                   size="sm"
                 />
-                <Button size="sm" onClick={handleSaveFilter} colorScheme="green">
+                <Button size="sm" onClick={handleSaveFilter} colorPalette="green">
                   Save
                 </Button>
               </HStack>
@@ -380,7 +380,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                 <Button variant="outline" onClick={handleClear}>
                   Clear All
                 </Button>
-                <Button colorScheme="blue" onClick={handleApply}>
+                <Button colorPalette="blue" onClick={handleApply}>
                   Apply Filters
                 </Button>
               </HStack>

@@ -51,7 +51,7 @@ function App() {
   return (
     <SettingsProvider>
       <Router>
-        <Box bg="gray.900" minH="100vh">
+        <Box bg="bg.canvas" minH="100vh" color="fg.default">
           <Navigation
             totalStocks={progress?.total_stocks}
             analyzedCount={progress?.analyzed}

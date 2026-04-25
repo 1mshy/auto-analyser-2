@@ -3,7 +3,6 @@ import { useSearchParams, Link } from 'react-router-dom';
 import {
   Box,
   Container,
-  Heading,
   Text,
   SimpleGrid,
   Flex,
@@ -14,66 +13,68 @@ import {
   Button,
   Input,
   Table,
-  Card,
   IconButton,
 } from '@chakra-ui/react';
 import { Grid, List, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { api, FilterResponse } from '../api';
 import { StockAnalysis, StockFilter, PaginationInfo, getMarketCapTier, getMarketCapTierColor, getMarketCapTierLabel } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
+import { Surface, Num, SignalBadge, PageHeader } from '../components/ui/primitives';
 
-// Compact table row component
 const StockTableRow: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
   const tier = getMarketCapTier(stock.market_cap);
   const tierColor = getMarketCapTierColor(tier);
-  const changeColor = (stock.price_change_percent ?? 0) >= 0 ? 'green' : 'red';
-  const rsiColor = stock.rsi && stock.rsi < 30 ? 'green' : stock.rsi && stock.rsi > 70 ? 'red' : 'gray';
+  const rsiTone = stock.rsi && stock.rsi < 30 ? 'up' : stock.rsi && stock.rsi > 70 ? 'down' : 'neutral';
 
   return (
-    <Table.Row _hover={{ bg: 'whiteAlpha.50' }}>
+    <Table.Row _hover={{ bg: 'bg.muted' }}>
       <Table.Cell>
         <Link to={`/stocks/${stock.symbol}`}>
           <HStack>
-            <Badge colorPalette={tierColor} size="sm">{tier.charAt(0).toUpperCase()}</Badge>
-            <Text fontWeight="bold" color="blue.400" _hover={{ textDecoration: 'underline' }}>
+            <Badge colorPalette={tierColor} size="sm" variant="subtle">{tier.charAt(0).toUpperCase()}</Badge>
+            <Text fontWeight="semibold" color="accent.fg" _hover={{ textDecoration: 'underline' }}>
               {stock.symbol}
             </Text>
           </HStack>
         </Link>
       </Table.Cell>
       <Table.Cell>
-        <Text color="white">${stock.price != null && typeof stock.price === 'number' ? stock.price.toFixed(2) : '-'}</Text>
+        <Num value={stock.price} prefix="$" color="fg.default" />
       </Table.Cell>
       <Table.Cell>
-        <Text color={changeColor === 'green' ? 'green.400' : 'red.400'} fontWeight="semibold">
-          {stock.price_change_percent != null && typeof stock.price_change_percent === 'number' && !isNaN(stock.price_change_percent)
-            ? `${stock.price_change_percent >= 0 ? '+' : ''}${stock.price_change_percent.toFixed(2)}%`
-            : '-'}
-        </Text>
+        <Num
+          value={stock.price_change_percent}
+          intent="auto"
+          sign="always"
+          suffix="%"
+          fontWeight="semibold"
+        />
       </Table.Cell>
       <Table.Cell>
-        <Badge colorPalette={rsiColor}>
+        <SignalBadge tone={rsiTone} className="num" data-num="">
           {stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'}
-        </Badge>
+        </SignalBadge>
       </Table.Cell>
       <Table.Cell>
-        <Text color="gray.300" fontSize="sm">
-          {stock.market_cap != null && typeof stock.market_cap === 'number'
-            ? `$${(stock.market_cap / 1_000_000_000).toFixed(1)}B`
-            : '-'}
-        </Text>
+        <Num
+          value={stock.market_cap}
+          prefix="$"
+          compact
+          color="fg.muted"
+          fontSize="sm"
+        />
       </Table.Cell>
       <Table.Cell>
-        <Text color="gray.400" fontSize="sm">
+        <Text color="fg.muted" fontSize="sm">
           {stock.sector || '-'}
         </Text>
       </Table.Cell>
       <Table.Cell>
         <HStack gap={1}>
-          {stock.is_oversold && <Badge colorPalette="green" size="sm">Oversold</Badge>}
-          {stock.is_overbought && <Badge colorPalette="red" size="sm">Overbought</Badge>}
+          {stock.is_oversold && <SignalBadge tone="up" size="sm">Oversold</SignalBadge>}
+          {stock.is_overbought && <SignalBadge tone="down" size="sm">Overbought</SignalBadge>}
           {stock.macd && stock.macd.histogram > 0 && (
-            <Badge colorPalette="blue" size="sm">MACD+</Badge>
+            <SignalBadge tone="info" size="sm">MACD+</SignalBadge>
           )}
         </HStack>
       </Table.Cell>
@@ -81,67 +82,53 @@ const StockTableRow: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
   );
 };
 
-// Card view component
 const StockCardCompact: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
   const tier = getMarketCapTier(stock.market_cap);
   const tierColor = getMarketCapTierColor(tier);
-  const changeColor = (stock.price_change_percent ?? 0) >= 0 ? 'green' : 'red';
 
   return (
     <Link to={`/stocks/${stock.symbol}`}>
-      <Card.Root 
-        bg="gray.800" 
-        borderColor="gray.700" 
-        _hover={{ borderColor: 'blue.500', transform: 'translateY(-2px)' }}
-        transition="all 0.2s"
-        cursor="pointer"
-      >
-        <Card.Body p={4}>
-          <Flex justify="space-between" align="start" mb={2}>
-            <VStack align="start" gap={0}>
-              <HStack>
-                <Badge colorPalette={tierColor} size="sm">{getMarketCapTierLabel(tier)}</Badge>
-              </HStack>
-              <Text fontWeight="bold" fontSize="lg" color="white">{stock.symbol}</Text>
-            </VStack>
-            <VStack align="end" gap={0}>
-              <Text fontWeight="bold" color="white">${stock.price != null && typeof stock.price === 'number' ? stock.price.toFixed(2) : '-'}</Text>
-              <Text 
-                fontSize="sm" 
-                fontWeight="semibold"
-                color={changeColor === 'green' ? 'green.400' : 'red.400'}
-              >
-                {stock.price_change_percent != null && typeof stock.price_change_percent === 'number'
-                  ? `${stock.price_change_percent >= 0 ? '+' : ''}${stock.price_change_percent.toFixed(2)}%`
-                  : '-'}
-              </Text>
-            </VStack>
-          </Flex>
+      <Surface interactive p={4}>
+        <Flex justify="space-between" align="start" mb={2}>
+          <VStack align="start" gap={0}>
+            <Badge colorPalette={tierColor} size="sm" variant="subtle">{getMarketCapTierLabel(tier)}</Badge>
+            <Text fontWeight="semibold" fontSize="lg" color="fg.default" letterSpacing="tight">{stock.symbol}</Text>
+          </VStack>
+          <VStack align="end" gap={0}>
+            <Num value={stock.price} prefix="$" fontWeight="semibold" color="fg.default" />
+            <Num
+              value={stock.price_change_percent}
+              intent="auto"
+              sign="always"
+              suffix="%"
+              fontSize="sm"
+              fontWeight="semibold"
+            />
+          </VStack>
+        </Flex>
 
-          <Flex justify="space-between" align="center">
-            <HStack gap={2}>
-              <Badge 
-                colorPalette={stock.rsi != null && stock.rsi < 30 ? 'green' : stock.rsi != null && stock.rsi > 70 ? 'red' : 'gray'}
-              >
-                RSI: {stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'}
-              </Badge>
-              {stock.macd && (
-                <Badge colorPalette={stock.macd.histogram > 0 ? 'blue' : 'orange'}>
-                  MACD: {stock.macd.histogram > 0 ? '+' : '-'}
-                </Badge>
-              )}
-            </HStack>
-            <Text color="gray.500" fontSize="xs">
-              {stock.market_cap != null && typeof stock.market_cap === 'number' ? `$${(stock.market_cap / 1_000_000_000).toFixed(1)}B` : ''}
-            </Text>
-          </Flex>
-        </Card.Body>
-      </Card.Root>
+        <Flex justify="space-between" align="center">
+          <HStack gap={2}>
+            <SignalBadge
+              tone={stock.rsi != null && stock.rsi < 30 ? 'up' : stock.rsi != null && stock.rsi > 70 ? 'down' : 'neutral'}
+              className="num"
+              data-num=""
+            >
+              RSI: {stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'}
+            </SignalBadge>
+            {stock.macd && (
+              <SignalBadge tone={stock.macd.histogram > 0 ? 'info' : 'warn'}>
+                MACD: {stock.macd.histogram > 0 ? '+' : '-'}
+              </SignalBadge>
+            )}
+          </HStack>
+          <Num value={stock.market_cap} prefix="$" compact color="fg.subtle" fontSize="xs" />
+        </Flex>
+      </Surface>
     </Link>
   );
 };
 
-// Pagination component
 const Pagination: React.FC<{
   pagination: PaginationInfo;
   onPageChange: (page: number) => void;
@@ -150,7 +137,7 @@ const Pagination: React.FC<{
 
   return (
     <Flex justify="space-between" align="center" mt={4}>
-      <Text color="gray.400" fontSize="sm">
+      <Text color="fg.muted" fontSize="sm">
         Showing page {page} of {total_pages} ({total.toLocaleString()} total)
       </Text>
       <HStack>
@@ -303,36 +290,34 @@ export const StocksPage: React.FC = () => {
 
   return (
     <Container maxW="container.xl" py={8}>
-      {/* Header */}
-      <Box mb={6}>
-        <Heading size="lg" color="white" mb={2}>All Stocks</Heading>
-        <Text color="gray.400">
-          Browse and filter all analyzed stocks
-        </Text>
-      </Box>
+      <PageHeader
+        title="All Stocks"
+        subtitle="Browse and filter all analyzed stocks"
+      />
 
       {/* Controls */}
       <Flex justify="space-between" align="center" mb={6} wrap="wrap" gap={4}>
-        {/* Search */}
         <HStack flex={1} maxW="300px">
           <Box position="relative" flex={1}>
-            <Box 
-              position="absolute" 
-              left={3} 
-              top="50%" 
-              transform="translateY(-50%)" 
-              color="gray.400"
+            <Box
+              position="absolute"
+              left={3}
+              top="50%"
+              transform="translateY(-50%)"
+              color="fg.muted"
+              zIndex={1}
             >
-              <Search />
+              <Search size={16} />
             </Box>
             <Input
               placeholder="Search symbol..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               pl={10}
-              bg="gray.800"
-              borderColor="gray.600"
-              color="white"
+              bg="bg.inset"
+              borderColor="border.subtle"
+              color="fg.default"
+              _placeholder={{ color: 'fg.subtle' }}
             />
           </Box>
         </HStack>
@@ -406,20 +391,20 @@ export const StocksPage: React.FC = () => {
       {/* Content */}
       {loading ? (
         <Flex justify="center" align="center" minH="50vh">
-          <Spinner size="xl" color="blue.400" />
+          <Spinner size="xl" color="accent.solid" />
         </Flex>
       ) : viewMode === 'table' ? (
-        <Box overflowX="auto">
+        <Surface overflowX="auto" p={0}>
           <Table.Root size="sm">
             <Table.Header>
               <Table.Row>
-                <Table.ColumnHeader color="gray.400">Symbol</Table.ColumnHeader>
-                <Table.ColumnHeader color="gray.400">Price</Table.ColumnHeader>
-                <Table.ColumnHeader color="gray.400">Change</Table.ColumnHeader>
-                <Table.ColumnHeader color="gray.400">RSI</Table.ColumnHeader>
-                <Table.ColumnHeader color="gray.400">Market Cap</Table.ColumnHeader>
-                <Table.ColumnHeader color="gray.400">Sector</Table.ColumnHeader>
-                <Table.ColumnHeader color="gray.400">Signals</Table.ColumnHeader>
+                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Symbol</Table.ColumnHeader>
+                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Price</Table.ColumnHeader>
+                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Change</Table.ColumnHeader>
+                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">RSI</Table.ColumnHeader>
+                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Market Cap</Table.ColumnHeader>
+                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Sector</Table.ColumnHeader>
+                <Table.ColumnHeader color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Signals</Table.ColumnHeader>
               </Table.Row>
             </Table.Header>
             <Table.Body>
@@ -428,7 +413,7 @@ export const StocksPage: React.FC = () => {
               ))}
             </Table.Body>
           </Table.Root>
-        </Box>
+        </Surface>
       ) : (
         <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} gap={4}>
           {filteredStocks.map(stock => (

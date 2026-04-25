@@ -77,22 +77,22 @@ export const WatchButton: React.FC<{ symbol: string; size?: 'xs' | 'sm' | 'md' }
           size={size}
           variant="ghost"
           aria-label={isWatched ? 'Manage watchlists' : 'Watch'}
-          color={isWatched ? 'yellow.300' : 'gray.400'}
-          _hover={{ color: 'yellow.300', bg: 'whiteAlpha.200' }}
+          color={isWatched ? 'signal.warn.fg' : 'fg.muted'}
+          _hover={{ color: 'signal.warn.fg', bg: 'bg.muted' }}
         >
           <Star size={iconSize} fill={isWatched ? 'currentColor' : 'none'} />
         </IconButton>
       </Menu.Trigger>
       <Portal>
         <Menu.Positioner>
-          <Menu.Content bg="gray.800" borderColor="gray.700">
-            <Box px={3} py={2} borderBottom="1px solid" borderColor="gray.700">
-              <Text color="gray.400" fontSize="xs">Watchlists for {upper}</Text>
+          <Menu.Content bg="bg.surface" borderColor="border.subtle">
+            <Box px={3} py={2} borderBottomWidth="1px" borderColor="border.subtle">
+              <Text color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider">Watchlists for {upper}</Text>
             </Box>
-            {watchlists === null && <Box p={3}><Spinner size="sm" /></Box>}
+            {watchlists === null && <Box p={3}><Spinner size="sm" color="accent.solid" /></Box>}
             {watchlists && watchlists.length === 0 && (
               <Box p={3}>
-                <Text color="gray.400" fontSize="sm" mb={2}>No watchlists yet.</Text>
+                <Text color="fg.muted" fontSize="sm" mb={2}>No watchlists yet.</Text>
               </Box>
             )}
             <VStack align="stretch" gap={0} maxH="260px" overflow="auto">
@@ -106,16 +106,16 @@ export const WatchButton: React.FC<{ symbol: string; size?: 'xs' | 'sm' | 'md' }
                     onClick={() => handleToggle(wl)}
                     disabled={busy === wl._id}
                   >
-                    <Text color="white" flex={1}>
+                    <Text color="fg.default" flex={1}>
                       {has ? '✓ ' : '  '} {wl.name}
                     </Text>
-                    <Text color="gray.500" fontSize="xs">{wl.symbols.length}</Text>
+                    <Text color="fg.subtle" fontSize="xs" className="num" data-num="">{wl.symbols.length}</Text>
                   </Menu.Item>
                 );
               })}
             </VStack>
-            <Box borderTop="1px solid" borderColor="gray.700" p={2}>
-              <Button size="xs" colorPalette="blue" w="full" onClick={handleCreateAndAdd}>
+            <Box borderTopWidth="1px" borderColor="border.subtle" p={2}>
+              <Button size="xs" colorPalette="accent" w="full" onClick={handleCreateAndAdd}>
                 + New watchlist with {upper}
               </Button>
             </Box>

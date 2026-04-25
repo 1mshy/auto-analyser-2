@@ -91,9 +91,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
           colorPalette="gray"
           size="sm"
           onClick={handleOpen}
-          _hover={{ bg: 'whiteAlpha.200' }}
+          _hover={{ bg: 'bg.muted' }}
         >
-          {createElement(IoSettingsSharp as any, { size: 20 })}
+          {createElement(IoSettingsSharp as any, { size: 18 })}
         </IconButton>
         {showBadge && isFiltered && (
           <Badge
@@ -113,15 +113,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
       <Drawer.Root open={open} onOpenChange={(e: any) => e.open ? null : onClose()} placement="end" size="md">
         <Drawer.Backdrop />
         <Drawer.Positioner>
-          <Drawer.Content bg="gray.900">
-            <Drawer.Header borderBottomWidth="1px" borderColor="gray.700">
-              <Drawer.Title color="white">
+          <Drawer.Content bg="bg.surface">
+            <Drawer.Header borderBottomWidth="1px" borderColor="border.subtle">
+              <Drawer.Title color="fg.default">
                 <HStack gap={2}>
-                  {createElement(IoSettingsSharp as any, { size: 24 })}
-                  <Text>Global Settings</Text>
+                  {createElement(IoSettingsSharp as any, { size: 20 })}
+                  <Text fontWeight="semibold">Global Settings</Text>
                 </HStack>
               </Drawer.Title>
-              <Text fontSize="sm" color="gray.400" mt={1}>
+              <Text fontSize="sm" color="fg.muted" mt={1}>
                 Filter settings apply across all views
               </Text>
               <Drawer.CloseTrigger />
@@ -131,79 +131,79 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
               <VStack gap={6} align="stretch" py={4}>
                 {/* Quick Presets */}
                 <Box>
-                  <Text fontSize="lg" fontWeight="semibold" color="white" mb={3}>
+                  <Text fontSize="sm" fontWeight="semibold" color="fg.default" textTransform="uppercase" letterSpacing="wider" mb={3}>
                     Quick Presets
                   </Text>
                   <SimpleGrid columns={3} gap={3}>
                     <Card.Root
-                      bg={settings.preset === 'all' ? 'blue.900' : 'gray.800'}
-                      borderColor={settings.preset === 'all' ? 'blue.500' : 'gray.700'}
-                      borderWidth="2px"
+                      bg={settings.preset === 'all' ? 'accent.muted' : 'bg.inset'}
+                      borderColor={settings.preset === 'all' ? 'accent.solid' : 'border.subtle'}
+                      borderWidth="1px"
                       cursor="pointer"
                       onClick={() => handlePreset('all')}
-                      _hover={{ borderColor: 'blue.400' }}
-                      transition="all 0.2s"
+                      _hover={{ borderColor: 'border.emphasis' }}
+                      transition="all 0.12s"
                     >
                       <Card.Body p={3} textAlign="center">
-                        <Box color="gray.400" mb={2}>
-                          {createElement(IoGlobeOutline as any, { size: 24 })}
+                        <Box color="fg.muted" mb={2}>
+                          {createElement(IoGlobeOutline as any, { size: 22 })}
                         </Box>
-                        <Text fontWeight="semibold" color="white" fontSize="sm">Show All</Text>
-                        <Text fontSize="xs" color="gray.400">No filtering</Text>
+                        <Text fontWeight="semibold" color="fg.default" fontSize="sm">Show All</Text>
+                        <Text fontSize="xs" color="fg.muted">No filtering</Text>
                       </Card.Body>
                     </Card.Root>
 
                     <Card.Root
-                      bg={settings.preset === 'quality' ? 'green.900' : 'gray.800'}
-                      borderColor={settings.preset === 'quality' ? 'green.500' : 'gray.700'}
-                      borderWidth="2px"
+                      bg={settings.preset === 'quality' ? 'signal.up.muted' : 'bg.inset'}
+                      borderColor={settings.preset === 'quality' ? 'signal.up.solid' : 'border.subtle'}
+                      borderWidth="1px"
                       cursor="pointer"
                       onClick={() => handlePreset('quality')}
-                      _hover={{ borderColor: 'green.400' }}
-                      transition="all 0.2s"
+                      _hover={{ borderColor: 'border.emphasis' }}
+                      transition="all 0.12s"
                     >
                       <Card.Body p={3} textAlign="center">
-                        <Box color="green.400" mb={2}>
-                          {createElement(IoSparkles as any, { size: 24 })}
+                        <Box color="signal.up.fg" mb={2}>
+                          {createElement(IoSparkles as any, { size: 22 })}
                         </Box>
-                        <Text fontWeight="semibold" color="white" fontSize="sm">Quality</Text>
-                        <Text fontSize="xs" color="gray.400">$1B+ / ±50%</Text>
+                        <Text fontWeight="semibold" color="fg.default" fontSize="sm">Quality</Text>
+                        <Text fontSize="xs" color="fg.muted">$1B+ / ±50%</Text>
                       </Card.Body>
                     </Card.Root>
 
                     <Card.Root
-                      bg={settings.preset === 'large_cap' ? 'purple.900' : 'gray.800'}
-                      borderColor={settings.preset === 'large_cap' ? 'purple.500' : 'gray.700'}
-                      borderWidth="2px"
+                      bg={settings.preset === 'large_cap' ? 'accent.muted' : 'bg.inset'}
+                      borderColor={settings.preset === 'large_cap' ? 'accent.solid' : 'border.subtle'}
+                      borderWidth="1px"
                       cursor="pointer"
                       onClick={() => handlePreset('large_cap')}
-                      _hover={{ borderColor: 'purple.400' }}
-                      transition="all 0.2s"
+                      _hover={{ borderColor: 'border.emphasis' }}
+                      transition="all 0.12s"
                     >
                       <Card.Body p={3} textAlign="center">
-                        <Box color="purple.400" mb={2}>
-                          {createElement(IoBusinessSharp as any, { size: 24 })}
+                        <Box color="accent.fg" mb={2}>
+                          {createElement(IoBusinessSharp as any, { size: 22 })}
                         </Box>
-                        <Text fontWeight="semibold" color="white" fontSize="sm">Large Cap</Text>
-                        <Text fontSize="xs" color="gray.400">$10B+ / ±30%</Text>
+                        <Text fontWeight="semibold" color="fg.default" fontSize="sm">Large Cap</Text>
+                        <Text fontSize="xs" color="fg.muted">$10B+ / ±30%</Text>
                       </Card.Body>
                     </Card.Root>
                   </SimpleGrid>
                 </Box>
 
-                <Separator borderColor="gray.700" />
+                <Separator borderColor="border.subtle" />
 
                 {/* Minimum Market Cap */}
                 <Box>
                   <HStack justify="space-between" mb={3}>
-                    <Text fontSize="lg" fontWeight="semibold" color="white">
+                    <Text fontSize="sm" fontWeight="semibold" color="fg.default" textTransform="uppercase" letterSpacing="wider">
                       Minimum Market Cap
                     </Text>
-                    <Badge colorPalette={localMinMarketCap ? 'blue' : 'gray'} size="lg">
+                    <Badge colorPalette={localMinMarketCap ? 'blue' : 'gray'} size="sm">
                       {getMarketCapLabel(localMinMarketCap)}
                     </Badge>
                   </HStack>
-                  <Text fontSize="sm" color="gray.400" mb={4}>
+                  <Text fontSize="sm" color="fg.muted" mb={4}>
                     Filter out small-cap stocks that often have unreliable price data
                   </Text>
                   <Box px={2}>
@@ -213,32 +213,33 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                       step={1}
                       value={[getSliderIndex(localMinMarketCap)]}
                       onValueChange={handleSliderChange}
+                      colorPalette="blue"
                     >
                       <Slider.Control>
-                        <Slider.Track bg="gray.700">
-                          <Slider.Range bg="blue.500" />
+                        <Slider.Track>
+                          <Slider.Range />
                         </Slider.Track>
-                        <Slider.Thumb index={0} bg="white" boxSize={5} />
+                        <Slider.Thumb index={0} />
                       </Slider.Control>
                     </Slider.Root>
                   </Box>
                   <HStack justify="space-between" mt={2}>
-                    <Text fontSize="xs" color="gray.500">All</Text>
-                    <Text fontSize="xs" color="gray.500">$200B+</Text>
+                    <Text fontSize="xs" color="fg.subtle">All</Text>
+                    <Text fontSize="xs" color="fg.subtle">$200B+</Text>
                   </HStack>
                 </Box>
 
                 {/* Max Price Change Filter */}
                 <Box>
                   <HStack justify="space-between" mb={3}>
-                    <Text fontSize="lg" fontWeight="semibold" color="white">
+                    <Text fontSize="sm" fontWeight="semibold" color="fg.default" textTransform="uppercase" letterSpacing="wider">
                       Max Price Change
                     </Text>
-                    <Badge colorPalette={localMaxPriceChange ? 'orange' : 'gray'} size="lg">
+                    <Badge colorPalette={localMaxPriceChange ? 'orange' : 'gray'} size="sm">
                       {localMaxPriceChange ? `±${localMaxPriceChange}%` : 'No Limit'}
                     </Badge>
                   </HStack>
-                  <Text fontSize="sm" color="gray.400" mb={4}>
+                  <Text fontSize="sm" color="fg.muted" mb={4}>
                     Exclude stocks with extreme daily price movements (often data errors)
                   </Text>
                   <Box px={2}>
@@ -257,41 +258,46 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                         const values = [null, 20, 30, 50, 100, null];
                         setLocalMaxPriceChange(values[details.value[0]]);
                       }}
+                      colorPalette="orange"
                     >
                       <Slider.Control>
-                        <Slider.Track bg="gray.700">
-                          <Slider.Range bg="orange.500" />
+                        <Slider.Track>
+                          <Slider.Range />
                         </Slider.Track>
-                        <Slider.Thumb index={0} bg="white" boxSize={5} />
+                        <Slider.Thumb index={0} />
                       </Slider.Control>
                     </Slider.Root>
                   </Box>
                   <HStack justify="space-between" mt={2}>
-                    <Text fontSize="xs" color="gray.500">No Limit</Text>
-                    <Text fontSize="xs" color="gray.500">±100% max</Text>
+                    <Text fontSize="xs" color="fg.subtle">No Limit</Text>
+                    <Text fontSize="xs" color="fg.subtle">±100% max</Text>
                   </HStack>
                 </Box>
 
-                <Separator borderColor="gray.700" />
+                <Separator borderColor="border.subtle" />
 
                 {/* Current Settings Summary */}
-                <Box bg="gray.800" p={4} borderRadius="lg">
-                  <Text fontWeight="semibold" color="white" mb={2}>
+                <Box bg="bg.inset" p={4} borderRadius="md" borderWidth="1px" borderColor="border.subtle">
+                  <Text fontSize="sm" fontWeight="semibold" color="fg.default" textTransform="uppercase" letterSpacing="wider" mb={2}>
                     Current Filter Summary
                   </Text>
-                  <VStack align="start" gap={1}>
-                    <HStack>
-                      {createElement(IoCheckmarkCircle as any, { color: localMinMarketCap ? '#48BB78' : '#718096' })}
-                      <Text fontSize="sm" color={localMinMarketCap ? 'green.400' : 'gray.400'}>
-                        {localMinMarketCap 
+                  <VStack align="start" gap={1.5}>
+                    <HStack gap={2}>
+                      <Box color={localMinMarketCap ? 'signal.up.fg' : 'fg.subtle'}>
+                        {createElement(IoCheckmarkCircle as any, { size: 16 })}
+                      </Box>
+                      <Text fontSize="sm" color={localMinMarketCap ? 'signal.up.fg' : 'fg.muted'}>
+                        {localMinMarketCap
                           ? `Minimum: ${getMarketCapLabel(localMinMarketCap)}`
                           : 'No market cap filter'}
                       </Text>
                     </HStack>
-                    <HStack>
-                      {createElement(IoCheckmarkCircle as any, { color: localMaxPriceChange ? '#ED8936' : '#718096' })}
-                      <Text fontSize="sm" color={localMaxPriceChange ? 'orange.400' : 'gray.400'}>
-                        {localMaxPriceChange 
+                    <HStack gap={2}>
+                      <Box color={localMaxPriceChange ? 'signal.warn.fg' : 'fg.subtle'}>
+                        {createElement(IoCheckmarkCircle as any, { size: 16 })}
+                      </Box>
+                      <Text fontSize="sm" color={localMaxPriceChange ? 'signal.warn.fg' : 'fg.muted'}>
+                        {localMaxPriceChange
                           ? `Max change: ±${localMaxPriceChange}%`
                           : 'No price change filter'}
                       </Text>
@@ -301,7 +307,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
               </VStack>
             </Drawer.Body>
 
-            <Drawer.Footer borderTopWidth="1px" borderColor="gray.700">
+            <Drawer.Footer borderTopWidth="1px" borderColor="border.subtle">
               <HStack width="100%" justify="flex-end" gap={3}>
                 <Button variant="outline" onClick={onClose}>
                   Cancel

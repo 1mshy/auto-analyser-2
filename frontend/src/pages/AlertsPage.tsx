@@ -16,6 +16,7 @@ import {
   Switch,
   Textarea,
 } from '@chakra-ui/react';
+import { SignalBadge, PageHeader, EmptyState } from '../components/ui/primitives';
 import { Bell, Plus, Trash2, Send, RefreshCw, Save, CheckCircle, XCircle } from 'lucide-react';
 import { Link as RouterLink } from 'react-router-dom';
 import { api } from '../api';
@@ -46,23 +47,19 @@ export const AlertsPage: React.FC = () => {
 
   return (
     <Container maxW="container.xl" py={8}>
-      <Flex justify="space-between" align="center" mb={6}>
-        <HStack gap={3}>
-          <Box color="blue.400"><Bell size={28} /></Box>
-          <Heading color="white" size="lg">Alerts</Heading>
-        </HStack>
-        <Text color="gray.400" fontSize="sm">
-          Get notified when watched stocks hit your defined conditions.
-        </Text>
-      </Flex>
+      <PageHeader
+        icon={<Bell size={22} />}
+        title="Alerts"
+        subtitle="Get notified when watched stocks hit your defined conditions."
+      />
 
-      <HStack gap={2} mb={4} borderBottom="1px solid" borderColor="gray.700" pb={2}>
+      <HStack gap={2} mb={4} borderBottomWidth="1px" borderColor="border.subtle" pb={2}>
         {TABS.map(t => (
           <Button
             key={t.id}
             size="sm"
-            variant={tab === t.id ? 'solid' : 'ghost'}
-            colorPalette={tab === t.id ? 'blue' : 'gray'}
+            variant={tab === t.id ? 'subtle' : 'ghost'}
+            colorPalette={tab === t.id ? 'accent' : 'gray'}
             onClick={() => setTab(t.id)}
           >
             {t.label}
@@ -144,17 +141,17 @@ const WatchlistsTab: React.FC = () => {
     reload();
   };
 
-  if (loading) return <Spinner color="blue.400" />;
+  if (loading) return <Spinner color="accent.solid" />;
 
   return (
     <Flex gap={4} align="stretch">
       {/* Left: list */}
-      <Box w="280px" bg="gray.800" borderRadius="md" p={3}>
+      <Box w="280px" bg="bg.surface" borderRadius="md" p={3}>
         <VStack align="stretch" gap={2} mb={3}>
           <Input
             size="sm"
-            bg="gray.900"
-            color="white"
+            bg="bg.inset"
+            color="fg.default"
             placeholder="New watchlist name"
             value={newName}
             onChange={e => setNewName(e.target.value)}
@@ -166,19 +163,21 @@ const WatchlistsTab: React.FC = () => {
         </VStack>
         <VStack align="stretch" gap={1}>
           {items.length === 0 && (
-            <Text color="gray.500" fontSize="sm">No watchlists yet.</Text>
+            <Text color="fg.subtle" fontSize="sm">No watchlists yet.</Text>
           )}
           {items.map(w => (
             <HStack
               key={w._id}
-              bg={selectedId === w._id ? 'blue.900' : 'gray.700'}
+              bg={selectedId === w._id ? 'accent.muted' : 'bg.inset'}
+              borderWidth="1px"
+              borderColor={selectedId === w._id ? 'accent.emphasis' : 'border.subtle'}
               p={2}
               borderRadius="md"
               cursor="pointer"
               onClick={() => setSelectedId(w._id || null)}
-              _hover={{ bg: selectedId === w._id ? 'blue.800' : 'gray.600' }}
+              _hover={{ bg: selectedId === w._id ? 'accent.muted' : 'bg.muted' }}
             >
-              <Text color="white" fontWeight="medium" flex={1}>{w.name}</Text>
+              <Text color="fg.default" fontWeight="medium" flex={1}>{w.name}</Text>
               <Badge colorPalette="gray">{w.symbols.length}</Badge>
               <IconButton
                 size="xs"
@@ -195,17 +194,17 @@ const WatchlistsTab: React.FC = () => {
       </Box>
 
       {/* Right: detail */}
-      <Box flex={1} bg="gray.800" borderRadius="md" p={4}>
+      <Box flex={1} bg="bg.surface" borderRadius="md" p={4}>
         {!selected ? (
-          <Text color="gray.400">Select a watchlist to view its symbols.</Text>
+          <Text color="fg.muted">Select a watchlist to view its symbols.</Text>
         ) : (
           <VStack align="stretch" gap={3}>
-            <Heading size="md" color="white">{selected.name}</Heading>
+            <Heading size="md" color="fg.default">{selected.name}</Heading>
             <HStack>
               <Input
                 size="sm"
-                bg="gray.900"
-                color="white"
+                bg="bg.inset"
+                color="fg.default"
                 placeholder="Add symbol (e.g. AAPL)"
                 value={addSymbol}
                 onChange={e => setAddSymbol(e.target.value.toUpperCase())}
@@ -215,12 +214,12 @@ const WatchlistsTab: React.FC = () => {
             </HStack>
             <Flex wrap="wrap" gap={2}>
               {selected.symbols.length === 0 && (
-                <Text color="gray.500" fontSize="sm">No symbols — add one above.</Text>
+                <Text color="fg.subtle" fontSize="sm">No symbols — add one above.</Text>
               )}
               {selected.symbols.map(sym => (
-                <HStack key={sym} bg="gray.700" borderRadius="md" px={2} py={1}>
+                <HStack key={sym} bg="bg.inset" borderWidth="1px" borderColor="border.subtle" borderRadius="sm" px={2} py={1}>
                   <RouterLink to={`/stocks/${sym}`}>
-                    <Text color="blue.300" fontWeight="semibold">{sym}</Text>
+                    <Text color="accent.fg" fontWeight="semibold">{sym}</Text>
                   </RouterLink>
                   <IconButton
                     size="xs"
@@ -325,7 +324,7 @@ const RulesTab: React.FC = () => {
     }
   };
 
-  if (loading) return <Spinner color="blue.400" />;
+  if (loading) return <Spinner color="accent.solid" />;
 
   if (editing) {
     return (
@@ -342,22 +341,24 @@ const RulesTab: React.FC = () => {
   return (
     <VStack align="stretch" gap={3}>
       <HStack justify="space-between">
-        <Text color="gray.400">{rules.length} rule{rules.length !== 1 ? 's' : ''}</Text>
+        <Text color="fg.muted">{rules.length} rule{rules.length !== 1 ? 's' : ''}</Text>
         <Button size="sm" colorPalette="blue" onClick={() => setEditing(blankRule() as any)}>
           <Plus size={14} /> New rule
         </Button>
       </HStack>
       {rules.length === 0 && (
-        <Box bg="gray.800" p={8} borderRadius="md" textAlign="center">
-          <Text color="gray.400">No rules yet. Create one to start getting alerted.</Text>
-        </Box>
+        <EmptyState
+          icon={<Bell size={32} />}
+          title="No rules yet"
+          description="Create one to start getting alerted when stocks hit your conditions."
+        />
       )}
       {rules.map(r => (
-        <Box key={r._id} bg="gray.800" p={4} borderRadius="md" border="1px solid" borderColor={r.enabled ? 'green.700' : 'gray.700'}>
+        <Box key={r._id} bg="bg.surface" p={4} borderRadius="md" borderWidth="1px" borderColor={r.enabled ? 'signal.up.muted' : 'border.subtle'}>
           <HStack justify="space-between" mb={2}>
             <HStack>
-              <Badge colorPalette={r.enabled ? 'green' : 'gray'}>{r.enabled ? 'Enabled' : 'Paused'}</Badge>
-              <Text color="white" fontWeight="bold" fontSize="lg">{r.name}</Text>
+              <SignalBadge tone={r.enabled ? 'up' : 'neutral'} size="sm">{r.enabled ? 'Enabled' : 'Paused'}</SignalBadge>
+              <Text color="fg.default" fontWeight="bold" fontSize="lg">{r.name}</Text>
             </HStack>
             <HStack>
               <Button size="xs" variant="outline" onClick={() => handleTest(r._id!)}>
@@ -372,13 +373,13 @@ const RulesTab: React.FC = () => {
               </Button>
             </HStack>
           </HStack>
-          <Text color="gray.300" fontSize="sm" mb={1}>
+          <Text color="fg.default" fontSize="sm" mb={1}>
             Scope: {describeScope(r.scope, watchlists)}
           </Text>
-          <Text color="gray.400" fontSize="xs" fontFamily="mono" mb={1}>
+          <Text color="fg.muted" fontSize="xs" fontFamily="mono" mb={1}>
             {describeGroup(r.conditions)}
           </Text>
-          <HStack gap={3} fontSize="xs" color="gray.500">
+          <HStack gap={3} fontSize="xs" color="fg.subtle">
             <Text>Cooldown: {r.cooldown_minutes}m</Text>
             <Text>Hysteresis: {r.require_consecutive}x</Text>
             <Text>Channels: {r.channel_ids.length}</Text>
@@ -430,9 +431,9 @@ const RuleEditor: React.FC<{
   };
 
   return (
-    <VStack align="stretch" gap={4} bg="gray.800" p={4} borderRadius="md">
+    <VStack align="stretch" gap={4} bg="bg.surface" p={4} borderRadius="md">
       <HStack justify="space-between">
-        <Heading size="md" color="white">
+        <Heading size="md" color="fg.default">
           {(rule as AlertRule)._id ? 'Edit rule' : 'New rule'}
         </Heading>
         <HStack>
@@ -444,13 +445,13 @@ const RuleEditor: React.FC<{
       </HStack>
 
       <Box>
-        <Text color="gray.400" fontSize="sm" mb={1}>Name</Text>
-        <Input bg="gray.900" color="white" value={(rule as any).name} onChange={e => setField('name', e.target.value as any)} />
+        <Text color="fg.muted" fontSize="sm" mb={1}>Name</Text>
+        <Input bg="bg.inset" color="fg.default" value={(rule as any).name} onChange={e => setField('name', e.target.value as any)} />
       </Box>
 
       <HStack gap={4}>
         <Box>
-          <Text color="gray.400" fontSize="sm" mb={1}>Enabled</Text>
+          <Text color="fg.muted" fontSize="sm" mb={1}>Enabled</Text>
           <Switch.Root
             checked={(rule as any).enabled}
             onCheckedChange={(d: { checked: boolean }) => setField('enabled', d.checked as any)}
@@ -460,23 +461,23 @@ const RuleEditor: React.FC<{
           </Switch.Root>
         </Box>
         <Box>
-          <Text color="gray.400" fontSize="sm" mb={1}>Cooldown (minutes)</Text>
+          <Text color="fg.muted" fontSize="sm" mb={1}>Cooldown (minutes)</Text>
           <Input
             type="number"
             w="120px"
-            bg="gray.900"
-            color="white"
+            bg="bg.inset"
+            color="fg.default"
             value={(rule as any).cooldown_minutes}
             onChange={e => setField('cooldown_minutes', (parseInt(e.target.value) || 0) as any)}
           />
         </Box>
         <Box>
-          <Text color="gray.400" fontSize="sm" mb={1}>Require consecutive</Text>
+          <Text color="fg.muted" fontSize="sm" mb={1}>Require consecutive</Text>
           <Input
             type="number"
             w="120px"
-            bg="gray.900"
-            color="white"
+            bg="bg.inset"
+            color="fg.default"
             min={1}
             value={(rule as any).require_consecutive}
             onChange={e => setField('require_consecutive', Math.max(1, parseInt(e.target.value) || 1) as any)}
@@ -485,13 +486,13 @@ const RuleEditor: React.FC<{
       </HStack>
 
       <Box>
-        <Text color="gray.400" fontSize="sm" mb={1}>Scope</Text>
+        <Text color="fg.muted" fontSize="sm" mb={1}>Scope</Text>
         <HStack>
           <NativeSelect.Root size="sm" w="200px">
             <NativeSelect.Field
               value={(rule as any).scope.type}
-              bg="gray.900"
-              color="white"
+              bg="bg.inset"
+              color="fg.default"
               onChange={e => {
                 const t = e.target.value as AlertScope['type'];
                 const s: AlertScope =
@@ -513,8 +514,8 @@ const RuleEditor: React.FC<{
             <NativeSelect.Root size="sm" w="240px">
               <NativeSelect.Field
                 value={(rule as any).scope.watchlist_id}
-                bg="gray.900"
-                color="white"
+                bg="bg.inset"
+                color="fg.default"
                 onChange={e => setField('scope', { type: 'watchlist', watchlist_id: e.target.value } as any)}
               >
                 {watchlists.length === 0 && <option value="">(no watchlists yet)</option>}
@@ -527,8 +528,8 @@ const RuleEditor: React.FC<{
           {(rule as any).scope.type === 'symbols' && (
             <Input
               size="sm"
-              bg="gray.900"
-              color="white"
+              bg="bg.inset"
+              color="fg.default"
               placeholder="AAPL, MSFT, NVDA"
               value={((rule as any).scope.symbols || []).join(', ')}
               onChange={e =>
@@ -546,7 +547,7 @@ const RuleEditor: React.FC<{
       </Box>
 
       <Box>
-        <Text color="gray.400" fontSize="sm" mb={2}>Conditions</Text>
+        <Text color="fg.muted" fontSize="sm" mb={2}>Conditions</Text>
         <ConditionBuilder
           value={(rule as any).conditions as ConditionGroup}
           onChange={c => setField('conditions', c as any)}
@@ -555,9 +556,9 @@ const RuleEditor: React.FC<{
       </Box>
 
       <Box>
-        <Text color="gray.400" fontSize="sm" mb={1}>Channels</Text>
+        <Text color="fg.muted" fontSize="sm" mb={1}>Channels</Text>
         {channels.length === 0 ? (
-          <Text color="gray.500" fontSize="sm">No channels configured. Add one on the Channels tab.</Text>
+          <Text color="fg.subtle" fontSize="sm">No channels configured. Add one on the Channels tab.</Text>
         ) : (
           <Flex wrap="wrap" gap={2}>
             {channels.map(c => {
@@ -579,15 +580,15 @@ const RuleEditor: React.FC<{
       </Box>
 
       <Box>
-        <Text color="gray.400" fontSize="sm" mb={1}>
+        <Text color="fg.muted" fontSize="sm" mb={1}>
           Message template (optional). Placeholders:{' '}
-          <Text as="span" fontFamily="mono" color="gray.300">
+          <Text as="span" fontFamily="mono" color="fg.default">
             {'{{symbol}} {{price}} {{rsi}} {{change_pct}} {{rule_name}} {{matched}} {{52w_low}} {{52w_high}} {{market_cap}} {{sector}}'}
           </Text>
         </Text>
         <Textarea
-          bg="gray.900"
-          color="white"
+          bg="bg.inset"
+          color="fg.default"
           rows={3}
           placeholder="{{symbol}} hit {{rule_name}} at ${{price}} (RSI {{rsi}}, Δ {{change_pct}}%)"
           value={(rule as any).message_template || ''}
@@ -596,7 +597,7 @@ const RuleEditor: React.FC<{
       </Box>
 
       <Box>
-        <Text color="gray.400" fontSize="sm" mb={1}>Quiet hours (UTC)</Text>
+        <Text color="fg.muted" fontSize="sm" mb={1}>Quiet hours (UTC)</Text>
         <HStack>
           <Switch.Root
             checked={!!(rule as any).quiet_hours}
@@ -615,8 +616,8 @@ const RuleEditor: React.FC<{
               <Input
                 type="number"
                 w="100px"
-                bg="gray.900"
-                color="white"
+                bg="bg.inset"
+                color="fg.default"
                 min={0}
                 max={23}
                 value={((rule as any).quiet_hours as QuietHours).start_hour}
@@ -627,12 +628,12 @@ const RuleEditor: React.FC<{
                   } as any)
                 }
               />
-              <Text color="gray.400">–</Text>
+              <Text color="fg.muted">–</Text>
               <Input
                 type="number"
                 w="100px"
-                bg="gray.900"
-                color="white"
+                bg="bg.inset"
+                color="fg.default"
                 min={0}
                 max={23}
                 value={((rule as any).quiet_hours as QuietHours).end_hour}
@@ -643,7 +644,7 @@ const RuleEditor: React.FC<{
                   } as any)
                 }
               />
-              <Text color="gray.500" fontSize="xs">(hours, UTC; wraps midnight if start &gt; end)</Text>
+              <Text color="fg.subtle" fontSize="xs">(hours, UTC; wraps midnight if start &gt; end)</Text>
             </>
           )}
         </HStack>
@@ -709,29 +710,29 @@ const ChannelsTab: React.FC = () => {
     reload();
   };
 
-  if (loading) return <Spinner color="blue.400" />;
+  if (loading) return <Spinner color="accent.solid" />;
 
   return (
     <VStack align="stretch" gap={4}>
-      <Box bg="gray.800" p={4} borderRadius="md">
-        <Heading size="sm" color="white" mb={2}>Add Discord webhook</Heading>
+      <Box bg="bg.surface" p={4} borderRadius="md">
+        <Heading size="sm" color="fg.default" mb={2}>Add Discord webhook</Heading>
         <VStack align="stretch" gap={2}>
-          <Input size="sm" bg="gray.900" color="white" placeholder="Channel name (e.g. #alerts)" value={newName} onChange={e => setNewName(e.target.value)} />
-          <Input size="sm" bg="gray.900" color="white" placeholder="https://discord.com/api/webhooks/..." value={newUrl} onChange={e => setNewUrl(e.target.value)} />
-          <Input size="sm" bg="gray.900" color="white" placeholder="Username override (optional)" value={newUsername} onChange={e => setNewUsername(e.target.value)} />
+          <Input size="sm" bg="bg.inset" color="fg.default" placeholder="Channel name (e.g. #alerts)" value={newName} onChange={e => setNewName(e.target.value)} />
+          <Input size="sm" bg="bg.inset" color="fg.default" placeholder="https://discord.com/api/webhooks/..." value={newUrl} onChange={e => setNewUrl(e.target.value)} />
+          <Input size="sm" bg="bg.inset" color="fg.default" placeholder="Username override (optional)" value={newUsername} onChange={e => setNewUsername(e.target.value)} />
           <Button size="sm" colorPalette="blue" onClick={handleCreate}>
             <Plus size={14} /> Add channel
           </Button>
         </VStack>
       </Box>
 
-      {items.length === 0 && <Text color="gray.400">No channels yet.</Text>}
+      {items.length === 0 && <Text color="fg.muted">No channels yet.</Text>}
       {items.map(c => (
-        <Box key={c._id} bg="gray.800" p={4} borderRadius="md">
+        <Box key={c._id} bg="bg.surface" p={4} borderRadius="md">
           <HStack justify="space-between">
             <HStack>
-              <Badge colorPalette={c.enabled ? 'green' : 'gray'}>{c.enabled ? 'enabled' : 'disabled'}</Badge>
-              <Text color="white" fontWeight="bold">{c.name}</Text>
+              <SignalBadge tone={c.enabled ? 'up' : 'neutral'} size="sm">{c.enabled ? 'enabled' : 'disabled'}</SignalBadge>
+              <Text color="fg.default" fontWeight="bold">{c.name}</Text>
               <Badge colorPalette="blue">{c.kind}</Badge>
             </HStack>
             <HStack>
@@ -746,7 +747,7 @@ const ChannelsTab: React.FC = () => {
               </Button>
             </HStack>
           </HStack>
-          <Text color="gray.500" fontSize="xs" fontFamily="mono" mt={1}>
+          <Text color="fg.subtle" fontSize="xs" fontFamily="mono" mt={1}>
             {c.webhook_url}
           </Text>
         </Box>
@@ -789,33 +790,35 @@ const InboxTab: React.FC = () => {
     setItems(prev => prev.map(p => p._id === id ? { ...p, read: true } : p));
   };
 
-  if (loading) return <Spinner color="blue.400" />;
+  if (loading) return <Spinner color="accent.solid" />;
 
   return (
     <VStack align="stretch" gap={4}>
       <HStack justify="space-between">
-        <Text color="gray.400">{items.length} notifications</Text>
+        <Text color="fg.muted">{items.length} notifications</Text>
         <Button size="sm" variant="outline" onClick={reload}>
           <RefreshCw size={14} /> Refresh
         </Button>
       </HStack>
       {items.length === 0 && (
-        <Box bg="gray.800" p={8} borderRadius="md" textAlign="center">
-          <Text color="gray.400">Nothing here yet. When your rules fire, entries will show up here.</Text>
-        </Box>
+        <EmptyState
+          icon={<Bell size={32} />}
+          title="Inbox is empty"
+          description="When your rules fire, entries will show up here."
+        />
       )}
       {Object.entries(grouped).map(([day, entries]) => (
         <Box key={day}>
-          <Text color="gray.400" fontSize="sm" fontWeight="bold" mb={2}>{day}</Text>
+          <Text color="fg.muted" fontSize="sm" fontWeight="bold" mb={2}>{day}</Text>
           <VStack align="stretch" gap={2}>
             {entries.map(e => (
               <Box
                 key={e._id}
-                bg={e.read ? 'gray.850' : 'gray.800'}
+                bg={e.read ? 'bg.inset' : 'bg.surface'}
                 p={3}
                 borderRadius="md"
-                border="1px solid"
-                borderColor={e.read ? 'gray.700' : 'blue.700'}
+                borderWidth="1px"
+                borderColor={e.read ? 'border.subtle' : 'accent.emphasis'}
                 onClick={() => e._id && !e.read && markRead(e._id)}
                 cursor={e.read ? 'default' : 'pointer'}
               >
@@ -823,13 +826,13 @@ const InboxTab: React.FC = () => {
                   <HStack>
                     {!e.read && <Badge colorPalette="blue">new</Badge>}
                     <RouterLink to={`/stocks/${e.symbol}`}>
-                      <Text color="blue.300" fontWeight="bold">{e.symbol}</Text>
+                      <Text color="accent.fg" fontWeight="bold">{e.symbol}</Text>
                     </RouterLink>
-                    <Text color="white">{e.rule_name}</Text>
+                    <Text color="fg.default">{e.rule_name}</Text>
                   </HStack>
-                  <Text color="gray.500" fontSize="xs">{new Date(e.created_at).toLocaleTimeString()}</Text>
+                  <Text color="fg.subtle" fontSize="xs">{new Date(e.created_at).toLocaleTimeString()}</Text>
                 </HStack>
-                <Text color="gray.300" fontSize="sm" mb={1}>{e.message}</Text>
+                <Text color="fg.default" fontSize="sm" mb={1}>{e.message}</Text>
                 <HStack gap={1} wrap="wrap" mb={1}>
                   {e.matched_conditions.map((m, i) => (
                     <Badge key={i} colorPalette="gray" size="sm">{m}</Badge>
@@ -838,8 +841,10 @@ const InboxTab: React.FC = () => {
                 <HStack gap={2}>
                   {e.delivered.map((d, i) => (
                     <HStack key={i} gap={1}>
-                      {d.ok ? <CheckCircle size={12} color="#22c55e" /> : <XCircle size={12} color="#ef4444" />}
-                      <Text fontSize="xs" color={d.ok ? 'green.300' : 'red.300'}>{d.channel_name}</Text>
+                      {d.ok
+                        ? <Box color="signal.up.fg"><CheckCircle size={12} /></Box>
+                        : <Box color="signal.down.fg"><XCircle size={12} /></Box>}
+                      <Text fontSize="xs" color={d.ok ? 'signal.up.fg' : 'signal.down.fg'}>{d.channel_name}</Text>
                     </HStack>
                   ))}
                 </HStack>

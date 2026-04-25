@@ -4,20 +4,20 @@ import {
   Text,
   HStack,
   VStack,
-  Badge,
   SimpleGrid,
 } from '@chakra-ui/react';
 import { IoCheckmarkCircle, IoWarning, IoTime } from 'react-icons/io5';
 import { AnalysisProgress } from '../types';
 import { ProgressRoot, ProgressBar as ChakraProgressBar } from './ui/progress';
+import { Surface, Num, SignalBadge } from './ui/primitives';
 
 interface ProgressBarProps {
   progress: AnalysisProgress;
 }
 
 const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
-  const percentage = progress.total_stocks > 0 
-    ? (progress.analyzed / progress.total_stocks) * 100 
+  const percentage = progress.total_stocks > 0
+    ? (progress.analyzed / progress.total_stocks) * 100
     : 0;
 
   const cycleTime = new Date().getTime() - new Date(progress.cycle_start).getTime();
@@ -25,26 +25,17 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
   const cycleSeconds = Math.floor((cycleTime % 60000) / 1000);
 
   return (
-    <Box
-      bg="bg.panel"
-      p={6}
-      borderRadius="lg"
-      boxShadow="md"
-      borderWidth="1px"
-      borderColor="border"
-    >
+    <Surface p={6}>
       <VStack gap={4} align="stretch">
-        {/* Header */}
         <HStack justify="space-between">
-          <Text fontSize="xl" fontWeight="bold" color="fg">
+          <Text fontSize="lg" fontWeight="semibold" color="fg.default">
             Analysis Progress
           </Text>
-          <Badge colorScheme={percentage === 100 ? 'green' : 'blue'} fontSize="md" px={3} py={1}>
+          <SignalBadge tone={percentage === 100 ? 'up' : 'accent'} fontSize="sm" px={2.5} py={1} className="num" data-num="">
             {typeof percentage === 'number' && !isNaN(percentage) ? percentage.toFixed(1) : '0.0'}%
-          </Badge>
+          </SignalBadge>
         </HStack>
 
-        {/* Progress Bar */}
         <ProgressRoot
           value={percentage}
           size="lg"
@@ -52,86 +43,85 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
           striped
           animated={percentage < 100}
         >
-          <ChakraProgressBar borderRadius="md" />
+          <ChakraProgressBar borderRadius="sm" />
         </ProgressRoot>
 
-        {/* Stats Grid */}
         <SimpleGrid columns={{ base: 2, md: 4 }} gap={4}>
           <Box>
-            <HStack gap={1} mb={1}>
+            <HStack gap={1.5} mb={1} color="fg.muted">
               {createElement(IoTime as any, { style: { width: '12px', height: '12px' } })}
-              <Text fontSize="xs" color="fg.muted">Total Stocks</Text>
+              <Text fontSize="xs" textTransform="uppercase" letterSpacing="wider">Total Stocks</Text>
             </HStack>
-            <Text fontSize="2xl" fontWeight="bold">{progress.total_stocks}</Text>
+            <Num value={progress.total_stocks} decimals={0} fontSize="2xl" fontWeight="semibold" />
           </Box>
 
           <Box>
-            <HStack gap={1} mb={1}>
-              {createElement(IoCheckmarkCircle as any, { style: { width: '12px', height: '12px', color: '#48BB78' } })}
-              <Text fontSize="xs" color="fg.muted">Analyzed</Text>
+            <HStack gap={1.5} mb={1} color="signal.up.fg">
+              {createElement(IoCheckmarkCircle as any, { style: { width: '12px', height: '12px' } })}
+              <Text fontSize="xs" textTransform="uppercase" letterSpacing="wider" color="fg.muted">Analyzed</Text>
             </HStack>
-            <Text fontSize="2xl" fontWeight="bold" color="green.400">
-              {progress.analyzed}
-            </Text>
+            <Num value={progress.analyzed} decimals={0} intent="up" fontSize="2xl" fontWeight="semibold" />
           </Box>
 
           <Box>
-            <HStack gap={1} mb={1}>
-              {createElement(IoWarning as any, { style: { width: '12px', height: '12px', color: '#F56565' } })}
-              <Text fontSize="xs" color="fg.muted">Errors</Text>
+            <HStack gap={1.5} mb={1} color={progress.errors > 0 ? 'signal.down.fg' : 'fg.muted'}>
+              {createElement(IoWarning as any, { style: { width: '12px', height: '12px' } })}
+              <Text fontSize="xs" textTransform="uppercase" letterSpacing="wider" color="fg.muted">Errors</Text>
             </HStack>
-            <Text fontSize="2xl" fontWeight="bold" color={progress.errors > 0 ? 'red.400' : 'fg.muted'}>
-              {progress.errors}
-            </Text>
+            <Num
+              value={progress.errors}
+              decimals={0}
+              intent={progress.errors > 0 ? 'down' : 'neutral'}
+              fontSize="2xl"
+              fontWeight="semibold"
+            />
           </Box>
 
           <Box>
-            <Text fontSize="xs" color="fg.muted" mb={1}>Cycle Time</Text>
-            <Text fontSize="2xl" fontWeight="bold" color="blue.400">
+            <Text fontSize="xs" color="fg.muted" mb={1} textTransform="uppercase" letterSpacing="wider">Cycle Time</Text>
+            <Text className="num" data-num="" fontSize="2xl" fontWeight="semibold" color="accent.fg">
               {cycleMinutes}:{cycleSeconds.toString().padStart(2, '0')}
             </Text>
           </Box>
         </SimpleGrid>
 
-        {/* Current Symbol */}
         {progress.current_symbol && (
           <Box
-            bg="blue.subtle"
+            bg="accent.subtle"
             p={3}
             borderRadius="md"
             borderWidth="1px"
-            borderColor="blue.emphasized"
+            borderColor="border.subtle"
           >
             <HStack justify="space-between">
               <Text fontSize="sm" color="fg.muted">
                 Currently Analyzing:
               </Text>
-              <Badge colorScheme="blue" fontSize="md">
+              <SignalBadge tone="accent" fontSize="sm">
                 {progress.current_symbol}
-              </Badge>
+              </SignalBadge>
             </HStack>
           </Box>
         )}
 
-        {/* Completion Message */}
         {percentage === 100 && (
           <Box
-            bg="green.subtle"
+            bg="signal.up.subtle"
             p={3}
             borderRadius="md"
             borderWidth="1px"
-            borderColor="green.emphasized"
+            borderColor="border.subtle"
           >
-            <HStack>
-              {createElement(IoCheckmarkCircle as any, { style: { width: '20px', height: '20px', color: '#48BB78' } })}
-              <Text fontSize="sm" color="green.fg" fontWeight="medium">
+            <HStack gap={2} color="signal.up.fg">
+              {createElement(IoCheckmarkCircle as any, { style: { width: '18px', height: '18px' } })}
+              <Text fontSize="sm" fontWeight="medium">
                 Analysis cycle complete! Next cycle will begin shortly.
               </Text>
             </HStack>
           </Box>
         )}
       </VStack>
-    </Box>
+    </Surface>
   );
 };
 

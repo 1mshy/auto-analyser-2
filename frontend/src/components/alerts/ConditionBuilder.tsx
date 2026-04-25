@@ -39,7 +39,7 @@ export const ConditionBuilder: React.FC<Props> = ({
   depth = 0,
 }) => {
   const borderColor =
-    value.op === 'and' ? 'blue.600' : value.op === 'or' ? 'purple.600' : value.op === 'not' ? 'orange.600' : 'gray.600';
+    value.op === 'and' ? 'accent.emphasis' : value.op === 'or' ? 'signal.info.solid' : value.op === 'not' ? 'signal.warn.solid' : 'border.emphasis';
 
   if (value.op === 'leaf') {
     return (
@@ -74,10 +74,11 @@ export const ConditionBuilder: React.FC<Props> = ({
 
   return (
     <Box
-      bg="gray.900"
-      border="1px solid"
-      borderColor={borderColor}
-      borderLeftWidth={4}
+      bg="bg.inset"
+      borderWidth="1px"
+      borderColor="border.subtle"
+      borderLeftWidth="3px"
+      borderLeftColor={borderColor}
       borderRadius="md"
       p={3}
       ml={depth > 0 ? 4 : 0}
@@ -90,9 +91,9 @@ export const ConditionBuilder: React.FC<Props> = ({
           <NativeSelect.Root size="xs" w="110px">
             <NativeSelect.Field
               value={value.op}
-              bg="gray.800"
-              color="white"
-              borderColor="gray.600"
+              bg="bg.surface"
+              color="fg.default"
+              borderColor="border.subtle"
               onChange={e => {
                 const next = e.target.value as 'and' | 'or' | 'not';
                 if (next === 'not') {
@@ -195,9 +196,9 @@ const LeafRow: React.FC<{
             size="sm"
             type="number"
             w="120px"
-            bg="gray.800"
-            borderColor="gray.600"
-            color="white"
+            bg="bg.surface"
+            borderColor="border.subtle"
+            color="fg.default"
             value={(condition as any).value}
             onChange={e =>
               onChange({ ...(condition as any), value: parseFloat(e.target.value) || 0 })
@@ -211,9 +212,9 @@ const LeafRow: React.FC<{
             size="sm"
             type="number"
             w="120px"
-            bg="gray.800"
-            borderColor="gray.600"
-            color="white"
+            bg="bg.surface"
+            borderColor="border.subtle"
+            color="fg.default"
             placeholder="%"
             value={(condition as any).within_pct}
             onChange={e =>
@@ -226,9 +227,9 @@ const LeafRow: React.FC<{
           <Input
             size="sm"
             w="180px"
-            bg="gray.800"
-            borderColor="gray.600"
-            color="white"
+            bg="bg.surface"
+            borderColor="border.subtle"
+            color="fg.default"
             value={(condition as any).sector}
             onChange={e => onChange({ ...(condition as any), sector: e.target.value })}
           />
@@ -239,13 +240,13 @@ const LeafRow: React.FC<{
   };
 
   return (
-    <HStack bg="gray.850" p={2} borderRadius="md" border="1px solid" borderColor="gray.700">
+    <HStack bg="bg.muted" p={2} borderRadius="md" borderWidth="1px" borderColor="border.subtle">
       <NativeSelect.Root size="sm" w="260px">
         <NativeSelect.Field
           value={type}
-          bg="gray.800"
-          color="white"
-          borderColor="gray.600"
+          bg="bg.surface"
+          color="fg.default"
+          borderColor="border.subtle"
           onChange={e => onChange(defaultCondition(e.target.value as ConditionType))}
         >
           {(Object.keys(CONDITION_LABELS) as ConditionType[]).map(t => (

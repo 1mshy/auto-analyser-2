@@ -6,7 +6,6 @@ import {
   Heading,
   Text,
   SimpleGrid,
-  Card,
   Flex,
   Badge,
   Spinner,
@@ -20,6 +19,7 @@ import MarkdownContent from '../components/MarkdownContent';
 import { StockAnalysis, StockFilter, AIAnalysisResponse, getMarketCapTier, getMarketCapTierColor, getMarketCapTierLabel } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 import { WatchButton } from '../components/alerts/WatchButton';
+import { Surface, Num, SignalBadge, PageHeader, EmptyState } from '../components/ui/primitives';
 
 // AI Analysis card with auto-trigger
 const OpportunityCard: React.FC<{
@@ -30,133 +30,121 @@ const OpportunityCard: React.FC<{
 }> = ({ stock, aiAnalysis, aiLoading, onRequestAnalysis }) => {
   const tier = getMarketCapTier(stock.market_cap);
   const tierColor = getMarketCapTierColor(tier);
-  const changeColor = (stock.price_change_percent ?? 0) >= 0 ? 'green' : 'red';
 
-  // Priority score based on market cap and RSI
   const getPriorityScore = () => {
     let score = 0;
     if (stock.rsi && stock.rsi < 25) score += 3;
     else if (stock.rsi && stock.rsi < 30) score += 2;
-    
+
     if (stock.market_cap && stock.market_cap >= 200_000_000_000) score += 3;
     else if (stock.market_cap && stock.market_cap >= 10_000_000_000) score += 2;
     else if (stock.market_cap && stock.market_cap >= 2_000_000_000) score += 1;
-    
+
     if (stock.macd && stock.macd.histogram > 0) score += 1;
-    
+
     return score;
   };
 
   const priority = getPriorityScore();
-  const priorityColor = priority >= 5 ? 'green' : priority >= 3 ? 'yellow' : 'gray';
+  const accent = priority >= 5 ? 'up' : priority >= 3 ? 'warn' : undefined;
+  const priorityTone = priority >= 5 ? 'up' : priority >= 3 ? 'warn' : 'neutral';
 
   return (
-    <Card.Root 
-      bg="gray.800" 
-      borderColor="gray.700"
-      borderWidth={priority >= 5 ? 2 : 1}
-      borderLeftColor={priority >= 5 ? 'green.400' : priority >= 3 ? 'yellow.400' : 'gray.600'}
-      borderLeftWidth={4}
-    >
-      <Card.Header pb={2}>
-        <Flex justify="space-between" align="start">
-          <VStack align="start" gap={1}>
-            <HStack>
-              <Badge colorPalette={tierColor}>{getMarketCapTierLabel(tier)}</Badge>
-              <Badge colorPalette={priorityColor}>Priority: {priority}</Badge>
-            </HStack>
-            <HStack>
-              <Link to={`/stocks/${stock.symbol}`}>
-                <Heading size="md" color="white" _hover={{ color: 'blue.400' }}>
-                  {stock.symbol}
-                </Heading>
-              </Link>
-              <WatchButton symbol={stock.symbol} size="xs" />
-            </HStack>
-          </VStack>
-          <VStack align="end" gap={0}>
-            <Text fontWeight="bold" color="white">${stock.price != null ? stock.price.toFixed(2) : '-'}</Text>
-            <Text 
-              fontSize="sm" 
-              color={changeColor === 'green' ? 'green.400' : 'red.400'}
-            >
-              {stock.price_change_percent != null && typeof stock.price_change_percent === 'number'
-                ? `${stock.price_change_percent >= 0 ? '+' : ''}${stock.price_change_percent.toFixed(2)}%`
-                : ''}
-            </Text>
-          </VStack>
-        </Flex>
-      </Card.Header>
+    <Surface p={4} accent={accent}>
+      <Flex justify="space-between" align="start" mb={3}>
+        <VStack align="start" gap={1}>
+          <HStack>
+            <Badge colorPalette={tierColor} variant="subtle">{getMarketCapTierLabel(tier)}</Badge>
+            <SignalBadge tone={priorityTone}>Priority: {priority}</SignalBadge>
+          </HStack>
+          <HStack>
+            <Link to={`/stocks/${stock.symbol}`}>
+              <Heading size="md" color="fg.default" letterSpacing="tight" _hover={{ color: 'accent.fg' }}>
+                {stock.symbol}
+              </Heading>
+            </Link>
+            <WatchButton symbol={stock.symbol} size="xs" />
+          </HStack>
+        </VStack>
+        <VStack align="end" gap={0}>
+          <Num value={stock.price} prefix="$" fontWeight="semibold" color="fg.default" />
+          <Num
+            value={stock.price_change_percent}
+            intent="auto"
+            sign="always"
+            suffix="%"
+            fontSize="sm"
+          />
+        </VStack>
+      </Flex>
 
-      <Card.Body pt={2}>
-        {/* Technical Indicators */}
-        <HStack gap={2} mb={4} wrap="wrap">
-          <Badge 
-            colorPalette={stock.rsi != null && stock.rsi < 30 ? 'green' : 'gray'}
-            size="lg"
-          >
-            RSI: {stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'}
-          </Badge>
-          {stock.macd && (
-            <Badge colorPalette={stock.macd.histogram > 0 ? 'blue' : 'orange'}>
-              MACD: {stock.macd.histogram > 0 ? 'Bullish' : 'Bearish'}
-            </Badge>
-          )}
-          {stock.sma_20 && stock.sma_50 && (
-            <Badge colorPalette={stock.sma_20 > stock.sma_50 ? 'green' : 'red'}>
-              SMA: {stock.sma_20 > stock.sma_50 ? 'Golden' : 'Death'}
-            </Badge>
+      <HStack gap={2} mb={4} wrap="wrap">
+        <SignalBadge
+          tone={stock.rsi != null && stock.rsi < 30 ? 'up' : 'neutral'}
+          size="md"
+          className="num"
+          data-num=""
+        >
+          RSI: {stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'}
+        </SignalBadge>
+        {stock.macd && (
+          <SignalBadge tone={stock.macd.histogram > 0 ? 'info' : 'warn'}>
+            MACD: {stock.macd.histogram > 0 ? 'Bullish' : 'Bearish'}
+          </SignalBadge>
+        )}
+        {stock.sma_20 && stock.sma_50 && (
+          <SignalBadge tone={stock.sma_20 > stock.sma_50 ? 'up' : 'down'}>
+            SMA: {stock.sma_20 > stock.sma_50 ? 'Golden' : 'Death'}
+          </SignalBadge>
+        )}
+      </HStack>
+
+      <Box bg="bg.inset" borderRadius="md" borderWidth="1px" borderColor="border.subtle" p={3}>
+        <HStack justify="space-between" mb={2}>
+          <HStack gap={2}>
+            <Box color="accent.fg"><Zap size={14} /></Box>
+            <Text fontWeight="semibold" color="fg.default" fontSize="sm">AI Analysis</Text>
+          </HStack>
+          {!aiAnalysis && !aiLoading && (
+            <Button size="xs" onClick={onRequestAnalysis} colorPalette="blue" variant="subtle">
+              <RefreshCw size={12} /> Analyze
+            </Button>
           )}
         </HStack>
 
-        {/* AI Analysis */}
-        <Box bg="gray.900" borderRadius="md" p={3}>
-          <HStack justify="space-between" mb={2}>
-            <HStack>
-              <Box color="purple.400"><Zap size={16} /></Box>
-              <Text fontWeight="semibold" color="white" fontSize="sm">AI Analysis</Text>
-            </HStack>
-            {!aiAnalysis && !aiLoading && (
-              <Button size="xs" onClick={onRequestAnalysis} colorPalette="purple">
-                <RefreshCw size={12} /> Analyze
-              </Button>
-            )}
-          </HStack>
-
-          {aiLoading ? (
-            <Flex justify="center" py={3}>
-              <Spinner size="sm" color="purple.400" />
-              <Text ml={2} color="gray.400" fontSize="sm">Analyzing...</Text>
-            </Flex>
-          ) : aiAnalysis?.success ? (
-            <Box>
-              <Box maxH="6rem" overflow="hidden">
-                <MarkdownContent fontSize="sm" color="gray.300">{aiAnalysis.analysis || ''}</MarkdownContent>
-              </Box>
-              <Text color="gray.500" fontSize="xs" mt={2}>
-                Model: {aiAnalysis.model_used}
-              </Text>
+        {aiLoading ? (
+          <Flex justify="center" py={3}>
+            <Spinner size="sm" color="accent.solid" />
+            <Text ml={2} color="fg.muted" fontSize="sm">Analyzing...</Text>
+          </Flex>
+        ) : aiAnalysis?.success ? (
+          <Box>
+            <Box maxH="6rem" overflow="hidden">
+              <MarkdownContent fontSize="sm" color="fg.muted">{aiAnalysis.analysis || ''}</MarkdownContent>
             </Box>
-          ) : aiAnalysis ? (
-            <Text color="red.400" fontSize="sm">{aiAnalysis.error}</Text>
-          ) : (
-            <Text color="gray.500" fontSize="sm" fontStyle="italic">
-              Click "Analyze" to get AI insights
+            <Text color="fg.subtle" fontSize="xs" mt={2}>
+              Model: {aiAnalysis.model_used}
             </Text>
-          )}
-        </Box>
+          </Box>
+        ) : aiAnalysis ? (
+          <Text color="signal.down.fg" fontSize="sm">{aiAnalysis.error}</Text>
+        ) : (
+          <Text color="fg.subtle" fontSize="sm" fontStyle="italic">
+            Click "Analyze" to get AI insights
+          </Text>
+        )}
+      </Box>
 
-        {/* Market Info */}
-        <Flex justify="space-between" mt={3}>
-          <Text color="gray.500" fontSize="xs">
-            Market Cap: {stock.market_cap != null && typeof stock.market_cap === 'number' ? `$${(stock.market_cap / 1_000_000_000).toFixed(1)}B` : '-'}
-          </Text>
-          <Text color="gray.500" fontSize="xs">
-            {stock.sector || 'Unknown Sector'}
-          </Text>
-        </Flex>
-      </Card.Body>
-    </Card.Root>
+      <Flex justify="space-between" mt={3}>
+        <HStack gap={1}>
+          <Text color="fg.subtle" fontSize="xs">Market Cap:</Text>
+          <Num value={stock.market_cap} prefix="$" compact color="fg.subtle" fontSize="xs" />
+        </HStack>
+        <Text color="fg.subtle" fontSize="xs">
+          {stock.sector || 'Unknown Sector'}
+        </Text>
+      </Flex>
+    </Surface>
   );
 };
 
@@ -267,55 +255,50 @@ export const OpportunitiesPage: React.FC = () => {
 
   return (
     <Container maxW="container.xl" py={8}>
-      {/* Header */}
-      <Box mb={6}>
-        <HStack mb={2}>
-          <Box color="green.400"><Target size={24} /></Box>
-          <Heading size="lg" color="white">Investment Opportunities</Heading>
-        </HStack>
-        <Text color="gray.400">
-          Stocks showing potential buying opportunities based on technical indicators.
-          {aiEnabled && ' AI analysis is auto-triggered for top priority stocks.'}
-        </Text>
-      </Box>
+      <PageHeader
+        title="Investment Opportunities"
+        subtitle={`Stocks showing potential buying opportunities based on technical indicators.${aiEnabled ? ' AI analysis auto-triggered for top priority stocks.' : ''}`}
+        icon={<Target size={22} />}
+      />
 
       {/* Tab Buttons */}
-      <HStack gap={4} mb={6}>
+      <HStack gap={2} mb={6}>
         <Button
-          size="md"
+          size="sm"
           variant={activeTab === 'oversold' ? 'solid' : 'outline'}
           colorPalette={activeTab === 'oversold' ? 'green' : 'gray'}
           onClick={() => setActiveTab('oversold')}
         >
-          <Target size={16} />
+          <Target size={14} />
           <Text ml={2}>Oversold (RSI &lt; 30)</Text>
-          <Badge ml={2} colorPalette="green">{oversoldStocks.length}</Badge>
+          <SignalBadge ml={2} tone="up" size="sm">{oversoldStocks.length}</SignalBadge>
         </Button>
         <Button
-          size="md"
+          size="sm"
           variant={activeTab === 'macd' ? 'solid' : 'outline'}
           colorPalette={activeTab === 'macd' ? 'blue' : 'gray'}
           onClick={() => setActiveTab('macd')}
         >
-          <TrendingUp size={16} />
+          <TrendingUp size={14} />
           <Text ml={2}>MACD Bullish</Text>
-          <Badge ml={2} colorPalette="blue">{macdBullish.length}</Badge>
+          <SignalBadge ml={2} tone="info" size="sm">{macdBullish.length}</SignalBadge>
         </Button>
       </HStack>
 
-      {/* AI Status Banner */}
       {aiEnabled && (
-        <Box 
-          bg="purple.900" 
-          borderRadius="md" 
-          p={3} 
+        <Box
+          bg="accent.subtle"
+          borderWidth="1px"
+          borderColor="border.subtle"
+          borderLeftWidth="2px"
+          borderLeftColor="accent.solid"
+          borderRadius="md"
+          p={3}
           mb={6}
-          borderLeft="4px solid"
-          borderLeftColor="purple.400"
         >
-          <HStack>
-            <Box color="purple.400"><Zap size={16} /></Box>
-            <Text color="white" fontSize="sm">
+          <HStack gap={2}>
+            <Box color="accent.fg"><Zap size={14} /></Box>
+            <Text color="fg.default" fontSize="sm">
               <strong>AI Analysis Active:</strong> Top priority stocks are being analyzed automatically.
               Analysis prioritizes higher market cap stocks with lower RSI values.
             </Text>
@@ -323,21 +306,20 @@ export const OpportunitiesPage: React.FC = () => {
         </Box>
       )}
 
-      {/* Content */}
       {loading ? (
         <Flex justify="center" align="center" minH="50vh">
-          <Spinner size="xl" color="green.400" />
+          <Spinner size="xl" color="accent.solid" />
         </Flex>
       ) : currentStocks.length === 0 ? (
-        <Box textAlign="center" py={12}>
-          <Box color="gray.600" mb={4}><Target size={48} /></Box>
-          <Heading size="md" color="gray.500" mb={2}>No Opportunities Found</Heading>
-          <Text color="gray.600">
-            {activeTab === 'oversold' 
+        <EmptyState
+          icon={<Target size={44} />}
+          title="No Opportunities Found"
+          description={
+            activeTab === 'oversold'
               ? 'No stocks currently have RSI below 30.'
-              : 'No stocks currently show MACD bullish crossovers.'}
-          </Text>
-        </Box>
+              : 'No stocks currently show MACD bullish crossovers.'
+          }
+        />
       ) : (
         <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} gap={4}>
           {currentStocks.map(stock => (

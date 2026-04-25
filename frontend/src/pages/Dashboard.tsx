@@ -6,21 +6,19 @@ import {
   Heading,
   Text,
   SimpleGrid,
-  Card,
   Flex,
   Badge,
   Spinner,
   HStack,
   VStack,
-  Stat,
 } from '@chakra-ui/react';
-import { TrendingUp, TrendingDown, AlertCircle, Target, DollarSign } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertCircle, Target, DollarSign, Sparkles } from 'lucide-react';
 import { api } from '../api';
 import MarkdownContent from '../components/MarkdownContent';
 import { StockAnalysis, MarketSummary, getMarketCapTier, getMarketCapTierColor, AIAnalysisResponse } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
+import { Surface, Num, SignalBadge, PageHeader, StatBlock } from '../components/ui/primitives';
 
-// Compact stock row for dashboard sections
 const CompactStockRow: React.FC<{
   stock: StockAnalysis;
   showChange?: boolean;
@@ -28,47 +26,46 @@ const CompactStockRow: React.FC<{
 }> = ({ stock, showChange = true, showRSI = false }) => {
   const tier = getMarketCapTier(stock.market_cap);
   const tierColor = getMarketCapTierColor(tier);
-  const changeColor = (stock.price_change_percent ?? 0) >= 0 ? 'green' : 'red';
 
   return (
     <Link to={`/stocks/${stock.symbol}`} style={{ width: '100%' }}>
       <Flex
         justify="space-between"
         align="center"
-        p={3}
+        px={3}
+        py={2}
         borderRadius="md"
-        bg="whiteAlpha.50"
-        _hover={{ bg: 'whiteAlpha.100' }}
-        transition="all 0.2s"
+        _hover={{ bg: 'bg.muted' }}
+        transition="background 120ms ease"
         cursor="pointer"
       >
         <HStack gap={3}>
-          <Badge colorPalette={tierColor} size="sm">{tier.toUpperCase()}</Badge>
+          <Badge colorPalette={tierColor} size="sm" variant="subtle">{tier.toUpperCase()}</Badge>
           <VStack align="start" gap={0}>
-            <Text fontWeight="bold" color="white">{stock.symbol}</Text>
-            <Text fontSize="xs" color="gray.400">
-              ${stock.price != null && typeof stock.price === 'number' ? stock.price.toFixed(2) : '-'}
-            </Text>
+            <Text fontWeight="semibold" color="fg.default" letterSpacing="tight">{stock.symbol}</Text>
+            <Num value={stock.price} prefix="$" fontSize="xs" color="fg.muted" />
           </VStack>
         </HStack>
 
         <HStack gap={4}>
           {showRSI && stock.rsi != null && typeof stock.rsi === 'number' && (
-            <Badge 
-              colorPalette={stock.rsi < 30 ? 'green' : stock.rsi > 70 ? 'red' : 'gray'}
+            <SignalBadge
+              tone={stock.rsi < 30 ? 'up' : stock.rsi > 70 ? 'down' : 'neutral'}
               size="sm"
+              className="num"
+              data-num=""
             >
               RSI: {stock.rsi.toFixed(1)}
-            </Badge>
+            </SignalBadge>
           )}
           {showChange && stock.price_change_percent != null && typeof stock.price_change_percent === 'number' && (
-            <Text 
-              fontWeight="bold" 
-              color={changeColor === 'green' ? 'green.400' : 'red.400'}
-            >
-              {stock.price_change_percent >= 0 ? '+' : ''}
-              {stock.price_change_percent.toFixed(2)}%
-            </Text>
+            <Num
+              value={stock.price_change_percent}
+              intent="auto"
+              sign="always"
+              suffix="%"
+              fontWeight="semibold"
+            />
           )}
         </HStack>
       </Flex>
@@ -76,7 +73,6 @@ const CompactStockRow: React.FC<{
   );
 };
 
-// AI Analysis Card for featured stocks
 const AIAnalysisCard: React.FC<{
   stock: StockAnalysis;
   analysis: AIAnalysisResponse | null;
@@ -86,41 +82,36 @@ const AIAnalysisCard: React.FC<{
   const tierColor = getMarketCapTierColor(tier);
 
   return (
-    <Card.Root bg="gray.800" borderColor="gray.700">
-      <Card.Header>
-        <Flex justify="space-between" align="center">
-          <HStack>
-            <Badge colorPalette={tierColor}>{tier.toUpperCase()}</Badge>
-            <Heading size="md" color="white">{stock.symbol}</Heading>
-          </HStack>
-          <Text color="gray.400">${stock.price != null && typeof stock.price === 'number' ? stock.price.toFixed(2) : '-'}</Text>
+    <Surface p={4}>
+      <Flex justify="space-between" align="center" mb={3}>
+        <HStack>
+          <Badge colorPalette={tierColor} variant="subtle">{tier.toUpperCase()}</Badge>
+          <Heading size="sm" color="fg.default" letterSpacing="tight">{stock.symbol}</Heading>
+        </HStack>
+        <Num value={stock.price} prefix="$" color="fg.muted" fontSize="sm" />
+      </Flex>
+      {isLoading ? (
+        <Flex justify="center" py={4}>
+          <Spinner color="accent.solid" />
         </Flex>
-      </Card.Header>
-      <Card.Body>
-        {isLoading ? (
-          <Flex justify="center" py={4}>
-            <Spinner color="blue.400" />
-          </Flex>
-        ) : analysis?.success ? (
-          <Box>
-            <Box maxH="9rem" overflow="hidden">
-              <MarkdownContent fontSize="sm" color="gray.300">{analysis.analysis || ''}</MarkdownContent>
-            </Box>
-            <Text color="gray.500" fontSize="xs" mt={2}>
-              Model: {analysis.model_used}
-            </Text>
+      ) : analysis?.success ? (
+        <Box>
+          <Box maxH="9rem" overflow="hidden">
+            <MarkdownContent fontSize="sm" color="fg.muted">{analysis.analysis || ''}</MarkdownContent>
           </Box>
-        ) : (
-          <Text color="gray.500" fontSize="sm">
-            {analysis?.error || 'AI analysis not available'}
+          <Text color="fg.subtle" fontSize="xs" mt={2}>
+            Model: {analysis.model_used}
           </Text>
-        )}
-      </Card.Body>
-    </Card.Root>
+        </Box>
+      ) : (
+        <Text color="fg.subtle" fontSize="sm">
+          {analysis?.error || 'AI analysis not available'}
+        </Text>
+      )}
+    </Surface>
   );
 };
 
-// Section Card for dashboard
 const SectionCard: React.FC<{
   title: string;
   icon: React.ReactNode;
@@ -128,26 +119,22 @@ const SectionCard: React.FC<{
   linkTo?: string;
   linkText?: string;
 }> = ({ title, icon, children, linkTo, linkText }) => (
-  <Card.Root bg="gray.800" borderColor="gray.700">
-    <Card.Header>
-      <Flex justify="space-between" align="center">
-        <HStack>
-          {icon}
-          <Heading size="sm" color="white">{title}</Heading>
-        </HStack>
-        {linkTo && (
-          <Link to={linkTo}>
-            <Text color="blue.400" fontSize="sm" _hover={{ textDecoration: 'underline' }}>
-              {linkText || 'View All →'}
-            </Text>
-          </Link>
-        )}
-      </Flex>
-    </Card.Header>
-    <Card.Body>
-      {children}
-    </Card.Body>
-  </Card.Root>
+  <Surface p={4}>
+    <Flex justify="space-between" align="center" mb={3}>
+      <HStack gap={2}>
+        {icon}
+        <Heading size="sm" color="fg.default" fontWeight="semibold">{title}</Heading>
+      </HStack>
+      {linkTo && (
+        <Link to={linkTo}>
+          <Text color="accent.fg" fontSize="sm" _hover={{ textDecoration: 'underline' }}>
+            {linkText || 'View All →'}
+          </Text>
+        </Link>
+      )}
+    </Flex>
+    <Box>{children}</Box>
+  </Surface>
 );
 
 export const Dashboard: React.FC = () => {
@@ -200,15 +187,12 @@ export const Dashboard: React.FC = () => {
     fetchMarketSummary();
     checkAIStatus();
 
-    // Refresh every 5 minutes
     const interval = setInterval(fetchMarketSummary, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [fetchMarketSummary, checkAIStatus]);
 
-  // Auto-trigger AI analysis for top oversold stocks
   useEffect(() => {
     if (aiEnabled && summary?.most_oversold) {
-      // Analyze top 3 oversold stocks automatically
       summary.most_oversold.slice(0, 3).forEach(stock => {
         fetchAIAnalysis(stock.symbol);
       });
@@ -219,7 +203,7 @@ export const Dashboard: React.FC = () => {
     return (
       <Container maxW="container.xl" py={8}>
         <Flex justify="center" align="center" minH="50vh">
-          <Spinner size="xl" color="blue.400" />
+          <Spinner size="xl" color="accent.solid" />
         </Flex>
       </Container>
     );
@@ -230,8 +214,8 @@ export const Dashboard: React.FC = () => {
       <Container maxW="container.xl" py={8}>
         <Flex justify="center" align="center" minH="50vh">
           <VStack>
-            <Box color="red.400"><AlertCircle size={48} /></Box>
-            <Text color="red.400">{error || 'Failed to load data'}</Text>
+            <Box color="signal.down.fg"><AlertCircle size={48} /></Box>
+            <Text color="signal.down.fg">{error || 'Failed to load data'}</Text>
           </VStack>
         </Flex>
       </Container>
@@ -240,124 +224,94 @@ export const Dashboard: React.FC = () => {
 
   return (
     <Container maxW="container.xl" py={8}>
-      {/* Market Stats Header */}
-      <Box mb={8}>
-        <Heading size="lg" color="white" mb={2}>Market Overview</Heading>
-        <Text color="gray.400">
-          Analyzing {summary.total_stocks.toLocaleString()} stocks • 
-          Last updated: {new Date(summary.generated_at).toLocaleTimeString()}
-        </Text>
-      </Box>
+      <PageHeader
+        title="Market Overview"
+        subtitle={
+          <>
+            Analyzing {summary.total_stocks.toLocaleString()} stocks · Last updated {new Date(summary.generated_at).toLocaleTimeString()}
+          </>
+        }
+      />
 
       {/* Quick Stats */}
-      <SimpleGrid columns={{ base: 2, md: 4 }} gap={4} mb={8}>
-        <Card.Root bg="gray.800" borderColor="gray.700">
-          <Card.Body>
-            <Stat.Root>
-              <Stat.Label color="gray.400">Total Stocks</Stat.Label>
-              <Stat.ValueText color="white">{summary.total_stocks.toLocaleString()}</Stat.ValueText>
-            </Stat.Root>
-          </Card.Body>
-        </Card.Root>
-        <Card.Root bg="gray.800" borderColor="gray.700">
-          <Card.Body>
-            <Stat.Root>
-              <Stat.Label color="gray.400">Top Gainers</Stat.Label>
-              <Stat.ValueText color="green.400">{summary.top_gainers.length}</Stat.ValueText>
-            </Stat.Root>
-          </Card.Body>
-        </Card.Root>
-        <Card.Root bg="gray.800" borderColor="gray.700">
-          <Card.Body>
-            <Stat.Root>
-              <Stat.Label color="gray.400">Top Losers</Stat.Label>
-              <Stat.ValueText color="red.400">{summary.top_losers.length}</Stat.ValueText>
-            </Stat.Root>
-          </Card.Body>
-        </Card.Root>
-        <Card.Root bg="gray.800" borderColor="gray.700">
-          <Card.Body>
-            <Stat.Root>
-              <Stat.Label color="gray.400">Oversold (RSI &lt; 30)</Stat.Label>
-              <Stat.ValueText color="yellow.400">{summary.most_oversold.length}</Stat.ValueText>
-            </Stat.Root>
-          </Card.Body>
-        </Card.Root>
+      <SimpleGrid columns={{ base: 2, md: 4 }} gap={3} mb={6}>
+        <StatBlock label="Total Stocks" value={summary.total_stocks} valueDecimals={0} size="md" />
+        <StatBlock label="Top Gainers" value={summary.top_gainers.length} valueIntent="up" valueDecimals={0} size="md" />
+        <StatBlock label="Top Losers" value={summary.top_losers.length} valueIntent="down" valueDecimals={0} size="md" />
+        <StatBlock label="Oversold (RSI < 30)" value={summary.most_oversold.length} valueIntent="warn" valueDecimals={0} size="md" />
       </SimpleGrid>
 
       {/* Main Content Grid */}
-      <SimpleGrid columns={{ base: 1, lg: 2 }} gap={6} mb={8}>
-        {/* Top Gainers */}
+      <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4} mb={6}>
         <SectionCard
           title="Top Gainers"
-          icon={<Box color="green.400"><TrendingUp size={20} /></Box>}
+          icon={<Box color="signal.up.fg"><TrendingUp size={18} /></Box>}
           linkTo="/stocks?sort_by=price_change_percent&sort_order=desc"
         >
-          <VStack gap={2} align="stretch">
+          <VStack gap={0} align="stretch">
             {summary.top_gainers.slice(0, 5).map(stock => (
               <CompactStockRow key={stock.symbol} stock={stock} />
             ))}
             {summary.top_gainers.length === 0 && (
-              <Text color="gray.500">No gainers data available</Text>
+              <Text color="fg.subtle">No gainers data available</Text>
             )}
           </VStack>
         </SectionCard>
 
-        {/* Top Losers */}
         <SectionCard
           title="Top Losers"
-          icon={<Box color="red.400"><TrendingDown size={20} /></Box>}
+          icon={<Box color="signal.down.fg"><TrendingDown size={18} /></Box>}
           linkTo="/stocks?sort_by=price_change_percent&sort_order=asc"
         >
-          <VStack gap={2} align="stretch">
+          <VStack gap={0} align="stretch">
             {summary.top_losers.slice(0, 5).map(stock => (
               <CompactStockRow key={stock.symbol} stock={stock} />
             ))}
             {summary.top_losers.length === 0 && (
-              <Text color="gray.500">No losers data available</Text>
+              <Text color="fg.subtle">No losers data available</Text>
             )}
           </VStack>
         </SectionCard>
 
-        {/* Most Oversold */}
         <SectionCard
           title="Most Oversold (Opportunities)"
-          icon={<Box color="yellow.400"><Target size={20} /></Box>}
+          icon={<Box color="signal.warn.fg"><Target size={18} /></Box>}
           linkTo="/opportunities"
         >
-          <VStack gap={2} align="stretch">
+          <VStack gap={0} align="stretch">
             {summary.most_oversold.slice(0, 5).map(stock => (
               <CompactStockRow key={stock.symbol} stock={stock} showChange={false} showRSI />
             ))}
             {summary.most_oversold.length === 0 && (
-              <Text color="gray.500">No oversold stocks found</Text>
+              <Text color="fg.subtle">No oversold stocks found</Text>
             )}
           </VStack>
         </SectionCard>
 
-        {/* Mega Cap Highlights */}
         <SectionCard
           title="Mega Cap Highlights ($200B+)"
-          icon={<Box color="purple.400"><DollarSign size={20} /></Box>}
+          icon={<Box color="accent.fg"><DollarSign size={18} /></Box>}
           linkTo="/stocks?min_market_cap=200000000000"
         >
-          <VStack gap={2} align="stretch">
+          <VStack gap={0} align="stretch">
             {summary.mega_cap_highlights.slice(0, 5).map(stock => (
               <CompactStockRow key={stock.symbol} stock={stock} />
             ))}
             {summary.mega_cap_highlights.length === 0 && (
-              <Text color="gray.500">No mega cap stocks found</Text>
+              <Text color="fg.subtle">No mega cap stocks found</Text>
             )}
           </VStack>
         </SectionCard>
       </SimpleGrid>
 
-      {/* AI Analysis Section (if enabled) */}
       {aiEnabled && summary.most_oversold.length > 0 && (
         <Box mb={8}>
-          <Heading size="md" color="white" mb={4}>
-            🤖 AI Analysis - Top Oversold Opportunities
-          </Heading>
+          <HStack gap={2} mb={4} color="accent.fg">
+            <Sparkles size={18} />
+            <Heading size="md" color="fg.default" fontWeight="semibold">
+              AI Analysis — Top Oversold Opportunities
+            </Heading>
+          </HStack>
           <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} gap={4}>
             {summary.most_oversold.slice(0, 3).map(stock => (
               <AIAnalysisCard
