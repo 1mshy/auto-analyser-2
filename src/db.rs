@@ -3,10 +3,24 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use futures::stream::StreamExt;
 use mongodb::{
-    bson::{doc, Document},
+    bson::{doc, Bson, Document, Regex},
     options::{ClientOptions, ServerApi, ServerApiVersion, FindOptions},
     Client, Collection, Database,
 };
+
+/// Escape regex metacharacters so the `symbol_search` filter only ever does
+/// substring matching. Symbols are alphanumeric in practice but we treat the
+/// input as untrusted.
+fn escape_regex(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for c in input.chars() {
+        if matches!(c, '.' | '+' | '*' | '?' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$' | '\\' | '/') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
 
 /// Insert a `$gte` / `$lte` range predicate for `field`. Previous versions
 /// called `filter_doc.insert(field, ...)` twice which silently overwrote the
@@ -47,6 +61,16 @@ pub(crate) fn build_filter_doc(filter: &StockFilter) -> Document {
     }
     if let Some(true) = filter.only_overbought {
         filter_doc.insert("is_overbought", true);
+    }
+
+    if let Some(q) = filter.symbol_search.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        filter_doc.insert(
+            "symbol",
+            Bson::RegularExpression(Regex {
+                pattern: escape_regex(q),
+                options: "i".to_string(),
+            }),
+        );
     }
 
     // Cap |price_change_percent| to drop runaway gainers/losers from the feed.
@@ -498,6 +522,7 @@ mod tests {
             sectors: None,
             only_oversold: None,
             only_overbought: None,
+            symbol_search: None,
             min_stochastic_k: None,
             max_stochastic_k: None,
             min_bandwidth: None,

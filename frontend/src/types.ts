@@ -146,6 +146,7 @@ export interface StockFilter {
   sectors?: string[];
   only_oversold?: boolean;
   only_overbought?: boolean;
+  symbol_search?: string;
   min_stochastic_k?: number;
   max_stochastic_k?: number;
   min_bandwidth?: number;

@@ -127,6 +127,9 @@ pub struct StockFilter {
     pub sectors: Option<Vec<String>>,
     pub only_oversold: Option<bool>,
     pub only_overbought: Option<bool>,
+    /// Case-insensitive substring match on `symbol`. Lets the UI search the
+    /// entire universe instead of just the rows already on the current page.
+    pub symbol_search: Option<String>,
     // Stochastic / Bollinger filters
     pub min_stochastic_k: Option<f64>,
     pub max_stochastic_k: Option<f64>,

@@ -197,6 +197,12 @@ export const StocksPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 200);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
   // Parse filter from URL params and apply global settings
   const getFilterFromParams = useCallback((): StockFilter => {
@@ -212,7 +218,9 @@ export const StocksPage: React.FC = () => {
     return {
       sort_by: searchParams.get('sort_by') || 'market_cap',
       sort_order: searchParams.get('sort_order') || 'desc',
-      page: parseInt(searchParams.get('page') || '1'),
+      // When a search is active, always start at page 1 — page in the URL is
+      // bound to the unfiltered result set and would otherwise overshoot.
+      page: debouncedSearch ? 1 : parseInt(searchParams.get('page') || '1'),
       page_size: parseInt(searchParams.get('page_size') || '50'),
       min_market_cap: effectiveMinMarketCap,
       max_market_cap: searchParams.get('max_market_cap') ? parseFloat(searchParams.get('max_market_cap')!) : undefined,
@@ -220,8 +228,9 @@ export const StocksPage: React.FC = () => {
       max_rsi: searchParams.get('max_rsi') ? parseFloat(searchParams.get('max_rsi')!) : undefined,
       only_oversold: searchParams.get('only_oversold') === 'true',
       only_overbought: searchParams.get('only_overbought') === 'true',
+      symbol_search: debouncedSearch || undefined,
     };
-  }, [searchParams, settings]);
+  }, [searchParams, settings, debouncedSearch]);
 
   const fetchStocks = useCallback(async () => {
     try {
@@ -281,9 +290,9 @@ export const StocksPage: React.FC = () => {
   };
 
   // Filter stocks by search term (client-side)
-  const filteredStocks = searchTerm
-    ? stocks.filter(s => s.symbol.toLowerCase().includes(searchTerm.toLowerCase()))
-    : stocks;
+  // Backend now handles symbol search across the entire universe via
+  // `symbol_search`, so we just render whatever the API returned.
+  const filteredStocks = stocks;
 
   const currentSort = searchParams.get('sort_by') || 'market_cap';
   const currentOrder = searchParams.get('sort_order') || 'desc';
