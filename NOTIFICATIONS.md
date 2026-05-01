@@ -60,8 +60,12 @@ Each rule supports:
   again for that symbol until the cooldown elapses.
 - **`require_consecutive`** — how many cycles in a row the condition tree must
   match before the rule fires (hysteresis). Default `1`.
-- **`quiet_hours`** — optional UTC window where the rule is silent entirely.
+- **`quiet_hours`** — optional local-time window where the rule is silent entirely.
+  Set `tz` to an IANA timezone such as `America/New_York`; invalid values fall back to UTC.
   Wraps midnight if `start_hour > end_hour` (e.g. `22..7`).
+- Cooldown starts only after at least one configured channel successfully receives the notification.
+  Failed channel attempts are still written to notification history.
+- Rules must have at least one channel. Disabled channels are skipped during real sends and test sends report them as disabled.
 
 ## Message template placeholders
 

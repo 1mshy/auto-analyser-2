@@ -93,8 +93,13 @@ pub struct AsyncStockFetcher {
 impl AsyncStockFetcher {
     /// Create a new async fetcher with the given configuration
     pub fn new(config: FetcherConfig) -> Self {
+        Self::with_client(config, YahooFinanceClient::new())
+    }
+
+    /// Create a fetcher that reuses an existing Yahoo client session.
+    pub fn with_client(config: FetcherConfig, client: YahooFinanceClient) -> Self {
         AsyncStockFetcher {
-            client: Arc::new(YahooFinanceClient::new()),
+            client: Arc::new(client),
             config,
         }
     }
@@ -155,7 +160,8 @@ impl AsyncStockFetcher {
                         }
                         Err(e) => {
                             let error_msg = e.to_string();
-                            let is_rate_limited = error_msg.contains("429") || error_msg.contains("Rate limited");
+                            let is_rate_limited =
+                                error_msg.contains("429") || error_msg.contains("Rate limited");
                             if is_rate_limited {
                                 warn!("⚠️  Rate limited: {}", symbol);
                             } else {
@@ -265,7 +271,7 @@ impl AsyncStockFetcher {
         }
 
         let total_time = start_time.elapsed();
-        
+
         // Extract results from the mutexes
         let successful = successful.lock().await.clone();
         let failed = failed.lock().await.clone();
@@ -290,10 +296,8 @@ impl AsyncStockFetcher {
     pub async fn test_rate_limit(&self, num_requests: usize) -> BatchFetchResult {
         // Use a small set of known good symbols for testing
         let test_symbols: Vec<String> = vec![
-            "AAPL", "MSFT", "GOOGL", "AMZN", "META",
-            "NVDA", "TSLA", "JPM", "V", "JNJ",
-            "WMT", "PG", "MA", "HD", "DIS",
-            "PYPL", "NFLX", "ADBE", "CRM", "INTC",
+            "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "JPM", "V", "JNJ", "WMT",
+            "PG", "MA", "HD", "DIS", "PYPL", "NFLX", "ADBE", "CRM", "INTC",
         ]
         .into_iter()
         .take(num_requests)

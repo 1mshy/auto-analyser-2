@@ -1,10 +1,12 @@
-use crate::models::{Stock, StockAnalysis, StockFilter, MarketSummary, SectorPerformance, AggregatedNewsItem};
+use crate::models::{
+    AggregatedNewsItem, MarketSummary, SectorPerformance, Stock, StockAnalysis, StockFilter,
+};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use futures::stream::StreamExt;
 use mongodb::{
     bson::{doc, Bson, Document, Regex},
-    options::{ClientOptions, ServerApi, ServerApiVersion, FindOptions},
+    options::{ClientOptions, FindOptions, ServerApi, ServerApiVersion},
     Client, Collection, Database,
 };
 
@@ -14,7 +16,23 @@ use mongodb::{
 fn escape_regex(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for c in input.chars() {
-        if matches!(c, '.' | '+' | '*' | '?' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$' | '\\' | '/') {
+        if matches!(
+            c,
+            '.' | '+'
+                | '*'
+                | '?'
+                | '('
+                | ')'
+                | '|'
+                | '['
+                | ']'
+                | '{'
+                | '}'
+                | '^'
+                | '$'
+                | '\\'
+                | '/'
+        ) {
             out.push('\\');
         }
         out.push(c);
@@ -30,9 +48,43 @@ fn insert_range(filter_doc: &mut Document, field: &str, min: Option<f64>, max: O
         return;
     }
     let mut range = Document::new();
-    if let Some(lo) = min { range.insert("$gte", lo); }
-    if let Some(hi) = max { range.insert("$lte", hi); }
+    if let Some(lo) = min {
+        range.insert("$gte", lo);
+    }
+    if let Some(hi) = max {
+        range.insert("$lte", hi);
+    }
     filter_doc.insert(field, range);
+}
+
+fn allowed_sort_field(sort_by: Option<&str>) -> &'static str {
+    match sort_by {
+        Some("price") => "price",
+        Some("price_change_percent") => "price_change_percent",
+        Some("rsi") => "rsi",
+        Some("analyzed_at") => "analyzed_at",
+        Some("volume") => "volume",
+        Some("market_cap") | None => "market_cap",
+        Some(_) => "market_cap",
+    }
+}
+
+fn price_change_summary_filter(min: f64, max: Option<f64>) -> Document {
+    let mut d = doc! { "$exists": true, "$ne": Bson::Null };
+    d.insert("$gt", min);
+    if let Some(max) = max {
+        d.insert("$lte", max);
+    }
+    d
+}
+
+fn negative_price_change_summary_filter(max: f64, min: Option<f64>) -> Document {
+    let mut d = doc! { "$exists": true, "$ne": Bson::Null };
+    d.insert("$lt", max);
+    if let Some(min) = min {
+        d.insert("$gte", min);
+    }
+    d
 }
 
 /// Build a MongoDB filter document from a `StockFilter`. Pure function so we
@@ -46,10 +98,25 @@ pub(crate) fn build_filter_doc(filter: &StockFilter) -> Document {
         filter_doc.insert("volume", doc! { "$gte": min_volume });
     }
 
-    insert_range(&mut filter_doc, "market_cap", filter.min_market_cap, filter.max_market_cap);
+    insert_range(
+        &mut filter_doc,
+        "market_cap",
+        filter.min_market_cap,
+        filter.max_market_cap,
+    );
     insert_range(&mut filter_doc, "rsi", filter.min_rsi, filter.max_rsi);
-    insert_range(&mut filter_doc, "stochastic.k_line", filter.min_stochastic_k, filter.max_stochastic_k);
-    insert_range(&mut filter_doc, "bollinger.bandwidth", filter.min_bandwidth, filter.max_bandwidth);
+    insert_range(
+        &mut filter_doc,
+        "stochastic.k_line",
+        filter.min_stochastic_k,
+        filter.max_stochastic_k,
+    );
+    insert_range(
+        &mut filter_doc,
+        "bollinger.bandwidth",
+        filter.min_bandwidth,
+        filter.max_bandwidth,
+    );
 
     if let Some(sectors) = &filter.sectors {
         if !sectors.is_empty() {
@@ -63,7 +130,12 @@ pub(crate) fn build_filter_doc(filter: &StockFilter) -> Document {
         filter_doc.insert("is_overbought", true);
     }
 
-    if let Some(q) = filter.symbol_search.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    if let Some(q) = filter
+        .symbol_search
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         filter_doc.insert(
             "symbol",
             Bson::RegularExpression(Regex {
@@ -94,13 +166,13 @@ pub struct MongoDB {
 impl MongoDB {
     pub async fn new(uri: &str, database_name: &str) -> Result<Self> {
         let mut client_options = ClientOptions::parse(uri).await?;
-        
+
         // Set the server API version
         let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
         client_options.server_api = Some(server_api);
 
         let client = Client::with_options(client_options)?;
-        
+
         // Test connection
         client
             .database("admin")
@@ -116,9 +188,8 @@ impl MongoDB {
     }
 
     async fn create_indexes(database: &Database) -> Result<()> {
-        let analysis_collection: Collection<StockAnalysis> = 
-            database.collection("stock_analysis");
-        
+        let analysis_collection: Collection<StockAnalysis> = database.collection("stock_analysis");
+
         // Create index on symbol for faster queries
         analysis_collection
             .create_index(
@@ -157,7 +228,7 @@ impl MongoDB {
 
     pub async fn save_analysis(&self, analysis: &StockAnalysis) -> Result<()> {
         let collection = self.analysis_collection();
-        
+
         // Update or insert
         collection
             .update_one(
@@ -173,7 +244,8 @@ impl MongoDB {
     /// Get analysis for a specific symbol
     pub async fn get_analysis_by_symbol(&self, symbol: &str) -> Result<Option<StockAnalysis>> {
         let collection = self.analysis_collection();
-        
+        let symbol = crate::symbols::normalize_symbol_key(symbol);
+
         match collection.find_one(doc! { "symbol": symbol }).await? {
             Some(analysis) => Ok(Some(analysis)),
             None => Ok(None),
@@ -185,8 +257,12 @@ impl MongoDB {
         let filter_doc = build_filter_doc(&filter);
 
         // Build sort document
-        let sort_field = filter.sort_by.as_deref().unwrap_or("market_cap");
-        let sort_order = if filter.sort_order.as_deref() == Some("asc") { 1 } else { -1 };
+        let sort_field = allowed_sort_field(filter.sort_by.as_deref());
+        let sort_order = if filter.sort_order.as_deref() == Some("asc") {
+            1
+        } else {
+            -1
+        };
         let sort_doc = doc! { sort_field: sort_order };
 
         // Pagination
@@ -224,7 +300,7 @@ impl MongoDB {
     /// Get market summary with top gainers, losers, and highlights
     /// Accepts optional filters for minimum market cap and maximum price change percent
     pub async fn get_market_summary(
-        &self, 
+        &self,
         limit: usize,
         min_market_cap: Option<f64>,
         max_price_change_percent: Option<f64>,
@@ -240,10 +316,10 @@ impl MongoDB {
 
         // Build filter for gainers (positive change, within max threshold if set)
         let mut gainers_filter = base_filter.clone();
-        gainers_filter.insert("price_change_percent", doc! { "$exists": true, "$ne": null, "$gt": 0.0 });
-        if let Some(max_pct) = max_price_change_percent {
-            gainers_filter.insert("price_change_percent", doc! { "$gt": 0.0, "$lte": max_pct });
-        }
+        gainers_filter.insert(
+            "price_change_percent",
+            price_change_summary_filter(0.0, max_price_change_percent),
+        );
 
         // Top gainers (sorted by price_change_percent desc)
         let gainers_options = FindOptions::builder()
@@ -263,10 +339,10 @@ impl MongoDB {
 
         // Build filter for losers (negative change, within max threshold if set)
         let mut losers_filter = base_filter.clone();
-        losers_filter.insert("price_change_percent", doc! { "$exists": true, "$ne": null, "$lt": 0.0 });
-        if let Some(max_pct) = max_price_change_percent {
-            losers_filter.insert("price_change_percent", doc! { "$lt": 0.0, "$gte": -max_pct });
-        }
+        losers_filter.insert(
+            "price_change_percent",
+            negative_price_change_summary_filter(0.0, max_price_change_percent.map(|p| -p)),
+        );
 
         // Top losers (sorted by price_change_percent asc)
         let losers_options = FindOptions::builder()
@@ -356,13 +432,16 @@ impl MongoDB {
     }
 
     pub async fn get_analysis_count(&self) -> Result<u64> {
-        Ok(self.analysis_collection().estimated_document_count().await?)
+        Ok(self
+            .analysis_collection()
+            .estimated_document_count()
+            .await?)
     }
 
     /// Get the timestamp of the most recent analysis
     pub async fn get_latest_analysis_timestamp(&self) -> Result<Option<DateTime<Utc>>> {
         let collection = self.analysis_collection();
-        
+
         let mut cursor = collection
             .find(doc! {})
             .sort(doc! { "analyzed_at": -1 })
@@ -382,7 +461,8 @@ impl MongoDB {
         let collection = self.analysis_collection();
 
         // Get all analyses grouped by sector
-        let mut sector_map: std::collections::HashMap<String, Vec<StockAnalysis>> = std::collections::HashMap::new();
+        let mut sector_map: std::collections::HashMap<String, Vec<StockAnalysis>> =
+            std::collections::HashMap::new();
 
         let mut cursor = collection
             .find(doc! { "sector": { "$exists": true, "$ne": null } })
@@ -399,22 +479,29 @@ impl MongoDB {
         let mut results = Vec::new();
         for (sector, mut stocks) in sector_map {
             let stock_count = stocks.len() as u32;
-            let avg_change_percent = stocks.iter()
+            let avg_change_percent = stocks
+                .iter()
                 .filter_map(|s| s.price_change_percent)
-                .sum::<f64>() / stocks.iter().filter(|s| s.price_change_percent.is_some()).count().max(1) as f64;
-            let avg_rsi = stocks.iter()
-                .filter_map(|s| s.rsi)
-                .sum::<f64>() / stocks.iter().filter(|s| s.rsi.is_some()).count().max(1) as f64;
+                .sum::<f64>()
+                / stocks
+                    .iter()
+                    .filter(|s| s.price_change_percent.is_some())
+                    .count()
+                    .max(1) as f64;
+            let avg_rsi = stocks.iter().filter_map(|s| s.rsi).sum::<f64>()
+                / stocks.iter().filter(|s| s.rsi.is_some()).count().max(1) as f64;
 
             // Sort by price_change_percent for top/bottom
             stocks.sort_by(|a, b| {
-                b.price_change_percent.unwrap_or(0.0)
+                b.price_change_percent
+                    .unwrap_or(0.0)
                     .partial_cmp(&a.price_change_percent.unwrap_or(0.0))
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
 
             let top_performers: Vec<StockAnalysis> = stocks.iter().take(3).cloned().collect();
-            let bottom_performers: Vec<StockAnalysis> = stocks.iter().rev().take(3).cloned().collect();
+            let bottom_performers: Vec<StockAnalysis> =
+                stocks.iter().rev().take(3).cloned().collect();
 
             results.push(SectorPerformance {
                 sector,
@@ -428,7 +515,9 @@ impl MongoDB {
 
         // Sort sectors by avg_change_percent descending
         results.sort_by(|a, b| {
-            b.avg_change_percent.partial_cmp(&a.avg_change_percent).unwrap_or(std::cmp::Ordering::Equal)
+            b.avg_change_percent
+                .partial_cmp(&a.avg_change_percent)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         Ok(results)
@@ -444,7 +533,8 @@ impl MongoDB {
     ) -> Result<(Vec<AggregatedNewsItem>, u64)> {
         let collection = self.analysis_collection();
 
-        let mut filter_doc = doc! { "news": { "$exists": true, "$ne": null, "$not": { "$size": 0 } } };
+        let mut filter_doc =
+            doc! { "news": { "$exists": true, "$ne": null, "$not": { "$size": 0 } } };
         if let Some(ref s) = sector {
             filter_doc.insert("sector", s);
         }
@@ -460,7 +550,8 @@ impl MongoDB {
                         if let Some(ref query) = search {
                             let q = query.to_lowercase();
                             if !item.title.to_lowercase().contains(&q)
-                                && !analysis.symbol.to_lowercase().contains(&q) {
+                                && !analysis.symbol.to_lowercase().contains(&q)
+                            {
                                 continue;
                             }
                         }
@@ -483,7 +574,11 @@ impl MongoDB {
 
         let total = all_news.len() as u64;
         let skip = ((page - 1) * page_size) as usize;
-        let paginated: Vec<AggregatedNewsItem> = all_news.into_iter().skip(skip).take(page_size as usize).collect();
+        let paginated: Vec<AggregatedNewsItem> = all_news
+            .into_iter()
+            .skip(skip)
+            .take(page_size as usize)
+            .collect();
 
         Ok((paginated, total))
     }
@@ -538,7 +633,11 @@ mod tests {
     #[test]
     fn test_build_filter_doc_empty() {
         let d = build_filter_doc(&empty_filter());
-        assert!(d.is_empty(), "Empty filter should produce empty doc, got {:?}", d);
+        assert!(
+            d.is_empty(),
+            "Empty filter should produce empty doc, got {:?}",
+            d
+        );
     }
 
     #[test]
@@ -676,5 +775,34 @@ mod tests {
         let pct = d.get_document("price_change_percent").unwrap();
         assert_eq!(pct.get_f64("$gte").unwrap(), -15.0);
         assert_eq!(pct.get_f64("$lte").unwrap(), 15.0);
+    }
+
+    #[test]
+    fn test_sort_field_allowlist_defaults_unknown_to_market_cap() {
+        assert_eq!(allowed_sort_field(Some("price")), "price");
+        assert_eq!(
+            allowed_sort_field(Some("price_change_percent")),
+            "price_change_percent"
+        );
+        assert_eq!(allowed_sort_field(Some("$where")), "market_cap");
+        assert_eq!(allowed_sort_field(None), "market_cap");
+    }
+
+    #[test]
+    fn test_market_summary_gainer_filter_preserves_null_guard_and_cap() {
+        let pct = price_change_summary_filter(0.0, Some(25.0));
+        assert_eq!(pct.get_bool("$exists").unwrap(), true);
+        assert_eq!(pct.get("$ne"), Some(&Bson::Null));
+        assert_eq!(pct.get_f64("$gt").unwrap(), 0.0);
+        assert_eq!(pct.get_f64("$lte").unwrap(), 25.0);
+    }
+
+    #[test]
+    fn test_market_summary_loser_filter_preserves_null_guard_and_cap() {
+        let pct = negative_price_change_summary_filter(0.0, Some(-25.0));
+        assert_eq!(pct.get_bool("$exists").unwrap(), true);
+        assert_eq!(pct.get("$ne"), Some(&Bson::Null));
+        assert_eq!(pct.get_f64("$lt").unwrap(), 0.0);
+        assert_eq!(pct.get_f64("$gte").unwrap(), -25.0);
     }
 }

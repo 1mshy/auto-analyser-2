@@ -57,6 +57,7 @@ rand = "0.8"
 
 # OpenRouter AI
 openrouter-rs = "0.4"
+chrono-tz = "0.10.4"
 
 [[bin]]
 name = "rate_limit_tester"

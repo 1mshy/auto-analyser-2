@@ -58,6 +58,10 @@ cat .env
 
 # For MongoDB Atlas, update the .env file:
 # MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/
+
+# Recommended local setting so the frontend proxy and examples work:
+# SERVER_PORT=3333
+# CANADIAN_SYMBOLS=SHOP.TO,RY.TO,TD.TO,ENB.TO,CNQ.TO,CNR.TO
 ```
 
 ### Step 3: Build & Run
@@ -76,8 +80,8 @@ You should see:
 ```
 🚀 Starting Auto Stock Analyser...
 ✅ Connected to MongoDB database: stock_analyzer
-🌐 Server listening on http://127.0.0.1:3000
-📡 WebSocket endpoint: ws://127.0.0.1:3000/ws
+🌐 Server listening on http://127.0.0.1:3333
+📡 WebSocket endpoint: ws://127.0.0.1:3333/ws
 🔄 Analysis interval: 3600s (1h)
 ```
 
@@ -136,10 +140,10 @@ curl -X POST http://localhost:3333/api/stocks/filter \
 ### 5. Connect to WebSocket
 ```bash
 # Using websocat (install: brew install websocat)
-websocat ws://localhost:3000/ws
+websocat ws://localhost:3333/ws
 
 # Or use JavaScript in browser console:
-# const ws = new WebSocket('ws://localhost:3000/ws');
+# const ws = new WebSocket('ws://localhost:3333/ws');
 # ws.onmessage = (e) => console.log(JSON.parse(e.data));
 ```
 

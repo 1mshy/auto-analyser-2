@@ -1,6 +1,6 @@
 use crate::models::{CompanyProfile, EarningsData, HistoricalPrice};
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
 use rand::Rng;
 use reqwest;
 use reqwest::header::ACCEPT;
@@ -29,6 +29,11 @@ struct QuoteSummaryData {
     asset_profile: Option<AssetProfile>,
     #[serde(rename = "financialData")]
     financial_data: Option<FinancialDataResponse>,
+    #[serde(rename = "summaryDetail")]
+    summary_detail: Option<SummaryDetail>,
+    #[serde(rename = "defaultKeyStatistics")]
+    default_key_statistics: Option<DefaultKeyStatistics>,
+    price: Option<PriceData>,
     #[serde(rename = "calendarEvents")]
     calendar_events: Option<CalendarEvents>,
 }
@@ -92,6 +97,83 @@ struct FinancialDataResponse {
     return_on_equity: Option<YahooValue>,
     #[serde(rename = "freeCashflow")]
     free_cash_flow: Option<YahooValue>,
+    #[serde(rename = "revenueGrowth")]
+    revenue_growth: Option<YahooValue>,
+    #[serde(rename = "earningsGrowth")]
+    earnings_growth: Option<YahooValue>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SummaryDetail {
+    #[serde(rename = "marketCap")]
+    market_cap: Option<YahooValue>,
+    beta: Option<YahooValue>,
+    #[serde(rename = "trailingPE")]
+    trailing_pe: Option<YahooValue>,
+    #[serde(rename = "forwardPE")]
+    forward_pe: Option<YahooValue>,
+    #[serde(rename = "dividendRate")]
+    dividend_rate: Option<YahooValue>,
+    #[serde(rename = "dividendYield")]
+    dividend_yield: Option<YahooValue>,
+    #[serde(rename = "payoutRatio")]
+    payout_ratio: Option<YahooValue>,
+    #[serde(rename = "averageVolume")]
+    average_volume: Option<YahooValue>,
+    #[serde(rename = "averageVolume10days")]
+    average_volume_10_day: Option<YahooValue>,
+    #[serde(rename = "fiftyTwoWeekHigh")]
+    fifty_two_week_high: Option<YahooValue>,
+    #[serde(rename = "fiftyTwoWeekLow")]
+    fifty_two_week_low: Option<YahooValue>,
+    #[serde(rename = "fiftyDayAverage")]
+    fifty_day_average: Option<YahooValue>,
+    #[serde(rename = "twoHundredDayAverage")]
+    two_hundred_day_average: Option<YahooValue>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DefaultKeyStatistics {
+    #[serde(rename = "enterpriseValue")]
+    enterprise_value: Option<YahooValue>,
+    #[serde(rename = "forwardPE")]
+    forward_pe: Option<YahooValue>,
+    #[serde(rename = "pegRatio")]
+    peg_ratio: Option<YahooValue>,
+    #[serde(rename = "priceToBook")]
+    price_to_book: Option<YahooValue>,
+    #[serde(rename = "bookValue")]
+    book_value: Option<YahooValue>,
+    #[serde(rename = "trailingEps")]
+    trailing_eps: Option<YahooValue>,
+    #[serde(rename = "forwardEps")]
+    forward_eps: Option<YahooValue>,
+    #[serde(rename = "sharesOutstanding")]
+    shares_outstanding: Option<YahooValue>,
+    #[serde(rename = "floatShares")]
+    float_shares: Option<YahooValue>,
+    #[serde(rename = "heldPercentInsiders")]
+    held_percent_insiders: Option<YahooValue>,
+    #[serde(rename = "heldPercentInstitutions")]
+    held_percent_institutions: Option<YahooValue>,
+    #[serde(rename = "netIncomeToCommon")]
+    net_income_to_common: Option<YahooValue>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PriceData {
+    #[serde(rename = "shortName")]
+    short_name: Option<String>,
+    #[serde(rename = "longName")]
+    long_name: Option<String>,
+    exchange: Option<String>,
+    #[serde(rename = "exchangeName")]
+    exchange_name: Option<String>,
+    #[serde(rename = "quoteType")]
+    quote_type: Option<String>,
+    currency: Option<String>,
+    #[serde(rename = "marketCap")]
+    market_cap: Option<YahooValue>,
 }
 
 // Yahoo's value format: { raw: f64, fmt: String }
@@ -106,7 +188,7 @@ impl YahooValue {
     fn to_f64(&self) -> Option<f64> {
         self.raw
     }
-    
+
     fn to_i64(&self) -> Option<i64> {
         self.raw.map(|v| v as i64)
     }
@@ -179,7 +261,7 @@ impl YahooFinanceClient {
     /// Refresh the crumb token by visiting Yahoo and getting a new one
     async fn refresh_crumb(&self) -> Result<()> {
         tracing::debug!("Refreshing Yahoo Finance crumb token...");
-        
+
         // First, hit fc.yahoo.com to get cookies established
         self.client
             .get("https://fc.yahoo.com")
@@ -188,17 +270,23 @@ impl YahooFinanceClient {
             .map_err(|e| anyhow!("Failed to establish Yahoo session: {}", e))?;
 
         // Now get the crumb from the getcrumb endpoint
-        let crumb_response = self.client
+        let crumb_response = self
+            .client
             .get("https://query1.finance.yahoo.com/v1/test/getcrumb")
             .send()
             .await
             .map_err(|e| anyhow!("Failed to get crumb: {}", e))?;
 
         if !crumb_response.status().is_success() {
-            return Err(anyhow!("Crumb endpoint returned status: {}", crumb_response.status()));
+            return Err(anyhow!(
+                "Crumb endpoint returned status: {}",
+                crumb_response.status()
+            ));
         }
 
-        let crumb_text = crumb_response.text().await
+        let crumb_text = crumb_response
+            .text()
+            .await
             .map_err(|e| anyhow!("Failed to read crumb response: {}", e))?;
 
         if crumb_text.is_empty() || crumb_text.contains("error") {
@@ -222,11 +310,11 @@ impl YahooFinanceClient {
     /// Ensure crumb is valid, refreshing if necessary (15 minute TTL)
     async fn ensure_crumb_valid(&self) -> Result<()> {
         let crumb_ttl = StdDuration::from_secs(15 * 60); // 15 minutes
-        
+
         let needs_refresh = {
             let crumb = self.crumb.read().await;
             let last_refresh = self.last_refresh.read().await;
-            
+
             match (crumb.as_ref(), last_refresh.as_ref()) {
                 (Some(_), Some(t)) if t.elapsed() < crumb_ttl => false,
                 _ => true,
@@ -243,7 +331,7 @@ impl YahooFinanceClient {
     /// Get the current crumb, ensuring it's valid first
     async fn get_crumb(&self) -> Result<String> {
         self.ensure_crumb_valid().await?;
-        
+
         let crumb = self.crumb.read().await;
         crumb.clone().ok_or_else(|| anyhow!("Crumb not available"))
     }
@@ -251,12 +339,11 @@ impl YahooFinanceClient {
     /// Make an authenticated request to Yahoo Finance
     async fn fetch_with_crumb(&self, base_url: &str) -> Result<String> {
         let crumb = self.get_crumb().await?;
-        
-        // Add crumb to URL (append with & if URL already has params, otherwise ?)
-        let separator = if base_url.contains('?') { "&" } else { "?" };
-        let full_url = format!("{}{}crumb={}", base_url, separator, crumb);
 
-        let response = self.client
+        let full_url = Self::url_with_crumb(base_url, &crumb)?;
+
+        let response = self
+            .client
             .get(&full_url)
             .header(ACCEPT, "application/json")
             .send()
@@ -271,9 +358,10 @@ impl YahooFinanceClient {
             self.refresh_crumb().await?;
 
             let crumb = self.get_crumb().await?;
-            let full_url = format!("{}{}crumb={}", base_url, separator, crumb);
+            let full_url = Self::url_with_crumb(base_url, &crumb)?;
 
-            let retry_response = self.client
+            let retry_response = self
+                .client
                 .get(&full_url)
                 .header(ACCEPT, "application/json")
                 .send()
@@ -286,7 +374,9 @@ impl YahooFinanceClient {
             // "Rate limited ... (429)" message so `async_fetcher` counts it
             // correctly instead of treating it as a generic failure.
             if retry_status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                return Err(anyhow!("Rate limited by Yahoo Finance (429) after crumb refresh"));
+                return Err(anyhow!(
+                    "Rate limited by Yahoo Finance (429) after crumb refresh"
+                ));
             }
 
             if !retry_status.is_success() {
@@ -310,8 +400,17 @@ impl YahooFinanceClient {
             return Err(anyhow!("Yahoo Finance returned status {}", status));
         }
 
-        response.text().await
+        response
+            .text()
+            .await
             .map_err(|e| anyhow!("Failed to read response: {}", e))
+    }
+
+    fn url_with_crumb(base_url: &str, crumb: &str) -> Result<String> {
+        let mut url = reqwest::Url::parse(base_url)
+            .map_err(|e| anyhow!("Invalid Yahoo Finance URL '{}': {}", base_url, e))?;
+        url.query_pairs_mut().append_pair("crumb", crumb);
+        Ok(url.to_string())
     }
 
     pub async fn get_historical_prices(
@@ -328,21 +427,34 @@ impl YahooFinanceClient {
                 let base_delay = 5u64 * 2u64.pow(attempt - 1);
                 let jitter = rand::thread_rng().gen_range(0..=(base_delay / 2));
                 let delay = base_delay + jitter;
-                tracing::warn!("Retry attempt {} for {} after {}s delay (rate limited)", attempt + 1, symbol, delay);
+                tracing::warn!(
+                    "Retry attempt {} for {} after {}s delay (rate limited)",
+                    attempt + 1,
+                    symbol,
+                    delay
+                );
                 sleep(StdDuration::from_secs(delay)).await;
             }
 
             match self.fetch_historical_prices(symbol, days).await {
                 Ok(prices) => {
                     if attempt > 0 {
-                        tracing::info!("✅ Successfully fetched {} after {} retries", symbol, attempt);
+                        tracing::info!(
+                            "✅ Successfully fetched {} after {} retries",
+                            symbol,
+                            attempt
+                        );
                     }
                     return Ok(prices);
                 }
                 Err(e) => {
                     let err_msg = e.to_string();
                     if err_msg.contains("429") || err_msg.contains("Rate limited") {
-                        tracing::warn!("⚠️  Rate limited on attempt {} for {}", attempt + 1, symbol);
+                        tracing::warn!(
+                            "⚠️  Rate limited on attempt {} for {}",
+                            attempt + 1,
+                            symbol
+                        );
                     } else {
                         tracing::error!("❌ Error fetching {}: {}", symbol, err_msg);
                     }
@@ -362,7 +474,8 @@ impl YahooFinanceClient {
     ) -> Result<Vec<HistoricalPrice>> {
         let url = format!(
             "https://query2.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range={}d",
-            symbol.replace("/", "-"), days
+            crate::symbols::yahoo_symbol(symbol),
+            days
         );
 
         tracing::debug!("Fetching {} from Yahoo Finance (query2): {}", symbol, url);
@@ -390,13 +503,16 @@ impl YahooFinanceClient {
 
     /// Fetch company profile with financial data from Yahoo Finance quoteSummary endpoint
     pub async fn get_company_profile(&self, symbol: &str) -> Result<CompanyProfile> {
-        // Use both assetProfile and financialData modules
         let url = format!(
-            "https://query1.finance.yahoo.com/v10/finance/quoteSummary/{}?modules=assetProfile,financialData",
-            symbol.replace("/", "-")
+            "https://query1.finance.yahoo.com/v10/finance/quoteSummary/{}?modules=assetProfile,financialData,summaryDetail,defaultKeyStatistics,price",
+            crate::symbols::yahoo_symbol(symbol)
         );
 
-        tracing::debug!("Fetching company profile for {} from Yahoo Finance: {}", symbol, url);
+        tracing::debug!(
+            "Fetching company profile for {} from Yahoo Finance: {}",
+            symbol,
+            url
+        );
 
         let text = self.fetch_with_crumb(&url).await?;
         parse_company_profile(&text, symbol)
@@ -406,7 +522,7 @@ impl YahooFinanceClient {
     pub async fn get_earnings_data(&self, symbol: &str) -> Result<EarningsData> {
         let url = format!(
             "https://query1.finance.yahoo.com/v10/finance/quoteSummary/{}?modules=calendarEvents",
-            symbol.replace("/", "-")
+            crate::symbols::yahoo_symbol(symbol)
         );
 
         tracing::debug!("Fetching earnings data for {} from Yahoo Finance", symbol);
@@ -461,21 +577,26 @@ pub(crate) fn parse_historical_prices(text: &str, symbol: &str) -> Result<Vec<Hi
     let mut prices = Vec::new();
 
     for (i, &timestamp) in timestamps.iter().enumerate() {
-        if let (Some(Some(open)), Some(Some(high)), Some(Some(low)), Some(Some(close))) = (
-            opens.get(i),
-            highs.get(i),
-            lows.get(i),
-            closes.get(i),
-        ) {
+        if let (Some(Some(open)), Some(Some(high)), Some(Some(low)), Some(Some(close))) =
+            (opens.get(i), highs.get(i), lows.get(i), closes.get(i))
+        {
             let volume = volumes
                 .get(i)
                 .and_then(|v| v.as_ref())
                 .copied()
                 .unwrap_or(0) as f64;
 
+            let Some(date) = DateTime::from_timestamp(timestamp, 0) else {
+                tracing::warn!(
+                    "Skipping {} bar with invalid timestamp {}",
+                    symbol,
+                    timestamp
+                );
+                continue;
+            };
+
             prices.push(HistoricalPrice {
-                date: DateTime::from_timestamp(timestamp, 0)
-                    .unwrap_or_else(|| Utc::now()),
+                date,
                 open: *open,
                 high: *high,
                 low: *low,
@@ -514,9 +635,20 @@ pub(crate) fn parse_company_profile(text: &str, symbol: &str) -> Result<CompanyP
 
     let asset_profile = data.asset_profile;
     let financial_data = data.financial_data;
+    let summary_detail = data.summary_detail;
+    let default_key_statistics = data.default_key_statistics;
+    let price = data.price;
 
     Ok(CompanyProfile {
-        long_business_summary: asset_profile.as_ref().and_then(|p| p.long_business_summary.clone()),
+        short_name: price.as_ref().and_then(|p| p.short_name.clone()),
+        long_name: price.as_ref().and_then(|p| p.long_name.clone()),
+        exchange: price.as_ref().and_then(|p| p.exchange.clone()),
+        exchange_name: price.as_ref().and_then(|p| p.exchange_name.clone()),
+        quote_type: price.as_ref().and_then(|p| p.quote_type.clone()),
+        currency: price.as_ref().and_then(|p| p.currency.clone()),
+        long_business_summary: asset_profile
+            .as_ref()
+            .and_then(|p| p.long_business_summary.clone()),
         industry: asset_profile.as_ref().and_then(|p| p.industry.clone()),
         sector: asset_profile.as_ref().and_then(|p| p.sector.clone()),
         website: asset_profile.as_ref().and_then(|p| p.website.clone()),
@@ -525,19 +657,137 @@ pub(crate) fn parse_company_profile(text: &str, symbol: &str) -> Result<CompanyP
         state: asset_profile.as_ref().and_then(|p| p.state.clone()),
         country: asset_profile.as_ref().and_then(|p| p.country.clone()),
         phone: asset_profile.as_ref().and_then(|p| p.phone.clone()),
-        current_price: financial_data.as_ref().and_then(|f| f.current_price.as_ref().and_then(|v| v.to_f64())),
-        target_high_price: financial_data.as_ref().and_then(|f| f.target_high_price.as_ref().and_then(|v| v.to_f64())),
-        target_low_price: financial_data.as_ref().and_then(|f| f.target_low_price.as_ref().and_then(|v| v.to_f64())),
-        target_mean_price: financial_data.as_ref().and_then(|f| f.target_mean_price.as_ref().and_then(|v| v.to_f64())),
-        recommendation_key: financial_data.as_ref().and_then(|f| f.recommendation_key.clone()),
-        number_of_analyst_opinions: financial_data.as_ref().and_then(|f| f.number_of_analyst_opinions.as_ref().and_then(|v| v.to_i64())),
-        total_revenue: financial_data.as_ref().and_then(|f| f.total_revenue.as_ref().and_then(|v| v.to_f64())),
-        revenue_per_share: financial_data.as_ref().and_then(|f| f.revenue_per_share.as_ref().and_then(|v| v.to_f64())),
-        profit_margins: financial_data.as_ref().and_then(|f| f.profit_margins.as_ref().and_then(|v| v.to_f64())),
-        gross_margins: financial_data.as_ref().and_then(|f| f.gross_margins.as_ref().and_then(|v| v.to_f64())),
-        operating_margins: financial_data.as_ref().and_then(|f| f.operating_margins.as_ref().and_then(|v| v.to_f64())),
-        return_on_equity: financial_data.as_ref().and_then(|f| f.return_on_equity.as_ref().and_then(|v| v.to_f64())),
-        free_cash_flow: financial_data.as_ref().and_then(|f| f.free_cash_flow.as_ref().and_then(|v| v.to_f64())),
+        current_price: financial_data
+            .as_ref()
+            .and_then(|f| f.current_price.as_ref().and_then(|v| v.to_f64())),
+        target_high_price: financial_data
+            .as_ref()
+            .and_then(|f| f.target_high_price.as_ref().and_then(|v| v.to_f64())),
+        target_low_price: financial_data
+            .as_ref()
+            .and_then(|f| f.target_low_price.as_ref().and_then(|v| v.to_f64())),
+        target_mean_price: financial_data
+            .as_ref()
+            .and_then(|f| f.target_mean_price.as_ref().and_then(|v| v.to_f64())),
+        recommendation_key: financial_data
+            .as_ref()
+            .and_then(|f| f.recommendation_key.clone()),
+        number_of_analyst_opinions: financial_data.as_ref().and_then(|f| {
+            f.number_of_analyst_opinions
+                .as_ref()
+                .and_then(|v| v.to_i64())
+        }),
+        total_revenue: financial_data
+            .as_ref()
+            .and_then(|f| f.total_revenue.as_ref().and_then(|v| v.to_f64())),
+        revenue_per_share: financial_data
+            .as_ref()
+            .and_then(|f| f.revenue_per_share.as_ref().and_then(|v| v.to_f64())),
+        profit_margins: financial_data
+            .as_ref()
+            .and_then(|f| f.profit_margins.as_ref().and_then(|v| v.to_f64())),
+        gross_margins: financial_data
+            .as_ref()
+            .and_then(|f| f.gross_margins.as_ref().and_then(|v| v.to_f64())),
+        operating_margins: financial_data
+            .as_ref()
+            .and_then(|f| f.operating_margins.as_ref().and_then(|v| v.to_f64())),
+        return_on_equity: financial_data
+            .as_ref()
+            .and_then(|f| f.return_on_equity.as_ref().and_then(|v| v.to_f64())),
+        free_cash_flow: financial_data
+            .as_ref()
+            .and_then(|f| f.free_cash_flow.as_ref().and_then(|v| v.to_f64())),
+        revenue_growth: financial_data
+            .as_ref()
+            .and_then(|f| f.revenue_growth.as_ref().and_then(|v| v.to_f64())),
+        earnings_growth: financial_data
+            .as_ref()
+            .and_then(|f| f.earnings_growth.as_ref().and_then(|v| v.to_f64())),
+        market_cap: price
+            .as_ref()
+            .and_then(|p| p.market_cap.as_ref().and_then(|v| v.to_f64()))
+            .or_else(|| {
+                summary_detail
+                    .as_ref()
+                    .and_then(|s| s.market_cap.as_ref().and_then(|v| v.to_f64()))
+            }),
+        enterprise_value: default_key_statistics
+            .as_ref()
+            .and_then(|k| k.enterprise_value.as_ref().and_then(|v| v.to_f64())),
+        beta: summary_detail
+            .as_ref()
+            .and_then(|s| s.beta.as_ref().and_then(|v| v.to_f64())),
+        trailing_pe: summary_detail
+            .as_ref()
+            .and_then(|s| s.trailing_pe.as_ref().and_then(|v| v.to_f64())),
+        forward_pe: summary_detail
+            .as_ref()
+            .and_then(|s| s.forward_pe.as_ref().and_then(|v| v.to_f64()))
+            .or_else(|| {
+                default_key_statistics
+                    .as_ref()
+                    .and_then(|k| k.forward_pe.as_ref().and_then(|v| v.to_f64()))
+            }),
+        peg_ratio: default_key_statistics
+            .as_ref()
+            .and_then(|k| k.peg_ratio.as_ref().and_then(|v| v.to_f64())),
+        price_to_book: default_key_statistics
+            .as_ref()
+            .and_then(|k| k.price_to_book.as_ref().and_then(|v| v.to_f64())),
+        book_value: default_key_statistics
+            .as_ref()
+            .and_then(|k| k.book_value.as_ref().and_then(|v| v.to_f64())),
+        trailing_eps: default_key_statistics
+            .as_ref()
+            .and_then(|k| k.trailing_eps.as_ref().and_then(|v| v.to_f64())),
+        forward_eps: default_key_statistics
+            .as_ref()
+            .and_then(|k| k.forward_eps.as_ref().and_then(|v| v.to_f64())),
+        dividend_rate: summary_detail
+            .as_ref()
+            .and_then(|s| s.dividend_rate.as_ref().and_then(|v| v.to_f64())),
+        dividend_yield: summary_detail
+            .as_ref()
+            .and_then(|s| s.dividend_yield.as_ref().and_then(|v| v.to_f64())),
+        payout_ratio: summary_detail
+            .as_ref()
+            .and_then(|s| s.payout_ratio.as_ref().and_then(|v| v.to_f64())),
+        average_volume: summary_detail
+            .as_ref()
+            .and_then(|s| s.average_volume.as_ref().and_then(|v| v.to_f64())),
+        average_volume_10_day: summary_detail
+            .as_ref()
+            .and_then(|s| s.average_volume_10_day.as_ref().and_then(|v| v.to_f64())),
+        fifty_two_week_high: summary_detail
+            .as_ref()
+            .and_then(|s| s.fifty_two_week_high.as_ref().and_then(|v| v.to_f64())),
+        fifty_two_week_low: summary_detail
+            .as_ref()
+            .and_then(|s| s.fifty_two_week_low.as_ref().and_then(|v| v.to_f64())),
+        fifty_day_average: summary_detail
+            .as_ref()
+            .and_then(|s| s.fifty_day_average.as_ref().and_then(|v| v.to_f64())),
+        two_hundred_day_average: summary_detail
+            .as_ref()
+            .and_then(|s| s.two_hundred_day_average.as_ref().and_then(|v| v.to_f64())),
+        shares_outstanding: default_key_statistics
+            .as_ref()
+            .and_then(|k| k.shares_outstanding.as_ref().and_then(|v| v.to_f64())),
+        float_shares: default_key_statistics
+            .as_ref()
+            .and_then(|k| k.float_shares.as_ref().and_then(|v| v.to_f64())),
+        held_percent_insiders: default_key_statistics
+            .as_ref()
+            .and_then(|k| k.held_percent_insiders.as_ref().and_then(|v| v.to_f64())),
+        held_percent_institutions: default_key_statistics.as_ref().and_then(|k| {
+            k.held_percent_institutions
+                .as_ref()
+                .and_then(|v| v.to_f64())
+        }),
+        net_income_to_common: default_key_statistics
+            .as_ref()
+            .and_then(|k| k.net_income_to_common.as_ref().and_then(|v| v.to_f64())),
     })
 }
 
@@ -563,19 +813,22 @@ pub(crate) fn parse_earnings_data(text: &str, symbol: &str) -> Result<EarningsDa
 
     let calendar = data.calendar_events;
 
-    let earnings_date = calendar.as_ref()
+    let earnings_date = calendar
+        .as_ref()
         .and_then(|c| c.earnings.as_ref())
         .and_then(|e| e.earnings_date.as_ref())
         .and_then(|dates| dates.first())
         .and_then(|v| v.raw)
         .and_then(|ts| DateTime::from_timestamp(ts as i64, 0));
 
-    let eps_estimate = calendar.as_ref()
+    let eps_estimate = calendar
+        .as_ref()
         .and_then(|c| c.earnings.as_ref())
         .and_then(|e| e.earnings_average.as_ref())
         .and_then(|v| v.to_f64());
 
-    let revenue_estimate = calendar.as_ref()
+    let revenue_estimate = calendar
+        .as_ref()
         .and_then(|c| c.earnings.as_ref())
         .and_then(|e| e.revenue_average.as_ref())
         .and_then(|v| v.to_f64());
@@ -813,7 +1066,46 @@ mod tests {
                         "grossMargins":           {"raw": 0.44,   "fmt": "44%"},
                         "operatingMargins":       {"raw": 0.30,   "fmt": "30%"},
                         "returnOnEquity":         {"raw": 1.5,    "fmt": "150%"},
-                        "freeCashflow":           {"raw": 1.0e11, "fmt": "100B"}
+                        "freeCashflow":           {"raw": 1.0e11, "fmt": "100B"},
+                        "revenueGrowth":          {"raw": 0.08,   "fmt": "8%"},
+                        "earningsGrowth":         {"raw": 0.12,   "fmt": "12%"}
+                    },
+                    "summaryDetail": {
+                        "marketCap":              {"raw": 3.0e12, "fmt": "3T"},
+                        "beta":                   {"raw": 1.2,    "fmt": "1.20"},
+                        "trailingPE":             {"raw": 31.0,   "fmt": "31.00"},
+                        "forwardPE":              {"raw": 27.5,   "fmt": "27.50"},
+                        "dividendRate":           {"raw": 1.04,   "fmt": "1.04"},
+                        "dividendYield":          {"raw": 0.005,  "fmt": "0.50%"},
+                        "payoutRatio":            {"raw": 0.16,   "fmt": "16%"},
+                        "averageVolume":          {"raw": 5.8e7,  "fmt": "58M"},
+                        "averageVolume10days":    {"raw": 6.1e7,  "fmt": "61M"},
+                        "fiftyTwoWeekHigh":       {"raw": 199.62, "fmt": "199.62"},
+                        "fiftyTwoWeekLow":        {"raw": 164.08, "fmt": "164.08"},
+                        "fiftyDayAverage":        {"raw": 185.3,  "fmt": "185.30"},
+                        "twoHundredDayAverage":   {"raw": 181.4,  "fmt": "181.40"}
+                    },
+                    "defaultKeyStatistics": {
+                        "enterpriseValue":        {"raw": 3.1e12, "fmt": "3.1T"},
+                        "pegRatio":               {"raw": 2.4,    "fmt": "2.40"},
+                        "priceToBook":            {"raw": 45.0,   "fmt": "45.00"},
+                        "bookValue":              {"raw": 4.21,   "fmt": "4.21"},
+                        "trailingEps":            {"raw": 6.12,   "fmt": "6.12"},
+                        "forwardEps":             {"raw": 6.95,   "fmt": "6.95"},
+                        "sharesOutstanding":      {"raw": 1.55e10,"fmt": "15.5B"},
+                        "floatShares":            {"raw": 1.54e10,"fmt": "15.4B"},
+                        "heldPercentInsiders":    {"raw": 0.0007, "fmt": "0.07%"},
+                        "heldPercentInstitutions": {"raw": 0.61,  "fmt": "61%"},
+                        "netIncomeToCommon":      {"raw": 9.7e10, "fmt": "97B"}
+                    },
+                    "price": {
+                        "shortName": "Apple Inc.",
+                        "longName": "Apple Inc.",
+                        "exchange": "NMS",
+                        "exchangeName": "NasdaqGS",
+                        "quoteType": "EQUITY",
+                        "currency": "USD",
+                        "marketCap": {"raw": 3.05e12, "fmt": "3.05T"}
                     }
                 }],
                 "error": null
@@ -832,6 +1124,22 @@ mod tests {
         assert_eq!(profile.recommendation_key.as_deref(), Some("buy"));
         assert_eq!(profile.number_of_analyst_opinions, Some(35));
         assert_eq!(profile.profit_margins, Some(0.25));
+        assert_eq!(profile.short_name.as_deref(), Some("Apple Inc."));
+        assert_eq!(profile.exchange.as_deref(), Some("NMS"));
+        assert_eq!(profile.currency.as_deref(), Some("USD"));
+        assert_eq!(profile.market_cap, Some(3.05e12));
+        assert_eq!(profile.enterprise_value, Some(3.1e12));
+        assert_eq!(profile.beta, Some(1.2));
+        assert_eq!(profile.trailing_pe, Some(31.0));
+        assert_eq!(profile.forward_pe, Some(27.5));
+        assert_eq!(profile.price_to_book, Some(45.0));
+        assert_eq!(profile.dividend_yield, Some(0.005));
+        assert_eq!(profile.average_volume_10_day, Some(6.1e7));
+        assert_eq!(profile.shares_outstanding, Some(1.55e10));
+        assert_eq!(profile.float_shares, Some(1.54e10));
+        assert_eq!(profile.net_income_to_common, Some(9.7e10));
+        assert_eq!(profile.revenue_growth, Some(0.08));
+        assert_eq!(profile.earnings_growth, Some(0.12));
     }
 
     #[test]

@@ -250,8 +250,8 @@ User clicks stock → Modal opens → API call → Backend
 
 ### Environment Variables
 No new environment variables required. Uses existing:
-- `REACT_APP_API_URL`: Backend API URL (default: `http://localhost:3333`)
-- `REACT_APP_WS_URL`: WebSocket URL (default: `localhost:3333`)
+- `REACT_APP_API_URL`: Optional backend API origin override. Defaults to same-origin relative `/api`.
+- `REACT_APP_WS_URL`: Optional WebSocket origin/URL override. Defaults to same-origin `/ws`.
 
 ### Backend Port Configuration
 Ensure backend port matches frontend proxy:

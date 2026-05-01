@@ -39,7 +39,7 @@ make rebuild                    # full rebuild
 ### Backend modules (`src/`)
 
 - `main.rs` — bootstrap: tracing → `Config::from_env` → `MongoDB::new` → `CacheLayer` → `YahooFinanceClient` → `OpenRouterClient` → `AlertEngine` → `AnalysisEngine` (loads existing data from Mongo, then `tokio::spawn` continuous loop) → `axum::serve` with permissive CORS.
-- `config.rs` — single `Config` struct loaded from `.env` (note: `OPENROUTER_API_KEY_STOCKS` is intentionally SCREAMING_SNAKE on the struct field too).
+- `config.rs` — single `Config` struct loaded from `.env` (note: `OPENROUTER_API_KEY_STOCKS` is intentionally SCREAMING_SNAKE on the struct field too). Includes optional `CANADIAN_SYMBOLS` for the CAD side of the analysis universe.
 - `models.rs` — serde data types: `Stock`, `StockAnalysis`, `HistoricalPrice`, `MACDIndicator`, `StockFilter`, `AnalysisProgress`. Mongo `_id` is `Option<ObjectId>` with `skip_serializing_if`.
 - `db.rs` — `MongoDB` struct: connection, upserts on `symbol`, `$and`-built dynamic filters in `get_latest_analyses`, indexes on `symbol` (asc) and `analyzed_at` (desc).
 - `indexes.rs` — applied at startup via `db.rs`.
@@ -60,7 +60,7 @@ make rebuild                    # full rebuild
 
 - `models.rs` — `ChannelKind`, `ChannelConfig`, rule trees (`AND`/`OR`/`NOT` + leaf conditions), `PendingNotification`, `DeliveryResult`.
 - `repo.rs` — Mongo CRUD for channels / rules / watchlists / history. Creates its own indexes at startup (best-effort, non-fatal).
-- `evaluator.rs` — state-aware evaluation: cooldowns, `require_consecutive` hysteresis, MACD bullish/bearish cross detection (compares previous cycle's histogram), `quiet_hours` UTC window.
+- `evaluator.rs` — state-aware evaluation: cooldowns committed after successful delivery, `require_consecutive` hysteresis, MACD bullish/bearish cross detection (compares previous cycle's histogram), timezone-aware `quiet_hours`.
 - `dispatcher.rs` — fans out to channels; per-channel errors do not abort the batch. Substitutes `{{symbol}}`, `{{price}}`, `{{rsi}}`, `{{change_pct}}`, `{{matched}}`, `{{52w_low/high}}`, `{{market_cap}}`, `{{sector}}`, `{{rule_name}}`. Unknown placeholders are left intact (typos are visible).
 - `channels/` — `Channel` trait + Discord implementation. `build_channel` in `channels/mod.rs` is the registration point.
 - `api.rs` — HTTP routes: `/api/watchlists*`, `/api/alerts/channels*`, `/api/alerts/rules*`, `/api/alerts/history*`, `/api/alerts/status`. Webhook URLs live per-channel in MongoDB, NOT in env vars.
@@ -73,7 +73,7 @@ CRA + React 19 + Chakra UI v3 + framer-motion + recharts + lucide-react. Key fil
 
 ## Conventions and gotchas
 
-- **Port mismatch is the #1 footgun.** Backend default is `:3000` (`SERVER_PORT`). Frontend `package.json` proxy is `:3333`. Docker forces backend to `:3333`. For local dev, either set `SERVER_PORT=3333` in `.env` or change the proxy. Mongo in Docker is exposed on host `:27018` (mapped to container `:27017`) to avoid clashing with a local Mongo.
+- **Port mismatch is the #1 footgun.** Backend code default is `:3000` (`SERVER_PORT`), but `.env.example`, Docker, and frontend proxy use `:3333`. For local dev, keep `SERVER_PORT=3333` in `.env` unless you also change the proxy. Mongo in Docker is exposed on host `:27018` (mapped to container `:27017`) to avoid clashing with a local Mongo.
 - **Yahoo rate limits.** Local default is `YAHOO_REQUEST_DELAY_MS=100` + `YAHOO_CONCURRENCY=5`; Docker raises delay to `500`. Older docs reference 4s — that was the old non-concurrent path. If you change these, sanity-check with `cargo run --bin rate_limit_tester`.
 - **NASDAQ + Yahoo both need a desktop User-Agent.** Don't strip it.
 - **Errors don't abort cycles.** `AnalysisEngine` accumulates them in `AnalysisProgress.errors` and continues; `AlertEngine` swallows per-channel failures the same way. Don't add early `?` returns at these boundaries.

@@ -314,6 +314,10 @@ const RulesTab: React.FC = () => {
   };
 
   const handleSave = async (rule: AlertRule | Omit<AlertRule, '_id' | 'created_at' | 'updated_at'>) => {
+    if ((rule as any).channel_ids.length === 0) {
+      toaster.create({ title: 'Choose at least one channel', description: 'A rule without channels cannot send notifications.', type: 'warning' });
+      return;
+    }
     try {
       if ((rule as AlertRule)._id) {
         const { _id, created_at, updated_at, ...patch } = rule as AlertRule;
@@ -444,7 +448,7 @@ const RuleEditor: React.FC<{
         </Heading>
         <HStack>
           <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
-          <Button size="sm" colorPalette="blue" onClick={() => onSave(rule)}>
+          <Button size="sm" colorPalette="blue" disabled={((rule as any).channel_ids as string[]).length === 0} onClick={() => onSave(rule)}>
             <Save size={14} /> Save
           </Button>
         </HStack>
@@ -566,22 +570,29 @@ const RuleEditor: React.FC<{
         {channels.length === 0 ? (
           <Text color="fg.subtle" fontSize="sm">No channels configured. Add one on the Channels tab.</Text>
         ) : (
-          <Flex wrap="wrap" gap={2}>
-            {channels.map(c => {
-              const selected = ((rule as any).channel_ids as string[]).includes(c._id || '');
-              return (
-                <Button
-                  key={c._id}
-                  size="sm"
-                  variant={selected ? 'solid' : 'outline'}
-                  colorPalette={selected ? 'blue' : 'gray'}
-                  onClick={() => c._id && toggleChannel(c._id)}
-                >
-                  {c.name}
-                </Button>
-              );
-            })}
-          </Flex>
+          <>
+            <Flex wrap="wrap" gap={2}>
+              {channels.map(c => {
+                const selected = ((rule as any).channel_ids as string[]).includes(c._id || '');
+                return (
+                  <Button
+                    key={c._id}
+                    size="sm"
+                    variant={selected ? 'solid' : 'outline'}
+                    colorPalette={selected ? 'blue' : 'gray'}
+                    onClick={() => c._id && toggleChannel(c._id)}
+                  >
+                    {c.name}{!c.enabled ? ' (disabled)' : ''}
+                  </Button>
+                );
+              })}
+            </Flex>
+            {((rule as any).channel_ids as string[]).length === 0 && (
+              <Text color="orange.300" fontSize="xs" mt={2}>
+                Select at least one enabled channel so this rule can notify you.
+              </Text>
+            )}
+          </>
         )}
       </Box>
 

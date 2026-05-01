@@ -22,11 +22,7 @@ pub fn evaluate(group: &ConditionGroup, ctx: &EvalContext) -> (bool, Vec<String>
     (ok, matches)
 }
 
-fn eval_inner(
-    group: &ConditionGroup,
-    ctx: &EvalContext,
-    matched: &mut Vec<String>,
-) -> bool {
+fn eval_inner(group: &ConditionGroup, ctx: &EvalContext, matched: &mut Vec<String>) -> bool {
     match group {
         ConditionGroup::And { children } => {
             // Collect matches from children only if the whole AND passes.
@@ -71,12 +67,14 @@ fn eval_inner(
 fn eval_condition(c: &Condition, ctx: &EvalContext) -> Option<String> {
     let a = ctx.analysis;
     match c {
-        Condition::RsiBelow { value } => {
-            a.rsi.filter(|r| r < value).map(|r| format!("RSI {:.1} < {}", r, value))
-        }
-        Condition::RsiAbove { value } => {
-            a.rsi.filter(|r| r > value).map(|r| format!("RSI {:.1} > {}", r, value))
-        }
+        Condition::RsiBelow { value } => a
+            .rsi
+            .filter(|r| r < value)
+            .map(|r| format!("RSI {:.1} < {}", r, value)),
+        Condition::RsiAbove { value } => a
+            .rsi
+            .filter(|r| r > value)
+            .map(|r| format!("RSI {:.1} > {}", r, value)),
         Condition::PriceBelow { value } => {
             if a.price < *value {
                 Some(format!("Price ${:.2} < ${}", a.price, value))
@@ -91,39 +89,28 @@ fn eval_condition(c: &Condition, ctx: &EvalContext) -> Option<String> {
                 None
             }
         }
-        Condition::PriceChangePctBelow { value } => {
-            a.price_change_percent
-                .filter(|p| p < value)
-                .map(|p| format!("Day change {:.2}% < {}%", p, value))
-        }
-        Condition::PriceChangePctAbove { value } => {
-            a.price_change_percent
-                .filter(|p| p > value)
-                .map(|p| format!("Day change {:.2}% > {}%", p, value))
-        }
+        Condition::PriceChangePctBelow { value } => a
+            .price_change_percent
+            .filter(|p| p < value)
+            .map(|p| format!("Day change {:.2}% < {}%", p, value)),
+        Condition::PriceChangePctAbove { value } => a
+            .price_change_percent
+            .filter(|p| p > value)
+            .map(|p| format!("Day change {:.2}% > {}%", p, value)),
         Condition::Near52WeekLow { within_pct } => {
-            let low = a
-                .technicals
-                .as_ref()
-                .and_then(|t| t.fifty_two_week_low)?;
+            let low = a.technicals.as_ref().and_then(|t| t.fifty_two_week_low)?;
             if low <= 0.0 {
                 return None;
             }
             let delta_pct = ((a.price - low).abs() / low) * 100.0;
             if delta_pct <= *within_pct {
-                Some(format!(
-                    "Within {:.2}% of 52w low (${:.2})",
-                    delta_pct, low
-                ))
+                Some(format!("Within {:.2}% of 52w low (${:.2})", delta_pct, low))
             } else {
                 None
             }
         }
         Condition::Near52WeekHigh { within_pct } => {
-            let high = a
-                .technicals
-                .as_ref()
-                .and_then(|t| t.fifty_two_week_high)?;
+            let high = a.technicals.as_ref().and_then(|t| t.fifty_two_week_high)?;
             if high <= 0.0 {
                 return None;
             }
@@ -198,16 +185,11 @@ fn eval_condition(c: &Condition, ctx: &EvalContext) -> Option<String> {
             .filter(|v| v > value)
             .map(|v| format!("Volume {:.0} > {}", v, value)),
         Condition::SectorEquals { sector } => match &a.sector {
-            Some(s) if s.eq_ignore_ascii_case(sector) => {
-                Some(format!("Sector = {}", sector))
-            }
+            Some(s) if s.eq_ignore_ascii_case(sector) => Some(format!("Sector = {}", sector)),
             _ => None,
         },
         Condition::DropFromHighPct { value } => {
-            let high = a
-                .technicals
-                .as_ref()
-                .and_then(|t| t.fifty_two_week_high)?;
+            let high = a.technicals.as_ref().and_then(|t| t.fifty_two_week_high)?;
             if high <= 0.0 {
                 return None;
             }
@@ -305,8 +287,20 @@ mod tests {
     fn price_change_pct() {
         let mut a = base();
         a.price_change_percent = Some(-3.5);
-        assert!(evaluate(&leaf(Condition::PriceChangePctBelow { value: -2.0 }), &ctx(&a, None)).0);
-        assert!(!evaluate(&leaf(Condition::PriceChangePctBelow { value: -5.0 }), &ctx(&a, None)).0);
+        assert!(
+            evaluate(
+                &leaf(Condition::PriceChangePctBelow { value: -2.0 }),
+                &ctx(&a, None)
+            )
+            .0
+        );
+        assert!(
+            !evaluate(
+                &leaf(Condition::PriceChangePctBelow { value: -5.0 }),
+                &ctx(&a, None)
+            )
+            .0
+        );
     }
 
     fn with_tech(hi: f64, lo: f64) -> NasdaqTechnicals {
@@ -341,9 +335,21 @@ mod tests {
         a.price = 101.0;
         a.technicals = Some(with_tech(200.0, 100.0));
         // 1% above low → fires at within_pct=2
-        assert!(evaluate(&leaf(Condition::Near52WeekLow { within_pct: 2.0 }), &ctx(&a, None)).0);
+        assert!(
+            evaluate(
+                &leaf(Condition::Near52WeekLow { within_pct: 2.0 }),
+                &ctx(&a, None)
+            )
+            .0
+        );
         // But not at within_pct=0.5
-        assert!(!evaluate(&leaf(Condition::Near52WeekLow { within_pct: 0.5 }), &ctx(&a, None)).0);
+        assert!(
+            !evaluate(
+                &leaf(Condition::Near52WeekLow { within_pct: 0.5 }),
+                &ctx(&a, None)
+            )
+            .0
+        );
     }
 
     #[test]
@@ -351,7 +357,13 @@ mod tests {
         let mut a = base();
         a.price = 100.0;
         a.technicals = None;
-        assert!(!evaluate(&leaf(Condition::Near52WeekLow { within_pct: 100.0 }), &ctx(&a, None)).0);
+        assert!(
+            !evaluate(
+                &leaf(Condition::Near52WeekLow { within_pct: 100.0 }),
+                &ctx(&a, None)
+            )
+            .0
+        );
     }
 
     #[test]
@@ -359,7 +371,13 @@ mod tests {
         let mut a = base();
         a.price = 198.0;
         a.technicals = Some(with_tech(200.0, 100.0));
-        assert!(evaluate(&leaf(Condition::Near52WeekHigh { within_pct: 2.0 }), &ctx(&a, None)).0);
+        assert!(
+            evaluate(
+                &leaf(Condition::Near52WeekHigh { within_pct: 2.0 }),
+                &ctx(&a, None)
+            )
+            .0
+        );
     }
 
     #[test]
@@ -368,8 +386,20 @@ mod tests {
         a.price = 150.0;
         a.technicals = Some(with_tech(200.0, 100.0));
         // 25% down from high
-        assert!(evaluate(&leaf(Condition::DropFromHighPct { value: 20.0 }), &ctx(&a, None)).0);
-        assert!(!evaluate(&leaf(Condition::DropFromHighPct { value: 30.0 }), &ctx(&a, None)).0);
+        assert!(
+            evaluate(
+                &leaf(Condition::DropFromHighPct { value: 20.0 }),
+                &ctx(&a, None)
+            )
+            .0
+        );
+        assert!(
+            !evaluate(
+                &leaf(Condition::DropFromHighPct { value: 30.0 }),
+                &ctx(&a, None)
+            )
+            .0
+        );
     }
 
     #[test]
@@ -413,9 +443,27 @@ mod tests {
             middle_band: 100.0,
             bandwidth: 0.02,
         });
-        assert!(evaluate(&leaf(Condition::StochasticKBelow { value: 20.0 }), &ctx(&a, None)).0);
-        assert!(!evaluate(&leaf(Condition::StochasticKAbove { value: 80.0 }), &ctx(&a, None)).0);
-        assert!(evaluate(&leaf(Condition::BollingerBandwidthBelow { value: 0.05 }), &ctx(&a, None)).0);
+        assert!(
+            evaluate(
+                &leaf(Condition::StochasticKBelow { value: 20.0 }),
+                &ctx(&a, None)
+            )
+            .0
+        );
+        assert!(
+            !evaluate(
+                &leaf(Condition::StochasticKAbove { value: 80.0 }),
+                &ctx(&a, None)
+            )
+            .0
+        );
+        assert!(
+            evaluate(
+                &leaf(Condition::BollingerBandwidthBelow { value: 0.05 }),
+                &ctx(&a, None)
+            )
+            .0
+        );
     }
 
     #[test]
@@ -430,15 +478,37 @@ mod tests {
     fn sector_equals_case_insensitive() {
         let mut a = base();
         a.sector = Some("Technology".into());
-        assert!(evaluate(&leaf(Condition::SectorEquals { sector: "technology".into() }), &ctx(&a, None)).0);
-        assert!(!evaluate(&leaf(Condition::SectorEquals { sector: "healthcare".into() }), &ctx(&a, None)).0);
+        assert!(
+            evaluate(
+                &leaf(Condition::SectorEquals {
+                    sector: "technology".into()
+                }),
+                &ctx(&a, None)
+            )
+            .0
+        );
+        assert!(
+            !evaluate(
+                &leaf(Condition::SectorEquals {
+                    sector: "healthcare".into()
+                }),
+                &ctx(&a, None)
+            )
+            .0
+        );
     }
 
     #[test]
     fn volume_above() {
         let mut a = base();
         a.volume = Some(2_000_000.0);
-        assert!(evaluate(&leaf(Condition::VolumeAbove { value: 1_000_000.0 }), &ctx(&a, None)).0);
+        assert!(
+            evaluate(
+                &leaf(Condition::VolumeAbove { value: 1_000_000.0 }),
+                &ctx(&a, None)
+            )
+            .0
+        );
     }
 
     #[test]

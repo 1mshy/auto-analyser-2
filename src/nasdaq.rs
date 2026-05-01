@@ -204,10 +204,13 @@ impl NasdaqClient {
             ));
         }
 
-        let text = response
-            .text()
-            .await
-            .map_err(|e| anyhow!("Failed to read NASDAQ technicals body for {}: {}", symbol, e))?;
+        let text = response.text().await.map_err(|e| {
+            anyhow!(
+                "Failed to read NASDAQ technicals body for {}: {}",
+                symbol,
+                e
+            )
+        })?;
 
         parse_technicals_response(&text, symbol)
     }
@@ -244,7 +247,11 @@ impl NasdaqClient {
     }
 
     /// Fetch insider trades for a stock from NASDAQ API
-    pub async fn get_insider_trades(&self, symbol: &str, limit: usize) -> Result<Vec<InsiderTrade>> {
+    pub async fn get_insider_trades(
+        &self,
+        symbol: &str,
+        limit: usize,
+    ) -> Result<Vec<InsiderTrade>> {
         let url = format!(
             "https://api.nasdaq.com/api/company/{}/insider-trades?limit={}&type=ALL",
             symbol.to_uppercase(),
@@ -253,16 +260,17 @@ impl NasdaqClient {
 
         debug!("Fetching NASDAQ insider trades for {}", symbol);
 
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| anyhow!("NASDAQ insider trades request failed for {}: {}", symbol, e))?;
+        let response =
+            self.client.get(&url).send().await.map_err(|e| {
+                anyhow!("NASDAQ insider trades request failed for {}: {}", symbol, e)
+            })?;
 
         let status = response.status();
         if !status.is_success() {
-            warn!("NASDAQ insider trades API returned status {} for {}", status, symbol);
+            warn!(
+                "NASDAQ insider trades API returned status {} for {}",
+                status, symbol
+            );
             return Ok(vec![]);
         }
 
@@ -312,24 +320,21 @@ impl NasdaqClient {
     }
 
     fn parse_signed_number(value: &Option<String>) -> Option<f64> {
-        value.as_ref().and_then(|v| {
-            v.replace(',', "")
-                .trim()
-                .parse::<f64>()
-                .ok()
-        })
+        value
+            .as_ref()
+            .and_then(|v| v.replace(',', "").trim().parse::<f64>().ok())
     }
 
     fn parse_number_with_commas(value: &Option<String>) -> Option<f64> {
-        value.as_ref().and_then(|v| {
-            v.replace(',', "").trim().parse::<f64>().ok()
-        })
+        value
+            .as_ref()
+            .and_then(|v| v.replace(',', "").trim().parse::<f64>().ok())
     }
 
     fn parse_percentage(value: &Option<String>) -> Option<f64> {
-        value.as_ref().and_then(|v| {
-            v.replace('%', "").trim().parse::<f64>().ok()
-        })
+        value
+            .as_ref()
+            .and_then(|v| v.replace('%', "").trim().parse::<f64>().ok())
     }
 
     fn parse_json_number(value: &Option<serde_json::Value>) -> Option<f64> {
@@ -355,9 +360,11 @@ pub(crate) fn parse_technicals_response(text: &str, symbol: &str) -> Result<Nasd
         .ok_or_else(|| anyhow!("No data in NASDAQ technicals response for {}", symbol))?;
 
     let primary = data.primary_data.as_ref();
-    let last_sale_price = primary.and_then(|p| NasdaqClient::parse_dollar_value(&p.last_sale_price));
+    let last_sale_price =
+        primary.and_then(|p| NasdaqClient::parse_dollar_value(&p.last_sale_price));
     let net_change = primary.and_then(|p| NasdaqClient::parse_signed_number(&p.net_change));
-    let percentage_change = primary.and_then(|p| NasdaqClient::parse_percentage(&p.percentage_change));
+    let percentage_change =
+        primary.and_then(|p| NasdaqClient::parse_percentage(&p.percentage_change));
 
     let summary = data.summary_data;
 
@@ -371,40 +378,59 @@ pub(crate) fn parse_technicals_response(text: &str, symbol: &str) -> Result<Nasd
         .unwrap_or((None, None));
 
     Ok(NasdaqTechnicals {
-        exchange: summary.as_ref().and_then(|s| s.exchange.as_ref().and_then(|v| v.value.clone())),
-        sector: summary.as_ref().and_then(|s| s.sector.as_ref().and_then(|v| v.value.clone())),
-        industry: summary.as_ref().and_then(|s| s.industry.as_ref().and_then(|v| v.value.clone())),
-        one_year_target: summary.as_ref()
+        exchange: summary
+            .as_ref()
+            .and_then(|s| s.exchange.as_ref().and_then(|v| v.value.clone())),
+        sector: summary
+            .as_ref()
+            .and_then(|s| s.sector.as_ref().and_then(|v| v.value.clone())),
+        industry: summary
+            .as_ref()
+            .and_then(|s| s.industry.as_ref().and_then(|v| v.value.clone())),
+        one_year_target: summary
+            .as_ref()
             .and_then(|s| s.one_yr_target.as_ref())
             .and_then(|v| NasdaqClient::parse_dollar_value(&v.value)),
         todays_high,
         todays_low,
-        share_volume: summary.as_ref()
+        share_volume: summary
+            .as_ref()
             .and_then(|s| s.share_volume.as_ref())
             .and_then(|v| NasdaqClient::parse_number_with_commas(&v.value)),
-        average_volume: summary.as_ref()
+        average_volume: summary
+            .as_ref()
             .and_then(|s| s.average_volume.as_ref())
             .and_then(|v| NasdaqClient::parse_number_with_commas(&v.value)),
-        previous_close: summary.as_ref()
+        previous_close: summary
+            .as_ref()
             .and_then(|s| s.previous_close.as_ref())
             .and_then(|v| NasdaqClient::parse_dollar_value(&v.value)),
         fifty_two_week_high,
         fifty_two_week_low,
-        pe_ratio: summary.as_ref()
+        pe_ratio: summary
+            .as_ref()
             .and_then(|s| s.pe_ratio.as_ref())
             .and_then(|v| NasdaqClient::parse_json_number(&v.value)),
-        forward_pe: summary.as_ref()
+        forward_pe: summary
+            .as_ref()
             .and_then(|s| s.forward_pe.as_ref())
             .and_then(|v| NasdaqClient::parse_dollar_value(&v.value)),
-        eps: summary.as_ref()
+        eps: summary
+            .as_ref()
             .and_then(|s| s.eps.as_ref())
             .and_then(|v| NasdaqClient::parse_dollar_value(&v.value)),
-        annualized_dividend: summary.as_ref()
+        annualized_dividend: summary
+            .as_ref()
             .and_then(|s| s.annualized_dividend.as_ref())
             .and_then(|v| NasdaqClient::parse_dollar_value(&v.value)),
-        ex_dividend_date: summary.as_ref().and_then(|s| s.ex_dividend_date.as_ref().and_then(|v| v.value.clone())),
-        dividend_pay_date: summary.as_ref().and_then(|s| s.dividend_pay_date.as_ref().and_then(|v| v.value.clone())),
-        current_yield: summary.as_ref()
+        ex_dividend_date: summary
+            .as_ref()
+            .and_then(|s| s.ex_dividend_date.as_ref().and_then(|v| v.value.clone())),
+        dividend_pay_date: summary
+            .as_ref()
+            .and_then(|s| s.dividend_pay_date.as_ref().and_then(|v| v.value.clone())),
+        current_yield: summary
+            .as_ref()
             .and_then(|s| s.current_yield.as_ref())
             .and_then(|v| NasdaqClient::parse_percentage(&v.value)),
         last_sale_price,
@@ -439,8 +465,13 @@ pub(crate) fn parse_news_response(text: &str, symbol: &str) -> Result<Vec<Nasdaq
 
 /// Parse a NASDAQ insider trades response.
 pub(crate) fn parse_insider_trades_response(text: &str, symbol: &str) -> Result<Vec<InsiderTrade>> {
-    let nasdaq_response: InsiderTradesResponse = serde_json::from_str(text)
-        .map_err(|e| anyhow!("Failed to parse NASDAQ insider trades for {}: {}", symbol, e))?;
+    let nasdaq_response: InsiderTradesResponse = serde_json::from_str(text).map_err(|e| {
+        anyhow!(
+            "Failed to parse NASDAQ insider trades for {}: {}",
+            symbol,
+            e
+        )
+    })?;
 
     let rows = nasdaq_response
         .data
@@ -454,11 +485,22 @@ pub(crate) fn parse_insider_trades_response(text: &str, symbol: &str) -> Result<
             Some(InsiderTrade {
                 insider_name: row.insider?,
                 relation: row.relation,
-                transaction_type: row.transaction_type.unwrap_or_else(|| "Unknown".to_string()),
+                transaction_type: row
+                    .transaction_type
+                    .unwrap_or_else(|| "Unknown".to_string()),
                 date: row.last_date,
-                shares_traded: row.shares_traded.as_ref().and_then(|s| NasdaqClient::parse_number_with_commas(&Some(s.clone()))),
-                price: row.price.as_ref().and_then(|s| NasdaqClient::parse_dollar_value(&Some(s.clone()))),
-                shares_held: row.shares_held.as_ref().and_then(|s| NasdaqClient::parse_number_with_commas(&Some(s.clone()))),
+                shares_traded: row
+                    .shares_traded
+                    .as_ref()
+                    .and_then(|s| NasdaqClient::parse_number_with_commas(&Some(s.clone()))),
+                price: row
+                    .price
+                    .as_ref()
+                    .and_then(|s| NasdaqClient::parse_dollar_value(&Some(s.clone()))),
+                shares_held: row
+                    .shares_held
+                    .as_ref()
+                    .and_then(|s| NasdaqClient::parse_number_with_commas(&Some(s.clone()))),
             })
         })
         .collect())
@@ -514,48 +556,117 @@ mod tests {
 
     #[test]
     fn test_parse_dollar_value() {
-        assert_eq!(NasdaqClient::parse_dollar_value(&Some("$226.51".to_string())), Some(226.51));
-        assert_eq!(NasdaqClient::parse_dollar_value(&Some("$1,234.56".to_string())), Some(1234.56));
-        assert_eq!(NasdaqClient::parse_dollar_value(&Some("  $0.00 ".to_string())), Some(0.0));
-        assert_eq!(NasdaqClient::parse_dollar_value(&Some("N/A".to_string())), None);
-        assert_eq!(NasdaqClient::parse_dollar_value(&Some("--".to_string())), None);
-        assert_eq!(NasdaqClient::parse_dollar_value(&Some("".to_string())), None);
+        assert_eq!(
+            NasdaqClient::parse_dollar_value(&Some("$226.51".to_string())),
+            Some(226.51)
+        );
+        assert_eq!(
+            NasdaqClient::parse_dollar_value(&Some("$1,234.56".to_string())),
+            Some(1234.56)
+        );
+        assert_eq!(
+            NasdaqClient::parse_dollar_value(&Some("  $0.00 ".to_string())),
+            Some(0.0)
+        );
+        assert_eq!(
+            NasdaqClient::parse_dollar_value(&Some("N/A".to_string())),
+            None
+        );
+        assert_eq!(
+            NasdaqClient::parse_dollar_value(&Some("--".to_string())),
+            None
+        );
+        assert_eq!(
+            NasdaqClient::parse_dollar_value(&Some("".to_string())),
+            None
+        );
         assert_eq!(NasdaqClient::parse_dollar_value(&None), None);
     }
 
     #[test]
     fn test_parse_number_with_commas() {
-        assert_eq!(NasdaqClient::parse_number_with_commas(&Some("67,622,607".to_string())), Some(67_622_607.0));
-        assert_eq!(NasdaqClient::parse_number_with_commas(&Some("1000".to_string())), Some(1000.0));
-        assert_eq!(NasdaqClient::parse_number_with_commas(&Some("N/A".to_string())), None);
-        assert_eq!(NasdaqClient::parse_number_with_commas(&Some("".to_string())), None);
+        assert_eq!(
+            NasdaqClient::parse_number_with_commas(&Some("67,622,607".to_string())),
+            Some(67_622_607.0)
+        );
+        assert_eq!(
+            NasdaqClient::parse_number_with_commas(&Some("1000".to_string())),
+            Some(1000.0)
+        );
+        assert_eq!(
+            NasdaqClient::parse_number_with_commas(&Some("N/A".to_string())),
+            None
+        );
+        assert_eq!(
+            NasdaqClient::parse_number_with_commas(&Some("".to_string())),
+            None
+        );
     }
 
     #[test]
     fn test_parse_percentage() {
-        assert_eq!(NasdaqClient::parse_percentage(&Some("0.44%".to_string())), Some(0.44));
-        assert_eq!(NasdaqClient::parse_percentage(&Some("-6.30%".to_string())), Some(-6.30));
-        assert_eq!(NasdaqClient::parse_percentage(&Some("  12.5%  ".to_string())), Some(12.5));
-        assert_eq!(NasdaqClient::parse_percentage(&Some("N/A".to_string())), None);
-        assert_eq!(NasdaqClient::parse_percentage(&Some("--".to_string())), None);
+        assert_eq!(
+            NasdaqClient::parse_percentage(&Some("0.44%".to_string())),
+            Some(0.44)
+        );
+        assert_eq!(
+            NasdaqClient::parse_percentage(&Some("-6.30%".to_string())),
+            Some(-6.30)
+        );
+        assert_eq!(
+            NasdaqClient::parse_percentage(&Some("  12.5%  ".to_string())),
+            Some(12.5)
+        );
+        assert_eq!(
+            NasdaqClient::parse_percentage(&Some("N/A".to_string())),
+            None
+        );
+        assert_eq!(
+            NasdaqClient::parse_percentage(&Some("--".to_string())),
+            None
+        );
         assert_eq!(NasdaqClient::parse_percentage(&None), None);
     }
 
     #[test]
     fn test_parse_signed_number() {
-        assert_eq!(NasdaqClient::parse_signed_number(&Some("-0.23".to_string())), Some(-0.23));
-        assert_eq!(NasdaqClient::parse_signed_number(&Some("1.45".to_string())), Some(1.45));
-        assert_eq!(NasdaqClient::parse_signed_number(&Some("-1,234.56".to_string())), Some(-1234.56));
-        assert_eq!(NasdaqClient::parse_signed_number(&Some("N/A".to_string())), None);
+        assert_eq!(
+            NasdaqClient::parse_signed_number(&Some("-0.23".to_string())),
+            Some(-0.23)
+        );
+        assert_eq!(
+            NasdaqClient::parse_signed_number(&Some("1.45".to_string())),
+            Some(1.45)
+        );
+        assert_eq!(
+            NasdaqClient::parse_signed_number(&Some("-1,234.56".to_string())),
+            Some(-1234.56)
+        );
+        assert_eq!(
+            NasdaqClient::parse_signed_number(&Some("N/A".to_string())),
+            None
+        );
         assert_eq!(NasdaqClient::parse_signed_number(&None), None);
     }
 
     #[test]
     fn test_parse_json_number_variants() {
-        assert_eq!(NasdaqClient::parse_json_number(&Some(serde_json::json!(12.5))), Some(12.5));
-        assert_eq!(NasdaqClient::parse_json_number(&Some(serde_json::json!("33.25"))), Some(33.25));
-        assert_eq!(NasdaqClient::parse_json_number(&Some(serde_json::json!("N/A"))), None);
-        assert_eq!(NasdaqClient::parse_json_number(&Some(serde_json::json!(null))), None);
+        assert_eq!(
+            NasdaqClient::parse_json_number(&Some(serde_json::json!(12.5))),
+            Some(12.5)
+        );
+        assert_eq!(
+            NasdaqClient::parse_json_number(&Some(serde_json::json!("33.25"))),
+            Some(33.25)
+        );
+        assert_eq!(
+            NasdaqClient::parse_json_number(&Some(serde_json::json!("N/A"))),
+            None
+        );
+        assert_eq!(
+            NasdaqClient::parse_json_number(&Some(serde_json::json!(null))),
+            None
+        );
         assert_eq!(NasdaqClient::parse_json_number(&None), None);
     }
 
@@ -797,12 +908,18 @@ mod tests {
     #[test]
     fn test_parse_insider_trades_missing_tables() {
         let no_table = r#"{"data": {}}"#;
-        assert!(parse_insider_trades_response(no_table, "X").unwrap().is_empty());
+        assert!(parse_insider_trades_response(no_table, "X")
+            .unwrap()
+            .is_empty());
 
         let no_data = r#"{"data": null}"#;
-        assert!(parse_insider_trades_response(no_data, "X").unwrap().is_empty());
+        assert!(parse_insider_trades_response(no_data, "X")
+            .unwrap()
+            .is_empty());
 
         let empty_rows = r#"{"data": {"transactionTable": {"rows": []}}}"#;
-        assert!(parse_insider_trades_response(empty_rows, "X").unwrap().is_empty());
+        assert!(parse_insider_trades_response(empty_rows, "X")
+            .unwrap()
+            .is_empty());
     }
 }

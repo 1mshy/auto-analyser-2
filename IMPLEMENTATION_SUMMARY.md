@@ -141,7 +141,7 @@ DATABASE_NAME=stock_analyzer
 
 # Server
 SERVER_HOST=127.0.0.1
-SERVER_PORT=3000
+SERVER_PORT=3333
 
 # Analysis (change these!)
 ANALYSIS_INTERVAL_SECS=3600  # How often to analyze (1 hour)
@@ -215,7 +215,7 @@ curl -X POST http://localhost:3333/api/stocks/filter \
   -d '{"min_price": 100, "max_rsi": 40}'
 
 # Test WebSocket
-websocat ws://localhost:3000/ws
+websocat ws://localhost:3333/ws
 ```
 
 ---

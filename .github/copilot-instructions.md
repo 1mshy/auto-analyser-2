@@ -112,7 +112,7 @@ Two-tier in `cache.rs`:
 
 ### Frontend-Backend Communication
 - REST API: `GET /api/stocks`, `POST /api/stocks/filter`, `GET /api/progress`
-- WebSocket: `ws://localhost:3000/ws` for live updates
+- WebSocket: `ws://localhost:3333/ws` for live progress updates when using the recommended local `.env`
 - CORS: Configured to allow all origins in production (via `tower-http`)
 
 ## Common Pitfalls

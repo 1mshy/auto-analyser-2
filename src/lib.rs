@@ -8,14 +8,15 @@
 
 pub mod analysis;
 pub mod api;
+pub mod async_fetcher;
 pub mod cache;
 pub mod config;
 pub mod db;
+pub mod indexes;
 pub mod indicators;
 pub mod models;
 pub mod nasdaq;
-pub mod openrouter;
-pub mod yahoo;
-pub mod async_fetcher;
-pub mod indexes;
 pub mod notifications;
+pub mod openrouter;
+pub mod symbols;
+pub mod yahoo;

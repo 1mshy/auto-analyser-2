@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from './api';
-import { StockAnalysis } from './types';
+import { AnalysisProgress } from './types';
 
 /**
- * Hook that triggers a callback at 10am on weekdays (market open time)
+ * Hook that triggers a callback shortly after US market open (9:30 ET)
  * to refresh stock data with updated opening prices.
  */
 export const useMarketOpenRefresh = (onRefresh: () => void) => {
@@ -12,21 +12,33 @@ export const useMarketOpenRefresh = (onRefresh: () => void) => {
   useEffect(() => {
     const checkMarketOpen = () => {
       const now = new Date();
-      const day = now.getDay();
-      const hours = now.getHours();
-      const minutes = now.getMinutes();
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).formatToParts(now);
+      const get = (type: string) => parts.find(p => p.type === type)?.value || '';
+      const weekday = get('weekday');
+      const hours = Number(get('hour'));
+      const minutes = Number(get('minute'));
 
-      // Check if it's a weekday (Monday = 1, Friday = 5)
-      const isWeekday = day >= 1 && day <= 5;
+      const isWeekday = !['Sat', 'Sun'].includes(weekday);
 
-      // Check if it's 10:00 AM (within the first minute to avoid multiple triggers)
-      const is10AM = hours === 10 && minutes === 0;
+      // Trigger in the first five minutes after 9:30 ET.
+      const isMarketOpenWindow = hours === 9 && minutes >= 30 && minutes < 35;
 
       // Create a date string to prevent multiple refreshes on the same day
-      const todayStr = now.toDateString();
+      const todayStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(now);
 
-      if (isWeekday && is10AM && lastRefreshDateRef.current !== todayStr) {
-        console.log('🔔 Market open refresh triggered at 10:00 AM');
+      if (isWeekday && isMarketOpenWindow && lastRefreshDateRef.current !== todayStr) {
+        console.log('Market open refresh triggered at 9:30 AM ET');
         lastRefreshDateRef.current = todayStr;
         onRefresh();
       }
@@ -41,25 +53,16 @@ export const useMarketOpenRefresh = (onRefresh: () => void) => {
     return () => clearInterval(interval);
   }, [onRefresh]);
 
-  // Calculate time until next 10am for display purposes
+  // Calculate time until next 9:30am ET for display purposes
   const getTimeUntilNextMarketOpen = useCallback((): { hours: number; minutes: number } | null => {
     const now = new Date();
-    const day = now.getDay();
-
-    // Skip weekends
-    if (day === 0 || day === 6) {
-      return null;
-    }
-
-    const target = new Date(now);
-    target.setHours(10, 0, 0, 0);
-
-    // If we're past 10am today, return null (market already opened)
-    if (now >= target) {
-      return null;
-    }
-
-    const diffMs = target.getTime() - now.getTime();
+    const easternNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const day = easternNow.getDay();
+    if (day === 0 || day === 6) return null;
+    const targetEastern = new Date(easternNow);
+    targetEastern.setHours(9, 30, 0, 0);
+    if (easternNow >= targetEastern) return null;
+    const diffMs = targetEastern.getTime() - easternNow.getTime();
     const hours = Math.floor(diffMs / (1000 * 60 * 60));
     const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
 
@@ -70,12 +73,15 @@ export const useMarketOpenRefresh = (onRefresh: () => void) => {
 };
 
 export const useWebSocket = () => {
-  const [stocks, setStocks] = useState<StockAnalysis[]>([]);
+  const [progress, setProgress] = useState<AnalysisProgress | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const closedRef = useRef(false);
 
   const connect = useCallback(() => {
     try {
+      closedRef.current = false;
       const ws = new WebSocket(api.getWebSocketUrl());
 
       ws.onopen = () => {
@@ -87,8 +93,13 @@ export const useWebSocket = () => {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (Array.isArray(data)) {
-            setStocks(data);
+          if (
+            data &&
+            typeof data === 'object' &&
+            typeof data.total_stocks === 'number' &&
+            typeof data.analyzed === 'number'
+          ) {
+            setProgress(data as AnalysisProgress);
           }
         } catch (err) {
           console.error('Failed to parse WebSocket message:', err);
@@ -104,7 +115,9 @@ export const useWebSocket = () => {
       ws.onclose = () => {
         console.log('WebSocket disconnected');
         setIsConnected(false);
-        setTimeout(connect, 5000);
+        if (!closedRef.current) {
+          reconnectTimerRef.current = window.setTimeout(connect, 5000);
+        }
       };
 
       return ws;
@@ -112,7 +125,9 @@ export const useWebSocket = () => {
       console.error('Failed to create WebSocket:', err);
       setError('Failed to create WebSocket connection');
       setIsConnected(false);
-      setTimeout(connect, 5000);
+      if (!closedRef.current) {
+        reconnectTimerRef.current = window.setTimeout(connect, 5000);
+      }
       return null;
     }
   }, []);
@@ -120,11 +135,15 @@ export const useWebSocket = () => {
   useEffect(() => {
     const ws = connect();
     return () => {
+      closedRef.current = true;
+      if (reconnectTimerRef.current != null) {
+        window.clearTimeout(reconnectTimerRef.current);
+      }
       if (ws) {
         ws.close();
       }
     };
   }, [connect]);
 
-  return { stocks, isConnected, error };
+  return { progress, isConnected, error };
 };

@@ -31,6 +31,14 @@ import {
 import { WatchButton } from '../components/alerts/WatchButton';
 import { Surface, Num, SignalBadge } from '../components/ui/primitives';
 
+const toTradingViewSymbol = (symbol: string): string => {
+  const upper = symbol.toUpperCase();
+  if (upper.endsWith('.TO') || upper.endsWith('.V') || upper.endsWith('.NE') || upper.endsWith('.CN')) {
+    return `TSX:${upper.replace(/\.(TO|V|NE|CN)$/, '')}`;
+  }
+  return upper.replace('-', '.');
+};
+
 const TradingViewWidget: React.FC<{ symbol: string }> = ({ symbol }) => {
   useEffect(() => {
     const script = document.createElement('script');
@@ -38,7 +46,7 @@ const TradingViewWidget: React.FC<{ symbol: string }> = ({ symbol }) => {
     script.async = true;
     script.innerHTML = JSON.stringify({
       "autosize": true,
-      "symbol": symbol,
+      "symbol": toTradingViewSymbol(symbol),
       "interval": "D",
       "timezone": "Etc/UTC",
       "theme": "dark",
@@ -83,6 +91,24 @@ const StatCard: React.FC<{ label: string; value: string | number; color?: string
   </Surface>
 );
 
+const hasValue = (value: unknown): boolean => value !== null && value !== undefined && value !== '';
+const hasAnyValue = (...values: unknown[]): boolean => values.some(hasValue);
+
+const formatCompactNumber = (value: number): string =>
+  new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+
+const formatCompactCurrency = (value: number): string => `$${formatCompactNumber(value)}`;
+const formatPercent = (value: number): string => `${(value * 100).toFixed(1)}%`;
+
+const ProfileMetricCard: React.FC<{ label: string; value: string | number; color?: string }> = ({ label, value, color }) => (
+  <Box p={3} bg="bg.inset" borderWidth="1px" borderColor="border.subtle" borderRadius="md">
+    <Text color="fg.subtle" fontSize="xs">{label}</Text>
+    <Text className="num" data-num="" color={color || 'fg.default'} fontSize="lg" fontWeight="bold">
+      {value}
+    </Text>
+  </Box>
+);
+
 export const StockDetailPage: React.FC = () => {
   const { symbol } = useParams<{ symbol: string }>();
   const [stock, setStock] = useState<StockAnalysis | null>(null);
@@ -103,6 +129,7 @@ export const StockDetailPage: React.FC = () => {
   const [streamingModel, setStreamingModel] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const streamCleanupRef = useRef<(() => void) | null>(null);
+  const streamingModelRef = useRef<string | null>(null);
 
   const fetchStock = useCallback(async () => {
     if (!symbol) return;
@@ -145,6 +172,7 @@ export const StockDetailPage: React.FC = () => {
     setStreamingText('');
     setStreamingStatus(null);
     setStreamingModel(null);
+    streamingModelRef.current = null;
     setIsStreaming(true);
     setAiLoading(true);
     setAiAnalysis(null);
@@ -155,6 +183,7 @@ export const StockDetailPage: React.FC = () => {
         setStreamingStatus({ stage, message });
       },
       onModelInfo: (model) => {
+        streamingModelRef.current = model;
         setStreamingModel(model);
       },
       onContent: (delta) => {
@@ -169,7 +198,7 @@ export const StockDetailPage: React.FC = () => {
           success: true,
           symbol: doneSymbol,
           analysis: undefined, // Will use streamingText instead
-          model_used: streamingModel || undefined,
+          model_used: streamingModelRef.current || undefined,
           generated_at: new Date().toISOString(),
         });
       },
@@ -182,7 +211,7 @@ export const StockDetailPage: React.FC = () => {
     });
 
     streamCleanupRef.current = cleanup;
-  }, [symbol, streamingModel]);
+  }, [symbol]);
 
   const fetchCompanyProfile = useCallback(async () => {
     if (!symbol) return;
@@ -227,13 +256,6 @@ export const StockDetailPage: React.FC = () => {
     fetchCompanyProfile();
     fetchEarnings();
   }, [fetchStock, checkAIStatus, fetchCompanyProfile, fetchEarnings]);
-
-  // Auto-trigger AI analysis when enabled
-  useEffect(() => {
-    if (aiEnabled && stock && !aiAnalysis && !aiLoading && !streamingText) {
-      fetchAIAnalysis();
-    }
-  }, [aiEnabled, stock, aiAnalysis, aiLoading, streamingText, fetchAIAnalysis]);
 
   // Cleanup stream on unmount
   useEffect(() => {
@@ -283,6 +305,8 @@ export const StockDetailPage: React.FC = () => {
   const isPositive = (stock.price_change_percent ?? 0) >= 0;
   const rsiIntent = stock.rsi && stock.rsi < 30 ? 'up' : stock.rsi && stock.rsi > 70 ? 'down' : 'neutral';
   const displaySector = companyProfile?.sector || stock.sector || 'Unknown Sector';
+  const displayName = companyProfile?.long_name || companyProfile?.short_name;
+  const displayExchange = companyProfile?.exchange_name || companyProfile?.exchange || stock.technicals?.exchange || (stock.symbol.endsWith('.TO') || stock.symbol.endsWith('.V') ? 'TSX/TSXV' : undefined);
 
   return (
     <Container maxW="page" py={{ base: 5, md: 8 }}>
@@ -297,6 +321,7 @@ export const StockDetailPage: React.FC = () => {
           <VStack align="start" gap={3}>
             <HStack wrap="wrap">
               <Badge colorPalette={tierColor} size="md" variant="subtle">{getMarketCapTierLabel(tier)}</Badge>
+              {displayExchange && <SignalBadge tone="neutral" size="md">{displayExchange}</SignalBadge>}
               <SignalBadge tone="info" size="md">{displaySector}</SignalBadge>
               {stock.is_oversold && <SignalBadge tone="up" size="md">Oversold</SignalBadge>}
               {stock.is_overbought && <SignalBadge tone="down" size="md">Overbought</SignalBadge>}
@@ -305,6 +330,9 @@ export const StockDetailPage: React.FC = () => {
               <Heading size="2xl" color="fg.default" letterSpacing="tight">{stock.symbol}</Heading>
               <WatchButton symbol={stock.symbol} size="md" />
             </HStack>
+            {displayName && displayName.toUpperCase() !== stock.symbol.toUpperCase() && (
+              <Text color="fg.default" fontWeight="medium">{displayName}</Text>
+            )}
             <Text color="fg.muted" maxW="2xl">
               {companyProfile?.long_business_summary
                 ? companyProfile.long_business_summary.slice(0, 180) + (companyProfile.long_business_summary.length > 180 ? '...' : '')
@@ -551,6 +579,90 @@ export const StockDetailPage: React.FC = () => {
                   </Box>
                 )}
 
+                {hasAnyValue(
+                  companyProfile.market_cap,
+                  companyProfile.enterprise_value,
+                  companyProfile.beta,
+                  companyProfile.trailing_pe,
+                  companyProfile.forward_pe,
+                  companyProfile.peg_ratio,
+                  companyProfile.price_to_book,
+                  companyProfile.book_value,
+                  companyProfile.trailing_eps,
+                  companyProfile.forward_eps
+                ) && (
+                    <>
+                      <Text color="fg.muted" fontSize="sm">Valuation</Text>
+                      <SimpleGrid columns={{ base: 2, md: 4 }} gap={4} w="100%">
+                        {companyProfile.market_cap != null && (
+                          <ProfileMetricCard label="Market Cap" value={formatCompactCurrency(companyProfile.market_cap)} />
+                        )}
+                        {companyProfile.enterprise_value != null && (
+                          <ProfileMetricCard label="Enterprise Value" value={formatCompactCurrency(companyProfile.enterprise_value)} />
+                        )}
+                        {companyProfile.beta != null && (
+                          <ProfileMetricCard label="Beta" value={companyProfile.beta.toFixed(2)} />
+                        )}
+                        {companyProfile.trailing_pe != null && (
+                          <ProfileMetricCard label="Trailing P/E" value={companyProfile.trailing_pe.toFixed(2)} />
+                        )}
+                        {companyProfile.forward_pe != null && (
+                          <ProfileMetricCard label="Forward P/E" value={companyProfile.forward_pe.toFixed(2)} />
+                        )}
+                        {companyProfile.peg_ratio != null && (
+                          <ProfileMetricCard label="PEG Ratio" value={companyProfile.peg_ratio.toFixed(2)} />
+                        )}
+                        {companyProfile.price_to_book != null && (
+                          <ProfileMetricCard label="Price/Book" value={companyProfile.price_to_book.toFixed(2)} />
+                        )}
+                        {companyProfile.book_value != null && (
+                          <ProfileMetricCard label="Book Value" value={`$${companyProfile.book_value.toFixed(2)}`} />
+                        )}
+                        {companyProfile.trailing_eps != null && (
+                          <ProfileMetricCard label="Trailing EPS" value={`$${companyProfile.trailing_eps.toFixed(2)}`} />
+                        )}
+                        {companyProfile.forward_eps != null && (
+                          <ProfileMetricCard label="Forward EPS" value={`$${companyProfile.forward_eps.toFixed(2)}`} />
+                        )}
+                      </SimpleGrid>
+                      <Separator />
+                    </>
+                  )}
+
+                {hasAnyValue(
+                  companyProfile.average_volume,
+                  companyProfile.average_volume_10_day,
+                  companyProfile.fifty_two_week_high,
+                  companyProfile.fifty_two_week_low,
+                  companyProfile.fifty_day_average,
+                  companyProfile.two_hundred_day_average
+                ) && (
+                    <>
+                      <Text color="fg.muted" fontSize="sm">Trading Statistics</Text>
+                      <SimpleGrid columns={{ base: 2, md: 4 }} gap={4} w="100%">
+                        {companyProfile.average_volume != null && (
+                          <ProfileMetricCard label="Avg Volume" value={formatCompactNumber(companyProfile.average_volume)} />
+                        )}
+                        {companyProfile.average_volume_10_day != null && (
+                          <ProfileMetricCard label="10D Avg Volume" value={formatCompactNumber(companyProfile.average_volume_10_day)} />
+                        )}
+                        {companyProfile.fifty_two_week_low != null && (
+                          <ProfileMetricCard label="52W Low" value={`$${companyProfile.fifty_two_week_low.toFixed(2)}`} />
+                        )}
+                        {companyProfile.fifty_two_week_high != null && (
+                          <ProfileMetricCard label="52W High" value={`$${companyProfile.fifty_two_week_high.toFixed(2)}`} />
+                        )}
+                        {companyProfile.fifty_day_average != null && (
+                          <ProfileMetricCard label="50D Average" value={`$${companyProfile.fifty_day_average.toFixed(2)}`} />
+                        )}
+                        {companyProfile.two_hundred_day_average != null && (
+                          <ProfileMetricCard label="200D Average" value={`$${companyProfile.two_hundred_day_average.toFixed(2)}`} />
+                        )}
+                      </SimpleGrid>
+                      <Separator />
+                    </>
+                  )}
+
                 {/* Business Description */}
                 {companyProfile.long_business_summary && (
                   <Box>
@@ -564,7 +676,15 @@ export const StockDetailPage: React.FC = () => {
                 <Separator />
 
                 {/* Financial Metrics Grid */}
-                {(companyProfile.profit_margins || companyProfile.gross_margins || companyProfile.return_on_equity || companyProfile.total_revenue) && (
+                {hasAnyValue(
+                  companyProfile.profit_margins,
+                  companyProfile.gross_margins,
+                  companyProfile.return_on_equity,
+                  companyProfile.total_revenue,
+                  companyProfile.revenue_growth,
+                  companyProfile.earnings_growth,
+                  companyProfile.net_income_to_common
+                ) && (
                   <>
                     <Text color="fg.muted" fontSize="sm">Financial Metrics</Text>
                     <SimpleGrid columns={{ base: 2, md: 4 }} gap={4} w="100%">
@@ -625,13 +745,103 @@ export const StockDetailPage: React.FC = () => {
                           </Text>
                         </Box>
                       )}
+                      {companyProfile.revenue_growth != null && (
+                        <ProfileMetricCard
+                          label="Revenue Growth"
+                          value={formatPercent(companyProfile.revenue_growth)}
+                          color={companyProfile.revenue_growth > 0 ? 'signal.up.fg' : 'signal.down.fg'}
+                        />
+                      )}
+                      {companyProfile.earnings_growth != null && (
+                        <ProfileMetricCard
+                          label="Earnings Growth"
+                          value={formatPercent(companyProfile.earnings_growth)}
+                          color={companyProfile.earnings_growth > 0 ? 'signal.up.fg' : 'signal.down.fg'}
+                        />
+                      )}
+                      {companyProfile.net_income_to_common != null && (
+                        <ProfileMetricCard label="Net Income" value={formatCompactCurrency(companyProfile.net_income_to_common)} />
+                      )}
                     </SimpleGrid>
                     <Separator />
                   </>
                 )}
 
+                {hasAnyValue(companyProfile.dividend_rate, companyProfile.dividend_yield, companyProfile.payout_ratio) && (
+                  <>
+                    <Text color="fg.muted" fontSize="sm">Dividends</Text>
+                    <SimpleGrid columns={{ base: 2, md: 4 }} gap={4} w="100%">
+                      {companyProfile.dividend_rate != null && (
+                        <ProfileMetricCard label="Dividend Rate" value={`$${companyProfile.dividend_rate.toFixed(2)}`} />
+                      )}
+                      {companyProfile.dividend_yield != null && (
+                        <ProfileMetricCard label="Dividend Yield" value={formatPercent(companyProfile.dividend_yield)} />
+                      )}
+                      {companyProfile.payout_ratio != null && (
+                        <ProfileMetricCard label="Payout Ratio" value={formatPercent(companyProfile.payout_ratio)} />
+                      )}
+                    </SimpleGrid>
+                    <Separator />
+                  </>
+                )}
+
+                {hasAnyValue(
+                  companyProfile.shares_outstanding,
+                  companyProfile.float_shares,
+                  companyProfile.held_percent_insiders,
+                  companyProfile.held_percent_institutions
+                ) && (
+                    <>
+                      <Text color="fg.muted" fontSize="sm">Share Structure</Text>
+                      <SimpleGrid columns={{ base: 2, md: 4 }} gap={4} w="100%">
+                        {companyProfile.shares_outstanding != null && (
+                          <ProfileMetricCard label="Shares Outstanding" value={formatCompactNumber(companyProfile.shares_outstanding)} />
+                        )}
+                        {companyProfile.float_shares != null && (
+                          <ProfileMetricCard label="Float Shares" value={formatCompactNumber(companyProfile.float_shares)} />
+                        )}
+                        {companyProfile.held_percent_insiders != null && (
+                          <ProfileMetricCard label="Insider Held" value={formatPercent(companyProfile.held_percent_insiders)} />
+                        )}
+                        {companyProfile.held_percent_institutions != null && (
+                          <ProfileMetricCard label="Institution Held" value={formatPercent(companyProfile.held_percent_institutions)} />
+                        )}
+                      </SimpleGrid>
+                      <Separator />
+                    </>
+                  )}
+
                 {/* Key Info Grid */}
                 <SimpleGrid columns={{ base: 1, md: 2 }} gap={4} w="100%">
+                  {(companyProfile.long_name || companyProfile.short_name) && (
+                    <Box>
+                      <Text color="fg.muted" fontSize="sm">Company Name</Text>
+                      <Text color="fg.default" fontWeight="semibold" mt={1}>
+                        {companyProfile.long_name || companyProfile.short_name}
+                      </Text>
+                    </Box>
+                  )}
+
+                  {(companyProfile.exchange_name || companyProfile.exchange || companyProfile.currency || companyProfile.quote_type) && (
+                    <Box>
+                      <Text color="fg.muted" fontSize="sm">Listing</Text>
+                      <HStack mt={1} wrap="wrap">
+                        {companyProfile.exchange_name && (
+                          <Badge colorPalette="gray">{companyProfile.exchange_name}</Badge>
+                        )}
+                        {companyProfile.exchange && (
+                          <Badge colorPalette="gray">{companyProfile.exchange}</Badge>
+                        )}
+                        {companyProfile.currency && (
+                          <Badge colorPalette="green">{companyProfile.currency}</Badge>
+                        )}
+                        {companyProfile.quote_type && (
+                          <Badge colorPalette="orange">{companyProfile.quote_type}</Badge>
+                        )}
+                      </HStack>
+                    </Box>
+                  )}
+
                   {(companyProfile.industry || companyProfile.sector) && (
                     <Box>
                       <Text color="fg.muted" fontSize="sm">Industry / Sector</Text>

@@ -15,12 +15,10 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 
 # Create dummy main to cache dependencies
-# Remove and regenerate lock file to avoid checksum mismatches
 # Use --bin to only build main binary (skip dev tools like rate_limit_tester)
 RUN mkdir src && \
     echo "fn main() {}" > src/main.rs && \
-    rm -f Cargo.lock && \
-    cargo build --release --bin auto_analyser_2 && \
+    cargo build --release --locked --bin auto_analyser_2 && \
     rm -rf src
 
 # Copy source code
@@ -28,7 +26,7 @@ COPY src ./src
 COPY examples ./examples
 
 # Build for release (touch to force rebuild)
-RUN touch src/main.rs && cargo build --release --bin auto_analyser_2
+RUN touch src/main.rs && cargo build --release --locked --bin auto_analyser_2
 
 # Runtime stage
 FROM debian:bookworm-slim

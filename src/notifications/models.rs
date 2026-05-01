@@ -88,28 +88,56 @@ pub struct Watchlist {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Condition {
-    RsiBelow { value: f64 },
-    RsiAbove { value: f64 },
-    PriceBelow { value: f64 },
-    PriceAbove { value: f64 },
-    PriceChangePctBelow { value: f64 },
-    PriceChangePctAbove { value: f64 },
+    RsiBelow {
+        value: f64,
+    },
+    RsiAbove {
+        value: f64,
+    },
+    PriceBelow {
+        value: f64,
+    },
+    PriceAbove {
+        value: f64,
+    },
+    PriceChangePctBelow {
+        value: f64,
+    },
+    PriceChangePctAbove {
+        value: f64,
+    },
     /// True when `(52w_low - price).abs() / 52w_low <= within_pct / 100`
     /// — i.e. we're within `within_pct` of the 52-week low.
-    Near52WeekLow { within_pct: f64 },
-    Near52WeekHigh { within_pct: f64 },
+    Near52WeekLow {
+        within_pct: f64,
+    },
+    Near52WeekHigh {
+        within_pct: f64,
+    },
     /// Requires previous cycle's MACD histogram (via `alert_state.last_macd_histogram`).
     MacdBullishCross,
     MacdBearishCross,
-    StochasticKBelow { value: f64 },
-    StochasticKAbove { value: f64 },
-    BollingerBandwidthBelow { value: f64 },
+    StochasticKBelow {
+        value: f64,
+    },
+    StochasticKAbove {
+        value: f64,
+    },
+    BollingerBandwidthBelow {
+        value: f64,
+    },
     IsOversold,
     IsOverbought,
-    VolumeAbove { value: f64 },
-    SectorEquals { sector: String },
+    VolumeAbove {
+        value: f64,
+    },
+    SectorEquals {
+        sector: String,
+    },
     /// `(52w_high - price) / 52w_high * 100 >= value`
-    DropFromHighPct { value: f64 },
+    DropFromHighPct {
+        value: f64,
+    },
 }
 
 /// AND/OR/NOT tree of conditions. Stored as JSON under `conditions`.

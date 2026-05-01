@@ -229,6 +229,7 @@ export const StocksPage: React.FC = () => {
       only_oversold: searchParams.get('only_oversold') === 'true',
       only_overbought: searchParams.get('only_overbought') === 'true',
       symbol_search: debouncedSearch || undefined,
+      max_abs_price_change_percent: settings.maxPriceChangePercent ?? undefined,
     };
   }, [searchParams, settings, debouncedSearch]);
 
@@ -238,27 +239,18 @@ export const StocksPage: React.FC = () => {
       const filter = getFilterFromParams();
       const response: FilterResponse = await api.filterStocks(filter);
       
-      // Apply max price change filter client-side if global setting is set
-      let filteredStocks = response.stocks;
-      if (settings.maxPriceChangePercent) {
-        filteredStocks = filteredStocks.filter(s => 
-          s.price_change_percent === undefined || 
-          Math.abs(s.price_change_percent) <= settings.maxPriceChangePercent!
-        );
-      }
-      
-      setStocks(filteredStocks);
+      setStocks(response.stocks);
       setPagination(response.pagination);
     } catch (err) {
       console.error('Failed to fetch stocks:', err);
     } finally {
       setLoading(false);
     }
-  }, [getFilterFromParams, settings]);
+  }, [getFilterFromParams]);
 
   useEffect(() => {
     fetchStocks();
-  }, [fetchStocks, settings]);
+  }, [fetchStocks]);
 
   const handlePageChange = (newPage: number) => {
     const params = new URLSearchParams(searchParams);

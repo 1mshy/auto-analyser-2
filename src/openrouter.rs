@@ -39,8 +39,11 @@ const FALLBACK_FREE_MODELS: &[&str] = &[
 /// Fetch free models from OpenRouter API, sorted by context length (largest first)
 async fn fetch_free_models() -> Result<Vec<String>> {
     info!("Fetching available free models from OpenRouter API...");
-    
-    let client = reqwest::Client::new();
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| anyhow!("Failed to build OpenRouter HTTP client: {}", e))?;
     let response = client
         .get("https://openrouter.ai/api/v1/models")
         .header("Content-Type", "application/json")
@@ -49,7 +52,10 @@ async fn fetch_free_models() -> Result<Vec<String>> {
         .map_err(|e| anyhow!("Failed to fetch models: {}", e))?;
 
     if !response.status().is_success() {
-        return Err(anyhow!("OpenRouter API returned status: {}", response.status()));
+        return Err(anyhow!(
+            "OpenRouter API returned status: {}",
+            response.status()
+        ));
     }
 
     let models_response: ModelsResponse = response
@@ -70,8 +76,11 @@ async fn fetch_free_models() -> Result<Vec<String>> {
 
     let sorted_models: Vec<String> = free_models.into_iter().map(|(id, _)| id).collect();
 
-    info!("Found {} free models from OpenRouter API (sorted by context length)", sorted_models.len());
-    
+    info!(
+        "Found {} free models from OpenRouter API (sorted by context length)",
+        sorted_models.len()
+    );
+
     Ok(sorted_models)
 }
 
@@ -150,7 +159,9 @@ impl OpenRouterClient {
     /// Analyze a stock using AI, with automatic model fallback on rate limits
     pub async fn analyze_stock(&self, analysis: &StockAnalysis) -> Result<AIAnalysisResponse> {
         if !self.is_enabled() {
-            return Err(anyhow!("OpenRouter is not enabled or API key not configured"));
+            return Err(anyhow!(
+                "OpenRouter is not enabled or API key not configured"
+            ));
         }
 
         // Fetch available free models (cached after first call)
@@ -166,7 +177,7 @@ impl OpenRouterClient {
         while attempts < max_attempts {
             let current_idx = self.current_model_index();
             let model = &free_models[current_idx % free_models.len()];
-            
+
             match self.send_request(model, &prompt).await {
                 Ok(response) => {
                     return Ok(AIAnalysisResponse {
@@ -178,11 +189,11 @@ impl OpenRouterClient {
                 }
                 Err(e) => {
                     let err_msg = e.to_string().to_lowercase();
-                    
+
                     // Check for rate limit, quota errors, or parsing errors
                     // Parsing errors can occur when model response format is incompatible
-                    if err_msg.contains("rate") 
-                        || err_msg.contains("limit") 
+                    if err_msg.contains("rate")
+                        || err_msg.contains("limit")
                         || err_msg.contains("429")
                         || err_msg.contains("quota")
                         || err_msg.contains("exceeded")
@@ -193,7 +204,10 @@ impl OpenRouterClient {
                     {
                         let new_idx = self.advance_model_index();
                         let next_model = &free_models[new_idx % free_models.len()];
-                        warn!("Error on model {} (switching to {}): {}", model, next_model, e);
+                        warn!(
+                            "Error on model {} (switching to {}): {}",
+                            model, next_model, e
+                        );
                         attempts += 1;
                     } else {
                         // Non-recoverable error, return immediately
@@ -203,7 +217,10 @@ impl OpenRouterClient {
             }
         }
 
-        Err(anyhow!("All {} free models are rate limited. Try again later.", free_models.len()))
+        Err(anyhow!(
+            "All {} free models are rate limited. Try again later.",
+            free_models.len()
+        ))
     }
 
     /// Build the analysis prompt from stock data
@@ -251,7 +268,7 @@ impl OpenRouterClient {
         // Add technicals if available
         if let Some(ref technicals) = analysis.technicals {
             prompt.push_str("\n**Additional Technicals:**\n");
-            
+
             if let Some(ref sector) = technicals.sector {
                 prompt.push_str(&format!("- Sector: {}\n", sector));
             }
@@ -337,7 +354,9 @@ impl OpenRouterClient {
         use async_stream::stream;
 
         if !self.is_enabled() {
-            return Err(anyhow!("OpenRouter is not enabled or API key not configured"));
+            return Err(anyhow!(
+                "OpenRouter is not enabled or API key not configured"
+            ));
         }
 
         let free_models = get_free_models().await;
@@ -360,7 +379,7 @@ impl OpenRouterClient {
 
             // Build the streaming request manually since openrouter-rs doesn't support streaming
             let client = reqwest::Client::new();
-            
+
             yield StreamEvent::Status {
                 stage: "analyzing".to_string(),
                 message: format!("Analyzing {} with {}", symbol, model),
@@ -407,19 +426,19 @@ impl OpenRouterClient {
                     // Process SSE stream from OpenRouter
                     let mut stream = resp.bytes_stream();
                     let mut buffer = String::new();
-                    
+
                     use futures::StreamExt;
                     while let Some(chunk_result) = stream.next().await {
                         match chunk_result {
                             Ok(bytes) => {
                                 let text = String::from_utf8_lossy(&bytes);
                                 buffer.push_str(&text);
-                                
+
                                 // Process complete SSE lines
                                 while let Some(line_end) = buffer.find('\n') {
                                     let line = buffer[..line_end].trim().to_string();
                                     buffer = buffer[line_end + 1..].to_string();
-                                    
+
                                     if line.starts_with("data: ") {
                                         let data = &line[6..];
                                         if data == "[DONE]" {
@@ -428,7 +447,7 @@ impl OpenRouterClient {
                                             };
                                             return;
                                         }
-                                        
+
                                         // Parse the SSE data as JSON
                                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
                                             if let Some(content) = json["choices"][0]["delta"]["content"].as_str() {
@@ -477,26 +496,15 @@ impl OpenRouterClient {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEvent {
     /// Status update about current processing stage
-    Status {
-        stage: String,
-        message: String,
-    },
+    Status { stage: String, message: String },
     /// Information about which AI model is being used
-    ModelInfo {
-        model: String,
-    },
+    ModelInfo { model: String },
     /// A chunk of the AI response content
-    Content {
-        delta: String,
-    },
+    Content { delta: String },
     /// Analysis is complete
-    Done {
-        symbol: String,
-    },
+    Done { symbol: String },
     /// An error occurred
-    Error {
-        message: String,
-    },
+    Error { message: String },
 }
 
 #[cfg(test)]
@@ -532,15 +540,15 @@ mod tests {
     #[test]
     fn test_model_index_cycling() {
         let client = OpenRouterClient::new(Some("test-key".to_string()), true);
-        
+
         // Initial index should be 0
         assert_eq!(client.current_model_index(), 0);
-        
+
         // Advance the index
         let new_idx = client.advance_model_index();
         assert_eq!(new_idx, 1);
         assert_eq!(client.current_model_index(), 1);
-        
+
         // Advance again
         let new_idx = client.advance_model_index();
         assert_eq!(new_idx, 2);
@@ -550,12 +558,12 @@ mod tests {
     #[test]
     fn test_model_index_wraps_around() {
         let client = OpenRouterClient::new(Some("test-key".to_string()), true);
-        
+
         // Cycle through model indices (modulo operation happens at access time)
         for _ in 0..10 {
             client.advance_model_index();
         }
-        
+
         // Index should be 10, but when accessing models, it wraps via modulo
         let idx = client.current_model_index();
         assert_eq!(idx, 10);
@@ -565,7 +573,7 @@ mod tests {
     #[test]
     fn test_build_analysis_prompt() {
         let client = OpenRouterClient::new(Some("test-key".to_string()), true);
-        
+
         let analysis = StockAnalysis {
             id: None,
             symbol: "AAPL".to_string(),
@@ -594,7 +602,7 @@ mod tests {
         };
 
         let prompt = client.build_analysis_prompt(&analysis);
-        
+
         assert!(prompt.contains("AAPL"));
         assert!(prompt.contains("175.50"));
         assert!(prompt.contains("RSI"));

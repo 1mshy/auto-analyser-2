@@ -28,7 +28,11 @@ impl DiscordChannel {
     fn build_embed(&self, msg: &RenderedMessage) -> Value {
         let change_pct = msg.snapshot.price_change_percent.unwrap_or(0.0);
         // Discord embed colors are ints (0xRRGGBB).
-        let color: i64 = if change_pct >= 0.0 { 0x22c55e } else { 0xef4444 };
+        let color: i64 = if change_pct >= 0.0 {
+            0x22c55e
+        } else {
+            0xef4444
+        };
 
         let mut fields: Vec<Value> = Vec::new();
 
@@ -130,10 +134,8 @@ impl DiscordChannel {
                             attempt + 1,
                             retry_after
                         );
-                        tokio::time::sleep(Duration::from_millis(
-                            (retry_after * 1000.0) as u64,
-                        ))
-                        .await;
+                        tokio::time::sleep(Duration::from_millis((retry_after * 1000.0) as u64))
+                            .await;
                         continue;
                     }
                     let body = r.text().await.unwrap_or_default();

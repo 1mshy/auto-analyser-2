@@ -42,10 +42,7 @@ pub trait Channel: Send + Sync {
 /// Returns a `Box<dyn Channel>`. If the channel is globally disabled (its
 /// `enabled` flag is `false`) the caller is expected to skip it — the factory
 /// does not filter here because test-sends ignore the flag on purpose.
-pub fn build_channel(
-    channel: &NotificationChannel,
-    http: reqwest::Client,
-) -> Box<dyn Channel> {
+pub fn build_channel(channel: &NotificationChannel, http: reqwest::Client) -> Box<dyn Channel> {
     match &channel.config {
         ChannelConfig::Discord(cfg) => Box::new(discord::DiscordChannel::new(cfg.clone(), http)),
     }

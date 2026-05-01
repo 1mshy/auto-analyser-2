@@ -4,12 +4,13 @@ mod async_fetcher;
 mod cache;
 mod config;
 mod db;
-mod indicators;
 mod indexes;
+mod indicators;
 mod models;
 mod nasdaq;
 mod notifications;
 mod openrouter;
+mod symbols;
 mod yahoo;
 
 use analysis::AnalysisEngine;
@@ -20,9 +21,9 @@ use db::MongoDB;
 use nasdaq::NasdaqClient;
 use notifications::AlertEngine;
 use openrouter::OpenRouterClient;
-use yahoo::YahooFinanceClient;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use yahoo::YahooFinanceClient;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -48,8 +49,11 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize cache
     let cache = CacheLayer::new(config.cache_ttl_secs, config.news_cache_ttl_secs);
-    tracing::info!("Cache layer initialized with TTL: {}s (news: {}s)", 
-        config.cache_ttl_secs, config.news_cache_ttl_secs);
+    tracing::info!(
+        "Cache layer initialized with TTL: {}s (news: {}s)",
+        config.cache_ttl_secs,
+        config.news_cache_ttl_secs
+    );
 
     // Initialize Yahoo Finance client
     let yahoo_client = YahooFinanceClient::new();
@@ -61,9 +65,16 @@ async fn main() -> anyhow::Result<()> {
         config.openrouter_enabled,
     );
     if openrouter_client.is_enabled() {
-        let models = openrouter::get_free_models().await;
-        tracing::info!("🤖 OpenRouter AI client enabled with {} free models", 
-            models.len());
+        tracing::info!(
+            "🤖 OpenRouter AI client enabled; model discovery will run in the background"
+        );
+        tokio::spawn(async {
+            let models = openrouter::get_free_models().await;
+            tracing::info!(
+                "🤖 OpenRouter model discovery found {} free models",
+                models.len()
+            );
+        });
     } else {
         tracing::info!("🤖 OpenRouter AI disabled (set OPENROUTER_API_KEY_STOCKS to enable)");
     }
@@ -84,14 +95,24 @@ async fn main() -> anyhow::Result<()> {
         config.analysis_interval_secs,
         config.yahoo_request_delay_ms,
         config.yahoo_concurrency,
+        yahoo_client.clone(),
         config.nasdaq_request_delay_ms,
         config.min_market_cap_usd,
         config.max_abs_price_change_percent,
+        config.canadian_symbols.clone(),
         Some(alert_engine.clone()),
     );
     let progress = analysis_engine.get_progress();
-    tracing::info!("Yahoo Finance: concurrency={}, delay={}ms", config.yahoo_concurrency, config.yahoo_request_delay_ms);
+    tracing::info!(
+        "Yahoo Finance: concurrency={}, delay={}ms",
+        config.yahoo_concurrency,
+        config.yahoo_request_delay_ms
+    );
     tracing::info!("NASDAQ request delay: {}ms", config.nasdaq_request_delay_ms);
+    tracing::info!(
+        "Canadian universe symbols configured: {}",
+        config.canadian_symbols.len()
+    );
 
     // Load existing data from MongoDB and populate cache
     tracing::info!("📥 Loading existing stock data from database...");
@@ -141,18 +162,18 @@ async fn main() -> anyhow::Result<()> {
     // Start HTTP server
     let addr = format!("{}:{}", config.server_host, config.server_port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    
+
     tracing::info!("🌐 Server listening on http://{}", addr);
     tracing::info!("📡 WebSocket endpoint: ws://{}/ws", addr);
     tracing::info!("📊 API docs: http://{}/", addr);
-    tracing::info!("🔄 Analysis interval: {}s ({}h)", 
+    tracing::info!(
+        "🔄 Analysis interval: {}s ({}h)",
         config.analysis_interval_secs,
         config.analysis_interval_secs / 3600
     );
 
     // Run server
-    axum::serve(listener, app)
-        .await?;
+    axum::serve(listener, app).await?;
 
     // Wait for analysis engine (runs forever)
     analysis_handle.await?;

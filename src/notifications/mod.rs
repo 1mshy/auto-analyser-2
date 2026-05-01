@@ -45,11 +45,7 @@ struct AlertEngineInner {
 }
 
 impl AlertEngine {
-    pub async fn new(
-        db: MongoDB,
-        enabled: bool,
-        public_base_url: Option<String>,
-    ) -> Result<Self> {
+    pub async fn new(db: MongoDB, enabled: bool, public_base_url: Option<String>) -> Result<Self> {
         let repo = NotificationsRepo::new(db);
         // Best-effort: index creation is idempotent but we don't want to
         // hard-fail the app startup if Mongo is transient.
@@ -97,6 +93,7 @@ impl AlertEngine {
     /// notifications are globally disabled.
     pub async fn evaluate_and_dispatch(&self, analyses: &[StockAnalysis]) -> Result<()> {
         if !self.inner.enabled {
+            self.inner.evaluator.refresh_cycle_state(analyses).await?;
             return Ok(());
         }
         let pending = self.inner.evaluator.evaluate_cycle(analyses).await?;
@@ -108,10 +105,7 @@ impl AlertEngine {
     }
 
     /// Test a rule end-to-end against a caller-supplied snapshot.
-    pub async fn test_rule(
-        &self,
-        pending: PendingNotification,
-    ) -> Result<Vec<DeliveryResult>> {
+    pub async fn test_rule(&self, pending: PendingNotification) -> Result<Vec<DeliveryResult>> {
         self.inner.dispatcher.dispatch_test(pending).await
     }
 }

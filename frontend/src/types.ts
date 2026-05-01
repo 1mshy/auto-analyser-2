@@ -98,6 +98,9 @@ export interface NasdaqTechnicals {
   ex_dividend_date?: string;
   dividend_pay_date?: string;
   current_yield?: number;
+  last_sale_price?: number;
+  net_change?: number;
+  percentage_change?: number;
 }
 
 export interface NasdaqNewsItem {
@@ -109,6 +112,13 @@ export interface NasdaqNewsItem {
 }
 
 export interface CompanyProfile {
+  // Price/identity fields
+  short_name?: string;
+  long_name?: string;
+  exchange?: string;
+  exchange_name?: string;
+  quote_type?: string;
+  currency?: string;
   // Asset Profile fields
   long_business_summary?: string;
   industry?: string;
@@ -133,6 +143,33 @@ export interface CompanyProfile {
   operating_margins?: number;
   return_on_equity?: number;
   free_cash_flow?: number;
+  revenue_growth?: number;
+  earnings_growth?: number;
+  // Summary/detail and key statistics fields
+  market_cap?: number;
+  enterprise_value?: number;
+  beta?: number;
+  trailing_pe?: number;
+  forward_pe?: number;
+  peg_ratio?: number;
+  price_to_book?: number;
+  book_value?: number;
+  trailing_eps?: number;
+  forward_eps?: number;
+  dividend_rate?: number;
+  dividend_yield?: number;
+  payout_ratio?: number;
+  average_volume?: number;
+  average_volume_10_day?: number;
+  fifty_two_week_high?: number;
+  fifty_two_week_low?: number;
+  fifty_day_average?: number;
+  two_hundred_day_average?: number;
+  shares_outstanding?: number;
+  float_shares?: number;
+  held_percent_insiders?: number;
+  held_percent_institutions?: number;
+  net_income_to_common?: number;
 }
 
 export interface StockFilter {
@@ -196,9 +233,32 @@ export interface AIAnalysisResponse {
 export interface AnalysisProgress {
   total_stocks: number;
   analyzed: number;
-  current_symbol?: string;
+  current_symbol?: string | null;
   cycle_start: string;
   errors: number;
+  last_cycle_started?: string | null;
+  last_cycle_completed?: string | null;
+  last_successful_cycle?: string | null;
+  last_error?: string | null;
+  completion_percentage?: number;
+}
+
+export interface HealthStatus {
+  status: string;
+  database: string;
+  total_analyses: number;
+  last_cycle_started?: string | null;
+  last_cycle_completed?: string | null;
+  last_successful_cycle?: string | null;
+  last_error?: string | null;
+}
+
+export interface EarningsCalendarRow {
+  symbol: string;
+  sector?: string;
+  market_cap?: number;
+  price: number;
+  earnings: EarningsData;
 }
 
 // Streaming AI Analysis Event Types

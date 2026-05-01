@@ -196,7 +196,7 @@ Environment variable management:
 | `MONGODB_URI` | `mongodb://localhost:27017` | MongoDB connection string |
 | `DATABASE_NAME` | `stock_analyzer` | Database name |
 | `SERVER_HOST` | `127.0.0.1` | HTTP server bind address |
-| `SERVER_PORT` | `3000` | HTTP server port |
+| `SERVER_PORT` | `3333` | HTTP server port in `.env.example` / Docker-compatible local setup |
 | `ANALYSIS_INTERVAL_SECS` | `3600` | Seconds between cycles (1 hour) |
 | `CACHE_TTL_SECS` | `300` | Cache expiration (5 minutes) |
 

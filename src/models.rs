@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use mongodb::bson::oid::ObjectId;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Stock {
@@ -139,8 +139,8 @@ pub struct StockFilter {
     /// Keeps runaway day-gainers out of the feed.
     pub max_abs_price_change_percent: Option<f64>,
     // Sorting options
-    pub sort_by: Option<String>,      // "market_cap", "price_change_percent", "rsi", "price"
-    pub sort_order: Option<String>,   // "asc" or "desc"
+    pub sort_by: Option<String>, // "market_cap", "price_change_percent", "rsi", "price"
+    pub sort_order: Option<String>, // "asc" or "desc"
     // Pagination
     pub page: Option<u32>,
     pub page_size: Option<u32>,
@@ -153,7 +153,7 @@ pub struct MarketSummary {
     pub top_losers: Vec<StockAnalysis>,
     pub most_oversold: Vec<StockAnalysis>,
     pub most_overbought: Vec<StockAnalysis>,
-    pub mega_cap_highlights: Vec<StockAnalysis>,  // >$200B
+    pub mega_cap_highlights: Vec<StockAnalysis>, // >$200B
     pub generated_at: DateTime<Utc>,
 }
 
@@ -164,6 +164,10 @@ pub struct AnalysisProgress {
     pub current_symbol: Option<String>,
     pub cycle_start: DateTime<Utc>,
     pub errors: usize,
+    pub last_cycle_started: Option<DateTime<Utc>>,
+    pub last_cycle_completed: Option<DateTime<Utc>>,
+    pub last_successful_cycle: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
 }
 
 // NASDAQ Technicals (from /api/quote/{symbol}/info endpoint)
@@ -203,9 +207,16 @@ pub struct NasdaqNewsItem {
     pub ago: Option<String>,
 }
 
-// Company Profile from Yahoo Finance quoteSummary (assetProfile + financialData)
+// Company Profile from Yahoo Finance quoteSummary
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompanyProfile {
+    // Price/identity fields
+    pub short_name: Option<String>,
+    pub long_name: Option<String>,
+    pub exchange: Option<String>,
+    pub exchange_name: Option<String>,
+    pub quote_type: Option<String>,
+    pub currency: Option<String>,
     // Asset Profile fields
     pub long_business_summary: Option<String>,
     pub industry: Option<String>,
@@ -230,6 +241,33 @@ pub struct CompanyProfile {
     pub operating_margins: Option<f64>,
     pub return_on_equity: Option<f64>,
     pub free_cash_flow: Option<f64>,
+    pub revenue_growth: Option<f64>,
+    pub earnings_growth: Option<f64>,
+    // Summary/detail and key statistics fields
+    pub market_cap: Option<f64>,
+    pub enterprise_value: Option<f64>,
+    pub beta: Option<f64>,
+    pub trailing_pe: Option<f64>,
+    pub forward_pe: Option<f64>,
+    pub peg_ratio: Option<f64>,
+    pub price_to_book: Option<f64>,
+    pub book_value: Option<f64>,
+    pub trailing_eps: Option<f64>,
+    pub forward_eps: Option<f64>,
+    pub dividend_rate: Option<f64>,
+    pub dividend_yield: Option<f64>,
+    pub payout_ratio: Option<f64>,
+    pub average_volume: Option<f64>,
+    pub average_volume_10_day: Option<f64>,
+    pub fifty_two_week_high: Option<f64>,
+    pub fifty_two_week_low: Option<f64>,
+    pub fifty_day_average: Option<f64>,
+    pub two_hundred_day_average: Option<f64>,
+    pub shares_outstanding: Option<f64>,
+    pub float_shares: Option<f64>,
+    pub held_percent_insiders: Option<f64>,
+    pub held_percent_institutions: Option<f64>,
+    pub net_income_to_common: Option<f64>,
 }
 
 // AI Analysis Response
@@ -356,7 +394,7 @@ mod tests {
 
         let json = serde_json::to_string(&macd).unwrap();
         let deserialized: MACDIndicator = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.macd_line, 2.5);
         assert_eq!(deserialized.signal_line, 2.0);
         assert_eq!(deserialized.histogram, 0.5);
@@ -375,7 +413,7 @@ mod tests {
 
         let json = serde_json::to_string(&price).unwrap();
         let deserialized: HistoricalPrice = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.open, 100.0);
         assert_eq!(deserialized.close, 103.0);
     }
@@ -388,6 +426,10 @@ mod tests {
             current_symbol: Some("AAPL".to_string()),
             cycle_start: Utc::now(),
             errors: 2,
+            last_cycle_started: None,
+            last_cycle_completed: None,
+            last_successful_cycle: None,
+            last_error: None,
         };
 
         let json = serde_json::to_string(&progress).unwrap();

@@ -1,7 +1,7 @@
 import axios from 'axios';
-import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig } from './types';
+import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus } from './types';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3333';
+const API_BASE_URL = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
 
 export interface FilterResponse {
   stocks: StockAnalysis[];
@@ -146,16 +146,23 @@ export const api = {
   },
 
   // Health check
-  healthCheck: async (): Promise<{ status: string }> => {
+  healthCheck: async (): Promise<HealthStatus> => {
     const response = await axios.get(`${API_BASE_URL}/health`);
     return response.data;
   },
 
   // WebSocket URL
   getWebSocketUrl: (): string => {
+    const configured = process.env.REACT_APP_WS_URL;
+    if (configured) {
+      if (configured.startsWith('ws://') || configured.startsWith('wss://')) {
+        return configured;
+      }
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${wsProtocol}//${configured.replace(/\/$/, '')}/ws`;
+    }
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = process.env.REACT_APP_WS_URL || 'localhost:3333';
-    return `${wsProtocol}//${host}/ws`;
+    return `${wsProtocol}//${window.location.host}/ws`;
   },
 
   // Get list of available market indexes
@@ -190,7 +197,7 @@ export const api = {
   },
 
   // Get earnings calendar
-  getEarnings: async (daysAhead?: number): Promise<EarningsData[]> => {
+  getEarnings: async (daysAhead?: number): Promise<EarningsCalendarRow[]> => {
     const url = daysAhead
       ? `${API_BASE_URL}/api/earnings?days_ahead=${daysAhead}`
       : `${API_BASE_URL}/api/earnings`;

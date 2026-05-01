@@ -59,7 +59,7 @@ export const ScreenerPage: React.FC = () => {
   const [sortBy, setSortBy] = useState('market_cap');
   const [sortOrder, setSortOrder] = useState('desc');
 
-  const buildFilter = useCallback((): StockFilter => ({
+  const buildFilter = useCallback((overridePage?: number): StockFilter => ({
     min_rsi: minRsi ? parseFloat(minRsi) : undefined,
     max_rsi: maxRsi ? parseFloat(maxRsi) : undefined,
     min_stochastic_k: minStochK ? parseFloat(minStochK) : undefined,
@@ -71,14 +71,14 @@ export const ScreenerPage: React.FC = () => {
     only_overbought: onlyOverbought || undefined,
     sort_by: sortBy,
     sort_order: sortOrder,
-    page,
+    page: overridePage ?? page,
     page_size: 50,
   }), [minRsi, maxRsi, minStochK, maxStochK, minBandwidth, maxBandwidth, minMarketCap, onlyOversold, onlyOverbought, sortBy, sortOrder, page]);
 
-  const runScreener = useCallback(async () => {
+  const runScreener = useCallback(async (overridePage?: number) => {
     try {
       setLoading(true);
-      const filter = buildFilter();
+      const filter = buildFilter(overridePage);
       const result: FilterResponse = await api.filterStocks(filter);
       setStocks(result.stocks);
       setTotal(result.pagination.total);
@@ -224,7 +224,7 @@ export const ScreenerPage: React.FC = () => {
           </Flex>
 
           <Flex justify="space-between" wrap="wrap" gap={3} align="center">
-            <Button colorPalette="blue" onClick={() => { setPage(1); runScreener(); }}>
+            <Button colorPalette="blue" onClick={() => { setPage(1); runScreener(1); }}>
               <Search size={16} /> Run Screener
             </Button>
 

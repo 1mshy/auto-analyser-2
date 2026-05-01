@@ -84,7 +84,10 @@ impl Dispatcher {
                     continue;
                 }
                 None => {
-                    warn!("channel {} referenced by rule {} not found", cid, pending.rule.name);
+                    warn!(
+                        "channel {} referenced by rule {} not found",
+                        cid, pending.rule.name
+                    );
                     delivered.push(DeliveryResult {
                         channel_id: *cid,
                         channel_name: "<missing>".into(),
@@ -117,6 +120,7 @@ impl Dispatcher {
             }
         }
 
+        let delivered_ok = delivered.iter().any(|d| d.ok);
         let entry = NotificationHistory {
             id: None,
             rule_id: pending.rule.id.unwrap_or_default(),
@@ -131,15 +135,19 @@ impl Dispatcher {
             read: false,
         };
         self.repo.record_history(&entry).await?;
+        if delivered_ok {
+            if let Some(rule_id) = pending.rule.id {
+                self.repo
+                    .mark_state_triggered(&rule_id, &pending.symbol, Utc::now())
+                    .await?;
+            }
+        }
         Ok(())
     }
 
     /// Deliver a single test notification for a specific rule + symbol.
     /// Used by `POST /api/alerts/rules/:id/test`.
-    pub async fn dispatch_test(
-        &self,
-        pending: PendingNotification,
-    ) -> Result<Vec<DeliveryResult>> {
+    pub async fn dispatch_test(&self, pending: PendingNotification) -> Result<Vec<DeliveryResult>> {
         let channels = self
             .repo
             .list_channels_by_ids(&pending.rule.channel_ids)
@@ -160,7 +168,17 @@ impl Dispatcher {
         let mut out = Vec::new();
         for cid in &pending.rule.channel_ids {
             let ch = match by_id.get(cid) {
-                Some(c) => c,
+                Some(c) if c.enabled => c,
+                Some(c) => {
+                    out.push(DeliveryResult {
+                        channel_id: *cid,
+                        channel_name: c.name.clone(),
+                        ok: false,
+                        error: Some("channel disabled".into()),
+                        sent_at: Utc::now(),
+                    });
+                    continue;
+                }
                 None => {
                     out.push(DeliveryResult {
                         channel_id: *cid,
@@ -374,13 +392,7 @@ mod tests {
     #[test]
     fn stock_url_from_public_base() {
         let s = sample();
-        let r = render_message(
-            "r",
-            None,
-            &s,
-            &[],
-            Some("http://localhost:5173/"),
-        );
+        let r = render_message("r", None, &s, &[], Some("http://localhost:5173/"));
         assert_eq!(
             r.stock_url.as_deref(),
             Some("http://localhost:5173/stocks/AAPL")

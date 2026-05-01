@@ -9,7 +9,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Json},
-    routing::{delete, get, patch, post, put},
+    routing::{delete, get, patch, post},
     Router,
 };
 use mongodb::bson::oid::ObjectId;
@@ -28,17 +28,17 @@ use crate::notifications::models::{
 pub fn mount(router: Router<AppState>) -> Router<AppState> {
     router
         // Watchlists
-        .route("/api/watchlists", get(list_watchlists).post(create_watchlist))
+        .route(
+            "/api/watchlists",
+            get(list_watchlists).post(create_watchlist),
+        )
         .route(
             "/api/watchlists/:id",
             get(get_watchlist)
                 .patch(update_watchlist)
                 .delete(delete_watchlist),
         )
-        .route(
-            "/api/watchlists/:id/symbols",
-            post(add_watchlist_symbol),
-        )
+        .route("/api/watchlists/:id/symbols", post(add_watchlist_symbol))
         .route(
             "/api/watchlists/:id/symbols/:symbol",
             delete(remove_watchlist_symbol),
@@ -104,10 +104,7 @@ async fn create_watchlist(
     }
 }
 
-async fn get_watchlist(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+async fn get_watchlist(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     let oid = match parse_oid(&id) {
         Ok(v) => v,
         Err(e) => return e.into_response(),
@@ -128,7 +125,12 @@ async fn update_watchlist(
         Ok(v) => v,
         Err(e) => return e.into_response(),
     };
-    match state.alert_engine.repo().update_watchlist(&oid, input).await {
+    match state
+        .alert_engine
+        .repo()
+        .update_watchlist(&oid, input)
+        .await
+    {
         Ok(Some(wl)) => Json(json!({ "success": true, "watchlist": wl })).into_response(),
         Ok(None) => err(StatusCode::NOT_FOUND, "not found").into_response(),
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
@@ -207,16 +209,20 @@ async fn create_rule(
     if input.name.trim().is_empty() {
         return err(StatusCode::BAD_REQUEST, "name required").into_response();
     }
+    if input.channel_ids.is_empty() {
+        return err(
+            StatusCode::BAD_REQUEST,
+            "at least one notification channel is required",
+        )
+        .into_response();
+    }
     match state.alert_engine.repo().create_rule(input).await {
         Ok(rule) => Json(json!({ "success": true, "rule": rule })).into_response(),
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
 
-async fn get_rule(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+async fn get_rule(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     let oid = match parse_oid(&id) {
         Ok(v) => v,
         Err(e) => return e.into_response(),
@@ -237,6 +243,13 @@ async fn update_rule(
         Ok(v) => v,
         Err(e) => return e.into_response(),
     };
+    if matches!(input.channel_ids.as_ref(), Some(ids) if ids.is_empty()) {
+        return err(
+            StatusCode::BAD_REQUEST,
+            "at least one notification channel is required",
+        )
+        .into_response();
+    }
     match state.alert_engine.repo().update_rule(&oid, input).await {
         Ok(Some(r)) => Json(json!({ "success": true, "rule": r })).into_response(),
         Ok(None) => err(StatusCode::NOT_FOUND, "not found").into_response(),
@@ -244,10 +257,7 @@ async fn update_rule(
     }
 }
 
-async fn delete_rule(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+async fn delete_rule(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     let oid = match parse_oid(&id) {
         Ok(v) => v,
         Err(e) => return e.into_response(),
@@ -259,10 +269,7 @@ async fn delete_rule(
     }
 }
 
-async fn toggle_rule(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+async fn toggle_rule(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     let oid = match parse_oid(&id) {
         Ok(v) => v,
         Err(e) => return e.into_response(),
@@ -393,10 +400,7 @@ async fn create_channel(
     }
 }
 
-async fn get_channel(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+async fn get_channel(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     let oid = match parse_oid(&id) {
         Ok(v) => v,
         Err(e) => return e.into_response(),
@@ -453,10 +457,7 @@ async fn delete_channel(
     }
 }
 
-async fn test_channel(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+async fn test_channel(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     let oid = match parse_oid(&id) {
         Ok(v) => v,
         Err(e) => return e.into_response(),
@@ -546,7 +547,8 @@ async fn mark_history_read(
         .mark_history_read(&oid, input.read)
         .await
     {
-        Ok(_) => Json(json!({ "success": true })).into_response(),
+        Ok(true) => Json(json!({ "success": true })).into_response(),
+        Ok(false) => err(StatusCode::NOT_FOUND, "not found").into_response(),
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }

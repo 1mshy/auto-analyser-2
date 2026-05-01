@@ -1,4 +1,4 @@
-use crate::models::{EarningsData, InsiderTrade, NasdaqNewsItem, StockAnalysis};
+use crate::models::{CompanyProfile, EarningsData, InsiderTrade, NasdaqNewsItem, StockAnalysis};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,6 +9,7 @@ pub struct CacheLayer {
     list_cache: Arc<Cache<String, Vec<StockAnalysis>>>,
     news_cache: Arc<Cache<String, Vec<NasdaqNewsItem>>>,
     earnings_cache: Arc<Cache<String, EarningsData>>,
+    company_profile_cache: Arc<Cache<String, CompanyProfile>>,
     insider_cache: Arc<Cache<String, Vec<InsiderTrade>>>,
     generic_cache: Arc<Cache<String, String>>,
 }
@@ -37,6 +38,12 @@ impl CacheLayer {
             .max_capacity(5_000)
             .build();
 
+        // Company profile cache with long TTL (1 day)
+        let company_profile_cache = Cache::builder()
+            .time_to_live(Duration::from_secs(86400))
+            .max_capacity(5_000)
+            .build();
+
         // Insider trades cache (1 hour)
         let insider_cache = Cache::builder()
             .time_to_live(Duration::from_secs(3600))
@@ -54,6 +61,7 @@ impl CacheLayer {
             list_cache: Arc::new(list_cache),
             news_cache: Arc::new(news_cache),
             earnings_cache: Arc::new(earnings_cache),
+            company_profile_cache: Arc::new(company_profile_cache),
             insider_cache: Arc::new(insider_cache),
             generic_cache: Arc::new(generic_cache),
         }
@@ -103,6 +111,15 @@ impl CacheLayer {
 
     pub async fn set_earnings(&self, symbol: String, data: EarningsData) {
         self.earnings_cache.insert(symbol, data).await;
+    }
+
+    // Company profile cache methods
+    pub async fn get_company_profile(&self, symbol: &str) -> Option<CompanyProfile> {
+        self.company_profile_cache.get(symbol).await
+    }
+
+    pub async fn set_company_profile(&self, symbol: String, profile: CompanyProfile) {
+        self.company_profile_cache.insert(symbol, profile).await;
     }
 
     // Insider trades cache methods

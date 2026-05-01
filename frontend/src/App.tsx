@@ -17,21 +17,27 @@ import { api } from './api';
 import { SettingsProvider } from './contexts/SettingsContext';
 
 function App() {
-  useWebSocket(); // WebSocket for real-time updates
+  const { progress: wsProgress } = useWebSocket();
   const [progress, setProgress] = useState<AnalysisProgress | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Handler for 10am weekday market open refresh
+  // Handler for US market-open refresh.
   const handleMarketOpenRefresh = useCallback(() => {
-    console.log('🔄 Refreshing all stock data for market open...');
+    console.log('Refreshing all stock data for market open...');
     // Increment key to force re-fetch in child components
     setRefreshKey(prev => prev + 1);
     // Also reload the page to ensure fresh data everywhere
     window.location.reload();
   }, []);
 
-  // Set up automatic refresh at 10am on weekdays
+  // Set up automatic refresh shortly after 9:30am ET on weekdays.
   useMarketOpenRefresh(handleMarketOpenRefresh);
+
+  useEffect(() => {
+    if (wsProgress) {
+      setProgress(wsProgress);
+    }
+  }, [wsProgress]);
 
   useEffect(() => {
     const fetchProgress = async () => {

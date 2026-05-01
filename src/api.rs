@@ -1,8 +1,8 @@
 use crate::{
     cache::CacheLayer,
     db::MongoDB,
-    indicators::TechnicalIndicators,
     indexes::{IndexDataProvider, IndexHeatmapData, StockHeatmapItem},
+    indicators::TechnicalIndicators,
     models::StockFilter,
     nasdaq::NasdaqClient,
     notifications::AlertEngine,
@@ -21,9 +21,11 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use std::convert::Infallible;
+use chrono::{Duration as ChronoDuration, Utc};
+use futures::stream::{self, StreamExt};
 use serde::Deserialize;
 use serde_json::json;
+use std::convert::Infallible;
 
 /// Query parameters for market summary endpoint
 #[derive(Debug, Deserialize)]
@@ -31,10 +33,10 @@ pub struct MarketSummaryQuery {
     pub min_market_cap: Option<f64>,
     pub max_price_change_percent: Option<f64>,
 }
+use crate::models::AnalysisProgress;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
-use crate::models::AnalysisProgress;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -56,7 +58,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/stocks/:symbol", get(get_stock_by_symbol))
         .route("/api/stocks/:symbol/history", get(get_stock_history))
         .route("/api/stocks/:symbol/ai-analysis", get(get_ai_analysis))
-        .route("/api/stocks/:symbol/ai-analysis/stream", get(stream_ai_analysis))
+        .route(
+            "/api/stocks/:symbol/ai-analysis/stream",
+            get(stream_ai_analysis),
+        )
         .route("/api/stocks/:symbol/profile", get(get_stock_profile))
         .route("/api/market-summary", get(get_market_summary))
         .route("/api/progress", get(get_progress))
@@ -87,12 +92,19 @@ async fn root() -> impl IntoResponse {
 }
 
 async fn health(State(state): State<AppState>) -> impl IntoResponse {
-    let count = state.db.get_analysis_count().await.unwrap_or(0);
-    
+    let db_ok = state.db.get_analysis_count().await;
+    let count = db_ok.as_ref().copied().unwrap_or(0);
+    let progress = state.progress.read().await;
+    let status = if db_ok.is_ok() { "healthy" } else { "degraded" };
+
     Json(json!({
-        "status": "healthy",
-        "database": "connected",
-        "total_analyses": count
+        "status": status,
+        "database": if db_ok.is_ok() { "connected" } else { "error" },
+        "total_analyses": count,
+        "last_cycle_started": progress.last_cycle_started,
+        "last_cycle_completed": progress.last_cycle_completed,
+        "last_successful_cycle": progress.last_successful_cycle,
+        "last_error": progress.last_error
     }))
 }
 
@@ -104,6 +116,10 @@ async fn get_progress(State(state): State<AppState>) -> impl IntoResponse {
         "current_symbol": progress.current_symbol,
         "cycle_start": progress.cycle_start,
         "errors": progress.errors,
+        "last_cycle_started": progress.last_cycle_started,
+        "last_cycle_completed": progress.last_cycle_completed,
+        "last_successful_cycle": progress.last_successful_cycle,
+        "last_error": progress.last_error,
         "completion_percentage": if progress.total_stocks > 0 {
             progress.analyzed as f64 / progress.total_stocks as f64 * 100.0
         } else {
@@ -180,11 +196,15 @@ async fn filter_stocks(
     // Try cache first
     let cache_key = format!("{:?}", filter);
     if let Some(cached) = state.cache.get_list(&cache_key).await {
-        let total = state.db.get_filtered_count(count_filter).await.unwrap_or(cached.len() as u64);
+        let total = state
+            .db
+            .get_filtered_count(count_filter)
+            .await
+            .unwrap_or(cached.len() as u64);
         let page = filter.page.unwrap_or(1);
         let page_size = filter.page_size.unwrap_or(50);
         let total_pages = ((total as f64) / (page_size as f64)).ceil() as u32;
-        
+
         return Json(json!({
             "success": true,
             "count": cached.len(),
@@ -209,7 +229,7 @@ async fn filter_stocks(
         Ok(stocks) => {
             // Cache the results
             state.cache.set_list(cache_key, stocks.clone()).await;
-            
+
             Json(json!({
                 "success": true,
                 "count": stocks.len(),
@@ -235,7 +255,11 @@ async fn get_market_summary(
     State(state): State<AppState>,
     Query(query): Query<MarketSummaryQuery>,
 ) -> impl IntoResponse {
-    match state.db.get_market_summary(10, query.min_market_cap, query.max_price_change_percent).await {
+    match state
+        .db
+        .get_market_summary(10, query.min_market_cap, query.max_price_change_percent)
+        .await
+    {
         Ok(summary) => Json(json!({
             "success": true,
             "summary": summary,
@@ -267,19 +291,15 @@ async fn get_stock_by_symbol(
 
     // Fetch from database
     match state.db.get_analysis_by_symbol(&symbol).await {
-        Ok(Some(analysis)) => {
-            Json(json!({
-                "success": true,
-                "stock": analysis,
-                "cached": false
-            }))
-        }
-        Ok(None) => {
-            Json(json!({
-                "success": false,
-                "error": format!("Stock '{}' not found. It may not have been analyzed yet or failed during analysis.", symbol)
-            }))
-        }
+        Ok(Some(analysis)) => Json(json!({
+            "success": true,
+            "stock": analysis,
+            "cached": false
+        })),
+        Ok(None) => Json(json!({
+            "success": false,
+            "error": format!("Stock '{}' not found. It may not have been analyzed yet or failed during analysis.", symbol)
+        })),
         Err(e) => Json(json!({
             "success": false,
             "error": e.to_string()
@@ -293,13 +313,11 @@ async fn get_stock_history(
 ) -> impl IntoResponse {
     // Fetch from Yahoo Finance (90 days of historical data)
     match state.yahoo_client.fetch_historical_data(&symbol, 90).await {
-        Ok(history) => {
-            Json(json!({
-                "success": true,
-                "symbol": symbol,
-                "history": history,
-            }))
-        }
+        Ok(history) => Json(json!({
+            "success": true,
+            "symbol": symbol,
+            "history": history,
+        })),
         Err(e) => Json(json!({
             "success": false,
             "error": e.to_string()
@@ -312,12 +330,28 @@ async fn get_stock_profile(
     State(state): State<AppState>,
     Path(symbol): Path<String>,
 ) -> impl IntoResponse {
-    match state.yahoo_client.get_company_profile(&symbol).await {
+    let cache_key = symbol.to_uppercase();
+
+    if let Some(profile) = state.cache.get_company_profile(&cache_key).await {
+        return Json(json!({
+            "success": true,
+            "symbol": symbol,
+            "profile": profile,
+            "cached": true,
+        }));
+    }
+
+    match state.yahoo_client.get_company_profile(&cache_key).await {
         Ok(profile) => {
+            state
+                .cache
+                .set_company_profile(cache_key, profile.clone())
+                .await;
             Json(json!({
                 "success": true,
                 "symbol": symbol,
                 "profile": profile,
+                "cached": false,
             }))
         }
         Err(e) => {
@@ -366,23 +400,21 @@ async fn get_ai_analysis(
 
     // Run AI analysis
     match state.openrouter_client.analyze_stock(&analysis).await {
-        Ok(ai_response) => {
-            Json(json!({
-                "success": true,
-                "symbol": ai_response.symbol,
-                "analysis": ai_response.analysis,
-                "model_used": ai_response.model_used,
-                "generated_at": ai_response.generated_at,
-                "stock_data": {
-                    "price": analysis.price,
-                    "rsi": analysis.rsi,
-                    "sma_20": analysis.sma_20,
-                    "sma_50": analysis.sma_50,
-                    "is_oversold": analysis.is_oversold,
-                    "is_overbought": analysis.is_overbought,
-                }
-            }))
-        }
+        Ok(ai_response) => Json(json!({
+            "success": true,
+            "symbol": ai_response.symbol,
+            "analysis": ai_response.analysis,
+            "model_used": ai_response.model_used,
+            "generated_at": ai_response.generated_at,
+            "stock_data": {
+                "price": analysis.price,
+                "rsi": analysis.rsi,
+                "sma_20": analysis.sma_20,
+                "sma_50": analysis.sma_50,
+                "is_oversold": analysis.is_oversold,
+                "is_overbought": analysis.is_overbought,
+            }
+        })),
         Err(e) => {
             warn!("AI analysis failed for {}: {}", symbol, e);
             Json(json!({
@@ -401,18 +433,25 @@ async fn stream_ai_analysis(
     use futures::stream::StreamExt;
 
     // Helper to create error stream
-    fn error_stream(msg: String) -> std::pin::Pin<Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>> {
+    fn error_stream(
+        msg: String,
+    ) -> std::pin::Pin<Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>> {
         Box::pin(futures::stream::once(async move {
-            Ok::<_, Infallible>(Event::default()
-                .event("error")
-                .data(format!(r#"{{"type":"error","message":"{}"}}"#, msg)))
+            Ok::<_, Infallible>(
+                Event::default()
+                    .event("error")
+                    .data(format!(r#"{{"type":"error","message":"{}"}}"#, msg)),
+            )
         }))
     }
 
     // Check if OpenRouter is enabled
     if !state.openrouter_client.is_enabled() {
-        return Sse::new(error_stream("AI analysis is not enabled. Set OPENROUTER_API_KEY_STOCKS environment variable.".to_string()))
-            .keep_alive(KeepAlive::default());
+        return Sse::new(error_stream(
+            "AI analysis is not enabled. Set OPENROUTER_API_KEY_STOCKS environment variable."
+                .to_string(),
+        ))
+        .keep_alive(KeepAlive::default());
     }
 
     // First, get the stock analysis from cache or database
@@ -426,12 +465,19 @@ async fn stream_ai_analysis(
     };
 
     let Some(analysis) = analysis else {
-        return Sse::new(error_stream(format!("No analysis found for {}. Wait for the analysis cycle to complete.", symbol)))
-            .keep_alive(KeepAlive::default());
+        return Sse::new(error_stream(format!(
+            "No analysis found for {}. Wait for the analysis cycle to complete.",
+            symbol
+        )))
+        .keep_alive(KeepAlive::default());
     };
 
     // Create the streaming response
-    match state.openrouter_client.analyze_stock_streaming(&analysis).await {
+    match state
+        .openrouter_client
+        .analyze_stock_streaming(&analysis)
+        .await
+    {
         Ok(event_stream) => {
             let sse_stream = event_stream.map(|event: StreamEvent| {
                 let data = serde_json::to_string(&event).unwrap_or_default();
@@ -444,13 +490,13 @@ async fn stream_ai_analysis(
                 };
                 Ok::<_, Infallible>(Event::default().event(event_type).data(data))
             });
-            let boxed: std::pin::Pin<Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>> = Box::pin(sse_stream);
+            let boxed: std::pin::Pin<
+                Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>,
+            > = Box::pin(sse_stream);
             Sse::new(boxed).keep_alive(KeepAlive::default())
         }
-        Err(e) => {
-            Sse::new(error_stream(format!("Failed to start streaming: {}", e)))
-                .keep_alive(KeepAlive::default())
-        }
+        Err(e) => Sse::new(error_stream(format!("Failed to start streaming: {}", e)))
+            .keep_alive(KeepAlive::default()),
     }
 }
 
@@ -506,7 +552,7 @@ async fn websocket_connection(mut socket: WebSocket, state: AppState) {
 
         let progress = state.progress.read().await;
         let msg = serde_json::to_string(&*progress).unwrap();
-        
+
         if socket.send(Message::Text(msg)).await.is_err() {
             info!("WebSocket client disconnected");
             break;
@@ -535,7 +581,11 @@ async fn get_all_news(
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(50).min(100);
 
-    match state.db.get_all_news(query.sector, query.search, page, page_size).await {
+    match state
+        .db
+        .get_all_news(query.sector, query.search, page, page_size)
+        .await
+    {
         Ok((news, total)) => {
             let total_pages = ((total as f64) / (page_size as f64)).ceil() as u32;
             Json(json!({
@@ -574,7 +624,10 @@ async fn get_sector_performance(State(state): State<AppState>) -> impl IntoRespo
             });
             // Cache the result
             if let Ok(serialized) = serde_json::to_string(&response) {
-                state.cache.set_generic("sectors".to_string(), serialized).await;
+                state
+                    .cache
+                    .set_generic("sectors".to_string(), serialized)
+                    .await;
             }
             Json(response)
         }
@@ -596,7 +649,8 @@ async fn get_earnings_calendar(
     State(state): State<AppState>,
     Query(query): Query<EarningsQuery>,
 ) -> impl IntoResponse {
-    let _days_ahead = query.days_ahead.unwrap_or(30);
+    let days_ahead = query.days_ahead.unwrap_or(30);
+    let cutoff = Utc::now() + ChronoDuration::days(days_ahead as i64);
 
     // Get top stocks by market cap
     let filter = StockFilter {
@@ -629,54 +683,81 @@ async fn get_earnings_calendar(
         }
     };
 
-    let mut earnings = Vec::new();
+    let cache = state.cache.clone();
+    let yahoo = state.yahoo_client.clone();
+    let results = stream::iter(stocks)
+        .map(|stock| {
+            let cache = cache.clone();
+            let yahoo = yahoo.clone();
+            async move {
+                let data = if let Some(cached) = cache.get_earnings(&stock.symbol).await {
+                    cached
+                } else {
+                    match yahoo.get_earnings_data(&stock.symbol).await {
+                        Ok(data) => {
+                            cache.set_earnings(stock.symbol.clone(), data.clone()).await;
+                            data
+                        }
+                        Err(e) => {
+                            warn!("Failed to fetch earnings for {}: {}", stock.symbol, e);
+                            return (None, Some(stock.symbol));
+                        }
+                    }
+                };
 
-    for stock in &stocks {
-        // Check cache first
-        if let Some(cached) = state.cache.get_earnings(&stock.symbol).await {
-            if cached.earnings_date.is_some() {
-                earnings.push(json!({
-                    "symbol": stock.symbol,
-                    "sector": stock.sector,
-                    "market_cap": stock.market_cap,
-                    "price": stock.price,
-                    "earnings": cached
-                }));
-            }
-            continue;
-        }
+                let Some(date) = data.earnings_date.as_ref() else {
+                    return (None, None);
+                };
+                if *date > cutoff {
+                    return (None, None);
+                }
 
-        // Fetch from Yahoo (with rate limiting awareness)
-        match state.yahoo_client.get_earnings_data(&stock.symbol).await {
-            Ok(data) => {
-                state.cache.set_earnings(stock.symbol.clone(), data.clone()).await;
-                if data.earnings_date.is_some() {
-                    earnings.push(json!({
+                (
+                    Some(json!({
                         "symbol": stock.symbol,
                         "sector": stock.sector,
                         "market_cap": stock.market_cap,
                         "price": stock.price,
                         "earnings": data
-                    }));
-                }
+                    })),
+                    None,
+                )
             }
-            Err(e) => {
-                warn!("Failed to fetch earnings for {}: {}", stock.symbol, e);
-            }
+        })
+        .buffer_unordered(5)
+        .collect::<Vec<_>>()
+        .await;
+
+    let mut earnings = Vec::new();
+    let mut failed_symbols = Vec::new();
+    for (row, failed) in results {
+        if let Some(row) = row {
+            earnings.push(row);
+        }
+        if let Some(symbol) = failed {
+            failed_symbols.push(symbol);
         }
     }
 
     // Sort by earnings date ascending
     earnings.sort_by(|a, b| {
-        let date_a = a.get("earnings").and_then(|e| e.get("earnings_date")).and_then(|d| d.as_str());
-        let date_b = b.get("earnings").and_then(|e| e.get("earnings_date")).and_then(|d| d.as_str());
+        let date_a = a
+            .get("earnings")
+            .and_then(|e| e.get("earnings_date"))
+            .and_then(|d| d.as_str());
+        let date_b = b
+            .get("earnings")
+            .and_then(|e| e.get("earnings_date"))
+            .and_then(|d| d.as_str());
         date_a.cmp(&date_b)
     });
 
     Json(json!({
         "success": true,
         "earnings": earnings,
-        "count": earnings.len()
+        "count": earnings.len(),
+        "days_ahead": days_ahead,
+        "failed_symbols": failed_symbols
     }))
 }
 
@@ -697,7 +778,10 @@ async fn get_insider_trades(
 
     match state.nasdaq_client.get_insider_trades(&symbol, 20).await {
         Ok(trades) => {
-            state.cache.set_insiders(symbol.clone(), trades.clone()).await;
+            state
+                .cache
+                .set_insiders(symbol.clone(), trades.clone())
+                .await;
             Json(json!({
                 "success": true,
                 "symbol": symbol,
@@ -753,7 +837,7 @@ async fn get_stock_earnings(
 /// Query parameters for correlation matrix
 #[derive(Debug, Deserialize)]
 pub struct CorrelationQuery {
-    pub symbols: String,       // Comma-separated
+    pub symbols: String, // Comma-separated
     pub days: Option<i64>,
 }
 
@@ -762,9 +846,10 @@ async fn get_correlation_matrix(
     State(state): State<AppState>,
     Query(query): Query<CorrelationQuery>,
 ) -> impl IntoResponse {
-    let symbols: Vec<String> = query.symbols
+    let symbols: Vec<String> = query
+        .symbols
         .split(',')
-        .map(|s| s.trim().to_uppercase())
+        .map(crate::symbols::normalize_symbol_key)
         .filter(|s| !s.is_empty())
         .take(20) // Max 20 symbols
         .collect();
@@ -777,24 +862,47 @@ async fn get_correlation_matrix(
     }
 
     let days = query.days.unwrap_or(90);
+    let requested_symbols = symbols.clone();
 
-    // Fetch historical prices for all symbols
-    let mut price_map: std::collections::HashMap<String, Vec<f64>> = std::collections::HashMap::new();
+    // Fetch historical prices with bounded concurrency.
+    let yahoo = state.yahoo_client.clone();
+    let history_results = stream::iter(symbols.iter().cloned())
+        .map(|symbol| {
+            let yahoo = yahoo.clone();
+            async move {
+                match yahoo.get_historical_prices(&symbol, days).await {
+                    Ok(prices) => {
+                        let closes: Vec<f64> = prices.iter().map(|p| p.close).collect();
+                        (symbol, Some(closes), None)
+                    }
+                    Err(e) => {
+                        warn!("Failed to fetch history for {}: {}", symbol, e);
+                        let err = e.to_string();
+                        (symbol, None, Some(err))
+                    }
+                }
+            }
+        })
+        .buffer_unordered(5)
+        .collect::<Vec<_>>()
+        .await;
 
-    for symbol in &symbols {
-        match state.yahoo_client.get_historical_prices(symbol, days).await {
-            Ok(prices) => {
-                let closes: Vec<f64> = prices.iter().map(|p| p.close).collect();
-                price_map.insert(symbol.clone(), closes);
-            }
-            Err(e) => {
-                warn!("Failed to fetch history for {}: {}", symbol, e);
-            }
+    let mut price_map: std::collections::HashMap<String, Vec<f64>> =
+        std::collections::HashMap::new();
+    let mut failed_symbols = Vec::new();
+    for (symbol, closes, err) in history_results {
+        if let Some(closes) = closes {
+            price_map.insert(symbol, closes);
+        } else {
+            failed_symbols.push(
+                json!({ "symbol": symbol, "error": err.unwrap_or_else(|| "unknown".to_string()) }),
+            );
         }
     }
 
     // Only keep symbols we have data for
-    let valid_symbols: Vec<String> = symbols.into_iter()
+    let valid_symbols: Vec<String> = symbols
+        .into_iter()
         .filter(|s| price_map.contains_key(s))
         .collect();
 
@@ -809,7 +917,8 @@ async fn get_correlation_matrix(
                 let corr = TechnicalIndicators::calculate_correlation(
                     &price_map[&valid_symbols[i]],
                     &price_map[&valid_symbols[j]],
-                ).unwrap_or(0.0);
+                )
+                .unwrap_or(0.0);
                 matrix[i][j] = corr;
                 matrix[j][i] = corr;
             }
@@ -818,9 +927,11 @@ async fn get_correlation_matrix(
 
     Json(json!({
         "success": true,
+        "requested_symbols": requested_symbols,
         "symbols": valid_symbols,
         "matrix": matrix,
-        "days": days
+        "days": days,
+        "failed_symbols": failed_symbols
     }))
 }
 
@@ -874,10 +985,10 @@ async fn get_index_heatmap(
     Query(query): Query<IndexHeatmapQuery>,
 ) -> impl IntoResponse {
     let period = query.period.unwrap_or_else(|| "1d".to_string());
-    
+
     // Convert period to number of days for historical data fetch
     let days: i64 = match period.as_str() {
-        "1d" => 2,    // Need at least 2 days to get previous close
+        "1d" => 2, // Need at least 2 days to get previous close
         "1w" => 7,
         "1m" => 30,
         "6m" => 180,
@@ -950,48 +1061,74 @@ async fn get_index_heatmap(
         .map(|s| (s.symbol.clone(), s))
         .collect();
 
-    // Match index symbols with database stocks and calculate period performance
+    // Match index symbols with database stocks and calculate period performance.
+    // Longer periods need Yahoo calls, so fetch those with bounded concurrency.
     let symbol_count = symbols.len();
-    
-    for symbol in &symbols {
-        if let Some(stock) = stock_map.get(&symbol.to_string()) {
-            let market_cap = stock.market_cap.unwrap_or(0.0);
-            
-            // For 1d period, use the daily price_change_percent (fast path)
-            // For longer periods, fetch historical data and calculate
-            let change_percent = if period == "1d" {
-                stock.price_change_percent.unwrap_or(0.0)
-            } else {
-                // Try to fetch historical data for period-based calculation
-                match state.yahoo_client.get_historical_prices(*symbol, days).await {
-                    Ok(prices) if prices.len() >= 2 => {
-                        let first_price = prices.first().map(|p| p.close).unwrap_or(0.0);
-                        let last_price = prices.last().map(|p| p.close).unwrap_or(0.0);
-                        if first_price > 0.0 {
-                            ((last_price - first_price) / first_price) * 100.0
-                        } else {
-                            0.0
+    let stock_inputs: Vec<_> = symbols
+        .iter()
+        .filter_map(|symbol| {
+            let lookup_symbol = crate::symbols::normalize_symbol_key(symbol);
+            stock_map
+                .get(&lookup_symbol)
+                .cloned()
+                .map(|stock| (lookup_symbol, stock))
+        })
+        .collect();
+    let yahoo = state.yahoo_client.clone();
+    let period_for_tasks = period.clone();
+    let rows = stream::iter(stock_inputs)
+        .map(|(lookup_symbol, stock)| {
+            let yahoo = yahoo.clone();
+            let period = period_for_tasks.clone();
+            async move {
+                let mut used_fallback = false;
+                let change_percent = if period == "1d" {
+                    stock.price_change_percent.unwrap_or(0.0)
+                } else {
+                    match yahoo.get_historical_prices(&lookup_symbol, days).await {
+                        Ok(prices) if prices.len() >= 2 => {
+                            let first_price = prices.first().map(|p| p.close).unwrap_or(0.0);
+                            let last_price = prices.last().map(|p| p.close).unwrap_or(0.0);
+                            if first_price > 0.0 {
+                                ((last_price - first_price) / first_price) * 100.0
+                            } else {
+                                used_fallback = true;
+                                stock.price_change_percent.unwrap_or(0.0)
+                            }
+                        }
+                        Ok(_) | Err(_) => {
+                            used_fallback = true;
+                            stock.price_change_percent.unwrap_or(0.0)
                         }
                     }
-                    _ => {
-                        // Fallback to daily change if historical fetch fails
-                        stock.price_change_percent.unwrap_or(0.0)
-                    }
-                }
-            };
-            
-            total_market_cap += market_cap;
-            
-            stocks.push(StockHeatmapItem {
-                symbol: symbol.to_string(),
-                name: None,
-                price: stock.price,
-                change_percent,
-                contribution: 0.0, // Will be calculated after total is known
-                market_cap: Some(market_cap),
-                sector: stock.sector.clone(),
-            });
+                };
+
+                let market_cap = stock.market_cap.unwrap_or(0.0);
+                (
+                    StockHeatmapItem {
+                        symbol: lookup_symbol,
+                        name: None,
+                        price: stock.price,
+                        change_percent,
+                        contribution: 0.0,
+                        market_cap: Some(market_cap),
+                        sector: stock.sector.clone(),
+                    },
+                    used_fallback,
+                )
+            }
+        })
+        .buffer_unordered(5)
+        .collect::<Vec<_>>()
+        .await;
+
+    let mut fallback_symbols = Vec::new();
+    for (item, used_fallback) in rows {
+        total_market_cap += item.market_cap.unwrap_or(0.0);
+        if used_fallback {
+            fallback_symbols.push(item.symbol.clone());
         }
+        stocks.push(item);
     }
 
     // Calculate weighted index performance and individual contributions
@@ -1008,7 +1145,8 @@ async fn get_index_heatmap(
 
     // Sort by market cap descending for heatmap display
     stocks.sort_by(|a, b| {
-        b.market_cap.unwrap_or(0.0)
+        b.market_cap
+            .unwrap_or(0.0)
             .partial_cmp(&a.market_cap.unwrap_or(0.0))
             .unwrap_or(std::cmp::Ordering::Equal)
     });
@@ -1029,8 +1167,8 @@ async fn get_index_heatmap(
             "total_constituents": symbol_count,
             "stocks_with_data": heatmap_data.stocks.len(),
             "total_market_cap": total_market_cap,
-            "period": period
+            "period": period,
+            "fallback_symbols": fallback_symbols
         }
     }))
 }
-

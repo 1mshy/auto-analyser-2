@@ -31,7 +31,7 @@ fn calculate_rsi_wilders(prices: &[HistoricalPrice], period: usize) -> Option<f6
     // Calculate initial average gain and loss using SMA for first period
     let mut gains = Vec::new();
     let mut losses = Vec::new();
-    
+
     for &change in &changes[..period] {
         if change > 0.0 {
             gains.push(change);
@@ -49,7 +49,7 @@ fn calculate_rsi_wilders(prices: &[HistoricalPrice], period: usize) -> Option<f6
     for &change in &changes[period..] {
         let gain = if change > 0.0 { change } else { 0.0 };
         let loss = if change < 0.0 { change.abs() } else { 0.0 };
-        
+
         // Wilder's smoothing: (previous_avg * (period - 1) + current_value) / period
         avg_gain = (avg_gain * (period - 1) as f64 + gain) / period as f64;
         avg_loss = (avg_loss * (period - 1) as f64 + loss) / period as f64;
@@ -76,13 +76,12 @@ fn calculate_rsi_wilders(prices: &[HistoricalPrice], period: usize) -> Option<f6
 fn main() {
     println!("RSI Calculation Verification");
     println!("============================\n");
-    
+
     // Example 1: Trending upward with some pullbacks (realistic scenario)
     let prices1: Vec<HistoricalPrice> = vec![
-        100.0, 101.5, 102.0, 101.0, 103.0, 104.5, 103.5, 105.0,
-        106.0, 105.0, 107.0, 108.5, 107.5, 109.0, 110.0, 109.0,
-        111.0, 112.0, 111.5, 113.0, 114.0, 113.0, 115.0, 116.0,
-        115.0, 117.0, 118.0, 117.0, 119.0, 120.0,
+        100.0, 101.5, 102.0, 101.0, 103.0, 104.5, 103.5, 105.0, 106.0, 105.0, 107.0, 108.5, 107.5,
+        109.0, 110.0, 109.0, 111.0, 112.0, 111.5, 113.0, 114.0, 113.0, 115.0, 116.0, 115.0, 117.0,
+        118.0, 117.0, 119.0, 120.0,
     ]
     .into_iter()
     .enumerate()
@@ -104,9 +103,8 @@ fn main() {
 
     // Example 2: Strong uptrend (like a rally)
     let prices2: Vec<HistoricalPrice> = vec![
-        100.0, 102.0, 104.0, 105.0, 107.0, 109.0, 110.0, 112.0,
-        114.0, 115.0, 117.0, 119.0, 120.0, 122.0, 124.0, 125.0,
-        127.0, 129.0, 130.0, 132.0,
+        100.0, 102.0, 104.0, 105.0, 107.0, 109.0, 110.0, 112.0, 114.0, 115.0, 117.0, 119.0, 120.0,
+        122.0, 124.0, 125.0, 127.0, 129.0, 130.0, 132.0,
     ]
     .into_iter()
     .enumerate()
@@ -128,9 +126,8 @@ fn main() {
 
     // Example 3: Sideways with volatility (realistic consolidation)
     let prices3: Vec<HistoricalPrice> = vec![
-        100.0, 102.0, 99.0, 101.0, 98.0, 102.0, 100.0, 103.0,
-        99.0, 101.0, 100.0, 102.0, 99.0, 101.0, 100.0, 102.0,
-        100.0, 101.0, 99.0, 100.0,
+        100.0, 102.0, 99.0, 101.0, 98.0, 102.0, 100.0, 103.0, 99.0, 101.0, 100.0, 102.0, 99.0,
+        101.0, 100.0, 102.0, 100.0, 101.0, 99.0, 100.0,
     ]
     .into_iter()
     .enumerate()

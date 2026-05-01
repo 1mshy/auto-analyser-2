@@ -148,7 +148,7 @@ Content-Type: application/json
 Connect to receive real-time analysis progress updates.
 
 ```
-WS ws://localhost:3000/ws
+WS ws://localhost:3333/ws
 ```
 
 **Message Format:**
@@ -160,13 +160,18 @@ The server sends progress updates every 2 seconds:
   "analyzed": 45,
   "current_symbol": "MSFT",
   "cycle_start": "2025-11-06T10:00:00Z",
-  "errors": 2
+  "errors": 2,
+  "completion_percentage": 75.0,
+  "last_cycle_started": "2025-11-06T10:00:00Z",
+  "last_cycle_completed": null,
+  "last_successful_cycle": "2025-11-06T09:00:00Z",
+  "last_error": null
 }
 ```
 
 **JavaScript Example:**
 ```javascript
-const ws = new WebSocket('ws://localhost:3000/ws');
+const ws = new WebSocket('ws://localhost:3333/ws');
 
 ws.onmessage = (event) => {
   const progress = JSON.parse(event.data);

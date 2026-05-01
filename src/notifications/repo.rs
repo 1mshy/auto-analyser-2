@@ -9,7 +9,7 @@ use chrono::Utc;
 use futures::stream::StreamExt;
 use mongodb::{
     bson::{doc, oid::ObjectId, to_document, Document},
-    options::FindOptions,
+    options::{FindOptions, IndexOptions},
     Collection, IndexModel,
 };
 
@@ -71,17 +71,30 @@ impl NotificationsRepo {
             .create_index(
                 IndexModel::builder()
                     .keys(doc! { "rule_id": 1, "symbol": 1 })
+                    .options(IndexOptions::builder().unique(true).build())
                     .build(),
             )
             .await?;
         self.history()
-            .create_index(IndexModel::builder().keys(doc! { "created_at": -1 }).build())
+            .create_index(
+                IndexModel::builder()
+                    .keys(doc! { "created_at": -1 })
+                    .build(),
+            )
             .await?;
         self.history()
-            .create_index(IndexModel::builder().keys(doc! { "symbol": 1, "created_at": -1 }).build())
+            .create_index(
+                IndexModel::builder()
+                    .keys(doc! { "symbol": 1, "created_at": -1 })
+                    .build(),
+            )
             .await?;
         self.history()
-            .create_index(IndexModel::builder().keys(doc! { "rule_id": 1, "created_at": -1 }).build())
+            .create_index(
+                IndexModel::builder()
+                    .keys(doc! { "rule_id": 1, "created_at": -1 })
+                    .build(),
+            )
             .await?;
         Ok(())
     }
@@ -96,20 +109,14 @@ impl NotificationsRepo {
         Ok(self.channels().find_one(doc! { "_id": id }).await?)
     }
 
-    pub async fn list_channels_by_ids(
-        &self,
-        ids: &[ObjectId],
-    ) -> Result<Vec<NotificationChannel>> {
+    pub async fn list_channels_by_ids(&self, ids: &[ObjectId]) -> Result<Vec<NotificationChannel>> {
         if ids.is_empty() {
             return Ok(Vec::new());
         }
         collect(self.channels().find(doc! { "_id": { "$in": ids } }).await?).await
     }
 
-    pub async fn create_channel(
-        &self,
-        input: CreateChannelInput,
-    ) -> Result<NotificationChannel> {
+    pub async fn create_channel(&self, input: CreateChannelInput) -> Result<NotificationChannel> {
         let channel = NotificationChannel {
             id: None,
             name: input.name,
@@ -205,7 +212,7 @@ impl NotificationsRepo {
         id: &ObjectId,
         symbol: &str,
     ) -> Result<Option<Watchlist>> {
-        let sym = symbol.trim().to_uppercase();
+        let sym = crate::symbols::normalize_symbol_key(symbol);
         if sym.is_empty() {
             return Err(anyhow!("empty symbol"));
         }
@@ -226,7 +233,7 @@ impl NotificationsRepo {
         id: &ObjectId,
         symbol: &str,
     ) -> Result<Option<Watchlist>> {
-        let sym = symbol.trim().to_uppercase();
+        let sym = crate::symbols::normalize_symbol_key(symbol);
         self.watchlists()
             .update_one(
                 doc! { "_id": id },
@@ -329,7 +336,9 @@ impl NotificationsRepo {
         if let Some(v) = update.channel_ids {
             set.insert(
                 "channel_ids",
-                v.into_iter().map(mongodb::bson::Bson::ObjectId).collect::<Vec<_>>(),
+                v.into_iter()
+                    .map(mongodb::bson::Bson::ObjectId)
+                    .collect::<Vec<_>>(),
             );
         }
         if let Some(opt) = update.message_template {
@@ -374,11 +383,7 @@ impl NotificationsRepo {
 
     // ----- state ----------------------------------------------------------
 
-    pub async fn get_state(
-        &self,
-        rule_id: &ObjectId,
-        symbol: &str,
-    ) -> Result<Option<AlertState>> {
+    pub async fn get_state(&self, rule_id: &ObjectId, symbol: &str) -> Result<Option<AlertState>> {
         Ok(self
             .state()
             .find_one(doc! { "rule_id": rule_id, "symbol": symbol })
@@ -394,6 +399,22 @@ impl NotificationsRepo {
             .update_one(
                 doc! { "rule_id": &state.rule_id, "symbol": &state.symbol },
                 doc! { "$set": setter },
+            )
+            .upsert(true)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn mark_state_triggered(
+        &self,
+        rule_id: &ObjectId,
+        symbol: &str,
+        triggered_at: chrono::DateTime<Utc>,
+    ) -> Result<()> {
+        self.state()
+            .update_one(
+                doc! { "rule_id": rule_id, "symbol": symbol },
+                doc! { "$set": { "last_triggered_at": mongodb::bson::DateTime::from_chrono(triggered_at) } },
             )
             .upsert(true)
             .await?;
@@ -421,7 +442,7 @@ impl NotificationsRepo {
             filter.insert("rule_id", rid);
         }
         if let Some(sym) = symbol {
-            filter.insert("symbol", sym.to_uppercase());
+            filter.insert("symbol", crate::symbols::normalize_symbol_key(&sym));
         }
 
         let total = self.history().count_documents(filter.clone()).await?;
@@ -436,11 +457,7 @@ impl NotificationsRepo {
             .limit(page_size as i64)
             .build();
 
-        let cursor = self
-            .history()
-            .find(filter)
-            .with_options(options)
-            .await?;
+        let cursor = self.history().find(filter).with_options(options).await?;
 
         Ok((collect(cursor).await?, total))
     }
@@ -480,7 +497,7 @@ fn dedupe_upper(symbols: Vec<String>) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::with_capacity(symbols.len());
     for s in symbols {
-        let s = s.trim().to_uppercase();
+        let s = crate::symbols::normalize_symbol_key(&s);
         if s.is_empty() {
             continue;
         }

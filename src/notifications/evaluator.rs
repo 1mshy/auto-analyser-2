@@ -32,7 +32,7 @@ impl Evaluator {
     /// Evaluate every enabled rule against the given analyses.
     ///
     /// Side-effects: persists per-(rule, symbol) state updates (consecutive
-    /// matches, last-triggered, last-macd-histogram). Returns the pending
+    /// matches, last-macd-histogram). Delivery commits last-triggered. Returns the pending
     /// notifications the dispatcher should deliver.
     pub async fn evaluate_cycle(
         &self,
@@ -48,7 +48,16 @@ impl Evaluator {
         let by_symbol: HashMap<&str, &StockAnalysis> =
             analyses.iter().map(|a| (a.symbol.as_str(), a)).collect();
 
-        let all_watched = self.repo.all_watched_symbols().await?;
+        let all_watched = match self.repo.all_watched_symbols().await {
+            Ok(symbols) => symbols,
+            Err(e) => {
+                warn!(
+                    "notifications: failed to load watchlists, scoped rules may be skipped: {}",
+                    e
+                );
+                Vec::new()
+            }
+        };
         let all_watched_set: HashSet<String> = all_watched.into_iter().collect();
 
         let now = Utc::now();
@@ -57,15 +66,28 @@ impl Evaluator {
         for rule in rules {
             let rule_id = match rule.id {
                 Some(id) => id,
-                None => continue,
+                None => {
+                    warn!("notifications: skipping rule without _id: {}", rule.name);
+                    continue;
+                }
             };
 
             if in_quiet_hours(&rule.quiet_hours, now) {
-                debug!("rule {}: quiet hours, skipping", rule.name);
+                debug!(
+                    "rule {}: quiet hours, refreshing cross state only",
+                    rule.name
+                );
+                let symbols = self
+                    .resolve_scope(&rule.scope, &all_watched_set, &by_symbol)
+                    .await?;
+                self.refresh_rule_cross_state(&rule_id, &symbols, &by_symbol)
+                    .await;
                 continue;
             }
 
-            let symbols = self.resolve_scope(&rule.scope, &all_watched_set, &by_symbol).await?;
+            let symbols = self
+                .resolve_scope(&rule.scope, &all_watched_set, &by_symbol)
+                .await?;
             if symbols.is_empty() {
                 continue;
             }
@@ -86,6 +108,60 @@ impl Evaluator {
         }
 
         Ok(pending)
+    }
+
+    /// Refresh previous-cycle indicator state without emitting notifications.
+    /// Used when notifications are globally paused so MACD cross rules do not
+    /// compare against stale pre-pause values when alerts resume.
+    pub async fn refresh_cycle_state(&self, analyses: &[StockAnalysis]) -> Result<()> {
+        let rules = self.repo.list_enabled_rules().await?;
+        let by_symbol: HashMap<&str, &StockAnalysis> =
+            analyses.iter().map(|a| (a.symbol.as_str(), a)).collect();
+        let all_watched = self.repo.all_watched_symbols().await.unwrap_or_default();
+        let all_watched_set: HashSet<String> = all_watched.into_iter().collect();
+
+        for rule in rules {
+            let Some(rule_id) = rule.id else {
+                warn!("notifications: skipping rule without _id: {}", rule.name);
+                continue;
+            };
+            let symbols = self
+                .resolve_scope(&rule.scope, &all_watched_set, &by_symbol)
+                .await?;
+            self.refresh_rule_cross_state(&rule_id, &symbols, &by_symbol)
+                .await;
+        }
+        Ok(())
+    }
+
+    async fn refresh_rule_cross_state(
+        &self,
+        rule_id: &ObjectId,
+        symbols: &[String],
+        by_symbol: &HashMap<&str, &StockAnalysis>,
+    ) {
+        for symbol in symbols {
+            let Some(analysis) = by_symbol.get(symbol.as_str()).copied() else {
+                continue;
+            };
+            if let Err(e) = self.refresh_one_cross_state(rule_id, analysis).await {
+                warn!("rule {} / {}: state refresh error: {}", rule_id, symbol, e);
+            }
+        }
+    }
+
+    async fn refresh_one_cross_state(
+        &self,
+        rule_id: &ObjectId,
+        analysis: &StockAnalysis,
+    ) -> Result<()> {
+        let mut state = self
+            .repo
+            .get_state(rule_id, &analysis.symbol)
+            .await?
+            .unwrap_or_else(|| AlertState::new(*rule_id, analysis.symbol.clone()));
+        state.last_macd_histogram = analysis.macd.as_ref().map(|m| m.histogram);
+        self.repo.upsert_state(&state).await
     }
 
     async fn evaluate_one(
@@ -149,7 +225,6 @@ impl Evaluator {
             }
         }
 
-        state.last_triggered_at = Some(now);
         self.repo.upsert_state(&state).await?;
 
         out.push(PendingNotification {
@@ -171,13 +246,15 @@ impl Evaluator {
     ) -> Result<Vec<String>> {
         let out: Vec<String> = match scope {
             AlertScope::AllWatched => all_watched.iter().cloned().collect(),
-            AlertScope::Watchlist { watchlist_id } => match self.repo.get_watchlist(watchlist_id).await? {
-                Some(wl) => wl.symbols,
-                None => Vec::new(),
-            },
+            AlertScope::Watchlist { watchlist_id } => {
+                match self.repo.get_watchlist(watchlist_id).await? {
+                    Some(wl) => wl.symbols,
+                    None => Vec::new(),
+                }
+            }
             AlertScope::Symbols { symbols } => symbols
                 .iter()
-                .map(|s| s.trim().to_uppercase())
+                .map(|s| crate::symbols::normalize_symbol_key(s))
                 .filter(|s| !s.is_empty())
                 .collect(),
             AlertScope::AllAnalyzed => by_symbol.keys().map(|s| s.to_string()).collect(),
@@ -186,12 +263,12 @@ impl Evaluator {
     }
 }
 
-/// Is `now` currently inside the quiet-hours window? UTC-only for now;
-/// the `tz` field is stored but ignored here — we accept the rough
-/// approximation to keep the MVP dependency-free.
+/// Is `now` currently inside the quiet-hours window? Invalid timezone names
+/// fall back to UTC so bad user input never breaks alert evaluation.
 fn in_quiet_hours(qh: &Option<QuietHours>, now: chrono::DateTime<Utc>) -> bool {
     let Some(qh) = qh else { return false };
-    let h = now.hour() as u8;
+    let tz = qh.tz.parse::<chrono_tz::Tz>().unwrap_or(chrono_tz::UTC);
+    let h = now.with_timezone(&tz).hour() as u8;
     if qh.start_hour == qh.end_hour {
         return false;
     }
@@ -214,7 +291,11 @@ mod tests {
 
     #[test]
     fn quiet_hours_wrap_midnight() {
-        let qh = Some(QuietHours { start_hour: 22, end_hour: 7, tz: "UTC".into() });
+        let qh = Some(QuietHours {
+            start_hour: 22,
+            end_hour: 7,
+            tz: "UTC".into(),
+        });
         // 23:00 UTC
         let t = Utc.with_ymd_and_hms(2024, 1, 1, 23, 0, 0).unwrap();
         assert!(in_quiet_hours(&qh, t));
@@ -228,10 +309,29 @@ mod tests {
 
     #[test]
     fn quiet_hours_same_day() {
-        let qh = Some(QuietHours { start_hour: 9, end_hour: 17, tz: "UTC".into() });
+        let qh = Some(QuietHours {
+            start_hour: 9,
+            end_hour: 17,
+            tz: "UTC".into(),
+        });
         let t = Utc.with_ymd_and_hms(2024, 1, 1, 12, 0, 0).unwrap();
         assert!(in_quiet_hours(&qh, t));
         let t = Utc.with_ymd_and_hms(2024, 1, 1, 18, 0, 0).unwrap();
+        assert!(!in_quiet_hours(&qh, t));
+    }
+
+    #[test]
+    fn quiet_hours_honor_timezone() {
+        let qh = Some(QuietHours {
+            start_hour: 9,
+            end_hour: 17,
+            tz: "America/New_York".into(),
+        });
+        // 14:00 UTC is 09:00 New York during standard time.
+        let t = Utc.with_ymd_and_hms(2024, 1, 1, 14, 0, 0).unwrap();
+        assert!(in_quiet_hours(&qh, t));
+        // 23:00 UTC is 18:00 New York.
+        let t = Utc.with_ymd_and_hms(2024, 1, 1, 23, 0, 0).unwrap();
         assert!(!in_quiet_hours(&qh, t));
     }
 

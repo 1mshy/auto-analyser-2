@@ -11,10 +11,8 @@ use tokio::time::sleep;
 
 /// Test symbols for rate limit testing
 const TEST_SYMBOLS: [&str; 20] = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META",
-    "NVDA", "TSLA", "JPM", "V", "JNJ",
-    "WMT", "PG", "MA", "HD", "DIS",
-    "PYPL", "NFLX", "ADBE", "CRM", "INTC",
+    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "JPM", "V", "JNJ", "WMT", "PG", "MA",
+    "HD", "DIS", "PYPL", "NFLX", "ADBE", "CRM", "INTC",
 ];
 
 #[derive(Debug)]
@@ -59,7 +57,7 @@ async fn main() {
         let result = run_test(concurrency, 100, 10).await;
         print_result(&result);
         results.push(result);
-        
+
         // Cool-down between tests
         println!("  ⏳ Cooling down for 5 seconds...\n");
         sleep(Duration::from_secs(5)).await;
@@ -75,7 +73,7 @@ async fn main() {
         let result = run_test(1, delay_ms, 5).await;
         print_result(&result);
         results.push(result);
-        
+
         // Cool-down between tests
         println!("  ⏳ Cooling down for 3 seconds...\n");
         sleep(Duration::from_secs(3)).await;
@@ -100,7 +98,7 @@ async fn main() {
         let result = run_test(concurrency, delay_ms, 10).await;
         print_result(&result);
         results.push(result);
-        
+
         // Cool-down between tests
         println!("  ⏳ Cooling down for 5 seconds...\n");
         sleep(Duration::from_secs(5)).await;
@@ -229,7 +227,7 @@ fn print_summary(results: &[TestResult]) {
     println!();
     println!("  ENVIRONMENT RECOMMENDATIONS:");
     println!("  ────────────────────────────");
-    
+
     if let Some(best_safe) = safe_configs.first() {
         println!(
             "  📦 Docker:     YAHOO_REQUEST_DELAY_MS={}, concurrency={}",
@@ -242,12 +240,8 @@ fn print_summary(results: &[TestResult]) {
             best_safe.concurrency.min(3)
         );
     } else {
-        println!(
-            "  📦 Docker:     YAHOO_REQUEST_DELAY_MS=5000, concurrency=1"
-        );
-        println!(
-            "  💻 Local dev:  YAHOO_REQUEST_DELAY_MS=2000, concurrency=2"
-        );
+        println!("  📦 Docker:     YAHOO_REQUEST_DELAY_MS=5000, concurrency=1");
+        println!("  💻 Local dev:  YAHOO_REQUEST_DELAY_MS=2000, concurrency=2");
     }
 
     println!();

@@ -23,7 +23,7 @@ impl TechnicalIndicators {
         // Calculate initial average gain and loss using SMA for first period
         let mut gains = Vec::new();
         let mut losses = Vec::new();
-        
+
         for &change in &changes[..period] {
             if change > 0.0 {
                 gains.push(change);
@@ -41,7 +41,7 @@ impl TechnicalIndicators {
         for &change in &changes[period..] {
             let gain = if change > 0.0 { change } else { 0.0 };
             let loss = if change < 0.0 { change.abs() } else { 0.0 };
-            
+
             // Wilder's smoothing: (previous_avg * (period - 1) + current_value) / period
             avg_gain = (avg_gain * (period - 1) as f64 + gain) / period as f64;
             avg_loss = (avg_loss * (period - 1) as f64 + loss) / period as f64;
@@ -142,9 +142,11 @@ impl TechnicalIndicators {
         let recent: Vec<f64> = prices.iter().rev().take(period).map(|p| p.close).collect();
         let middle_band = recent.iter().sum::<f64>() / period as f64;
 
-        let variance = recent.iter()
+        let variance = recent
+            .iter()
             .map(|x| (x - middle_band).powi(2))
-            .sum::<f64>() / period as f64;
+            .sum::<f64>()
+            / period as f64;
         let std_dev = variance.sqrt();
 
         let upper_band = middle_band + std_dev_multiplier * std_dev;
@@ -182,7 +184,10 @@ impl TechnicalIndicators {
             let start = if end >= k_period { end - k_period } else { 0 };
             let window = &prices[start..end];
 
-            let highest_high = window.iter().map(|p| p.high).fold(f64::NEG_INFINITY, f64::max);
+            let highest_high = window
+                .iter()
+                .map(|p| p.high)
+                .fold(f64::NEG_INFINITY, f64::max);
             let lowest_low = window.iter().map(|p| p.low).fold(f64::INFINITY, f64::min);
             let close = window.last()?.close;
 
@@ -287,58 +292,80 @@ mod tests {
     #[test]
     fn test_sma_calculation() {
         let prices = create_test_prices(vec![100.0, 102.0, 104.0, 106.0, 108.0]);
-        
+
         let sma_3 = TechnicalIndicators::calculate_sma(&prices, 3);
         assert!(sma_3.is_some());
         let sma_value = sma_3.unwrap();
-        assert!((sma_value - 106.0).abs() < 0.01, "SMA(3) should be ~106.0, got {}", sma_value);
+        assert!(
+            (sma_value - 106.0).abs() < 0.01,
+            "SMA(3) should be ~106.0, got {}",
+            sma_value
+        );
 
         let sma_5 = TechnicalIndicators::calculate_sma(&prices, 5);
         assert!(sma_5.is_some());
         let sma_value = sma_5.unwrap();
-        assert!((sma_value - 104.0).abs() < 0.01, "SMA(5) should be 104.0, got {}", sma_value);
+        assert!(
+            (sma_value - 104.0).abs() < 0.01,
+            "SMA(5) should be 104.0, got {}",
+            sma_value
+        );
     }
 
     #[test]
     fn test_sma_insufficient_data() {
         let prices = create_test_prices(vec![100.0, 102.0]);
         let sma = TechnicalIndicators::calculate_sma(&prices, 5);
-        assert!(sma.is_none(), "SMA should return None when insufficient data");
+        assert!(
+            sma.is_none(),
+            "SMA should return None when insufficient data"
+        );
     }
 
     #[test]
     fn test_rsi_calculation() {
         // Create price series with uptrend but some variation
         let prices = create_test_prices(vec![
-            100.0, 101.0, 100.5, 102.0, 103.0, 102.5, 104.0, 105.0,
-            104.5, 106.0, 107.0, 106.5, 108.0, 109.0, 108.5, 110.0,
+            100.0, 101.0, 100.5, 102.0, 103.0, 102.5, 104.0, 105.0, 104.5, 106.0, 107.0, 106.5,
+            108.0, 109.0, 108.5, 110.0,
         ]);
 
         let rsi = TechnicalIndicators::calculate_rsi(&prices, 14);
         assert!(rsi.is_some(), "RSI should calculate with sufficient data");
         let rsi_value = rsi.unwrap();
-        assert!(rsi_value >= 50.0 && rsi_value <= 100.0, "RSI for uptrend should be >= 50, got {}", rsi_value);
+        assert!(
+            rsi_value >= 50.0 && rsi_value <= 100.0,
+            "RSI for uptrend should be >= 50, got {}",
+            rsi_value
+        );
     }
 
     #[test]
     fn test_rsi_downtrend() {
         // Create price series with downtrend but some variation
         let prices = create_test_prices(vec![
-            115.0, 114.0, 114.5, 113.0, 112.0, 112.5, 111.0, 110.0,
-            110.5, 109.0, 108.0, 108.5, 107.0, 106.0, 106.5, 105.0,
+            115.0, 114.0, 114.5, 113.0, 112.0, 112.5, 111.0, 110.0, 110.5, 109.0, 108.0, 108.5,
+            107.0, 106.0, 106.5, 105.0,
         ]);
 
         let rsi = TechnicalIndicators::calculate_rsi(&prices, 14);
         assert!(rsi.is_some());
         let rsi_value = rsi.unwrap();
-        assert!(rsi_value >= 0.0 && rsi_value <= 50.0, "RSI for downtrend should be <= 50, got {}", rsi_value);
+        assert!(
+            rsi_value >= 0.0 && rsi_value <= 50.0,
+            "RSI for downtrend should be <= 50, got {}",
+            rsi_value
+        );
     }
 
     #[test]
     fn test_rsi_insufficient_data() {
         let prices = create_test_prices(vec![100.0, 102.0, 104.0]);
         let rsi = TechnicalIndicators::calculate_rsi(&prices, 14);
-        assert!(rsi.is_none(), "RSI should return None with insufficient data");
+        assert!(
+            rsi.is_none(),
+            "RSI should return None with insufficient data"
+        );
     }
 
     #[test]
@@ -351,7 +378,11 @@ mod tests {
         let prices = create_test_prices(price_values);
 
         let macd = TechnicalIndicators::calculate_macd(&prices).unwrap();
-        assert!(macd.macd_line > 0.0, "Uptrend → positive MACD line, got {}", macd.macd_line);
+        assert!(
+            macd.macd_line > 0.0,
+            "Uptrend → positive MACD line, got {}",
+            macd.macd_line
+        );
         assert!(macd.signal_line > 0.0);
         // Histogram definition holds exactly.
         assert!((macd.histogram - (macd.macd_line - macd.signal_line)).abs() < 1e-9);
@@ -363,8 +394,12 @@ mod tests {
         // so histogram was always exactly 0.1 * macd_line. Verify we now have a
         // real EMA(9) signal line by crafting data where the relationship breaks.
         let mut prices = Vec::new();
-        for _ in 0..30 { prices.push(100.0); }          // flat for 30 bars
-        for i in 0..10 { prices.push(100.0 + i as f64 * 0.01); } // tiny up-tick
+        for _ in 0..30 {
+            prices.push(100.0);
+        } // flat for 30 bars
+        for i in 0..10 {
+            prices.push(100.0 + i as f64 * 0.01);
+        } // tiny up-tick
         let prices = create_test_prices(prices);
 
         let macd = TechnicalIndicators::calculate_macd(&prices).unwrap();
@@ -414,12 +449,16 @@ mod tests {
         // After one step with close=112, k = 2/13, so
         // EMA = (112 - 105.5) * 2/13 + 105.5 ≈ 106.5.
         let prices = create_test_prices(vec![
-            100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0,
-            108.0, 109.0, 110.0, 111.0, 112.0,
+            100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0,
+            112.0,
         ]);
 
         let ema = TechnicalIndicators::calculate_ema(&prices, 12).unwrap();
-        assert!((ema - 106.5).abs() < 0.01, "EMA(12) chronological should be ~106.5, got {}", ema);
+        assert!(
+            (ema - 106.5).abs() < 0.01,
+            "EMA(12) chronological should be ~106.5, got {}",
+            ema
+        );
     }
 
     #[test]
@@ -430,7 +469,12 @@ mod tests {
         let prices = create_test_prices((0..30).map(|i| 100.0 + i as f64).collect());
         let ema = TechnicalIndicators::calculate_ema(&prices, 12).unwrap();
         let seed_sma: f64 = (0..12).map(|i| 100.0 + i as f64).sum::<f64>() / 12.0; // 105.5
-        assert!(ema > seed_sma, "Uptrend EMA must exceed initial SMA seed ({} vs {})", ema, seed_sma);
+        assert!(
+            ema > seed_sma,
+            "Uptrend EMA must exceed initial SMA seed ({} vs {})",
+            ema,
+            seed_sma
+        );
         // And must be below the latest close.
         assert!(ema < 129.0);
     }
@@ -463,16 +507,24 @@ mod tests {
     #[test]
     fn test_bollinger_bands() {
         let prices = create_test_prices(vec![
-            100.0, 102.0, 101.0, 103.0, 104.0, 102.0, 105.0, 106.0,
-            104.0, 107.0, 108.0, 106.0, 109.0, 110.0, 108.0, 111.0,
-            112.0, 110.0, 113.0, 114.0,
+            100.0, 102.0, 101.0, 103.0, 104.0, 102.0, 105.0, 106.0, 104.0, 107.0, 108.0, 106.0,
+            109.0, 110.0, 108.0, 111.0, 112.0, 110.0, 113.0, 114.0,
         ]);
 
         let bb = TechnicalIndicators::calculate_bollinger_bands(&prices, 20, 2.0);
-        assert!(bb.is_some(), "Bollinger Bands should calculate with 20 days");
+        assert!(
+            bb.is_some(),
+            "Bollinger Bands should calculate with 20 days"
+        );
         let bb = bb.unwrap();
-        assert!(bb.upper_band > bb.middle_band, "Upper band should be above middle");
-        assert!(bb.lower_band < bb.middle_band, "Lower band should be below middle");
+        assert!(
+            bb.upper_band > bb.middle_band,
+            "Upper band should be above middle"
+        );
+        assert!(
+            bb.lower_band < bb.middle_band,
+            "Lower band should be below middle"
+        );
         assert!(bb.bandwidth > 0.0, "Bandwidth should be positive");
     }
 
@@ -486,15 +538,23 @@ mod tests {
     #[test]
     fn test_stochastic_oscillator() {
         let prices = create_test_prices(vec![
-            100.0, 102.0, 101.0, 103.0, 104.0, 102.0, 105.0, 106.0,
-            104.0, 107.0, 108.0, 106.0, 109.0, 110.0, 108.0, 111.0,
+            100.0, 102.0, 101.0, 103.0, 104.0, 102.0, 105.0, 106.0, 104.0, 107.0, 108.0, 106.0,
+            109.0, 110.0, 108.0, 111.0,
         ]);
 
         let stoch = TechnicalIndicators::calculate_stochastic(&prices, 14, 3);
         assert!(stoch.is_some(), "Stochastic should calculate with 16 days");
         let stoch = stoch.unwrap();
-        assert!(stoch.k_line >= 0.0 && stoch.k_line <= 100.0, "K should be 0-100, got {}", stoch.k_line);
-        assert!(stoch.d_line >= 0.0 && stoch.d_line <= 100.0, "D should be 0-100, got {}", stoch.d_line);
+        assert!(
+            stoch.k_line >= 0.0 && stoch.k_line <= 100.0,
+            "K should be 0-100, got {}",
+            stoch.k_line
+        );
+        assert!(
+            stoch.d_line >= 0.0 && stoch.d_line <= 100.0,
+            "D should be 0-100, got {}",
+            stoch.d_line
+        );
     }
 
     #[test]
@@ -511,13 +571,19 @@ mod tests {
         let b = vec![2.0, 4.0, 6.0, 8.0, 10.0];
         let corr = TechnicalIndicators::calculate_correlation(&a, &b);
         assert!(corr.is_some());
-        assert!((corr.unwrap() - 1.0).abs() < 0.001, "Perfect positive should be ~1.0");
+        assert!(
+            (corr.unwrap() - 1.0).abs() < 0.001,
+            "Perfect positive should be ~1.0"
+        );
 
         // Perfect negative correlation
         let c = vec![5.0, 4.0, 3.0, 2.0, 1.0];
         let corr = TechnicalIndicators::calculate_correlation(&a, &c);
         assert!(corr.is_some());
-        assert!((corr.unwrap() + 1.0).abs() < 0.001, "Perfect negative should be ~-1.0");
+        assert!(
+            (corr.unwrap() + 1.0).abs() < 0.001,
+            "Perfect negative should be ~-1.0"
+        );
     }
 
     #[test]
@@ -531,13 +597,17 @@ mod tests {
     fn test_rsi_boundary_conditions() {
         // All gains
         let prices = create_test_prices(vec![
-            100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0,
-            108.0, 109.0, 110.0, 111.0, 112.0, 113.0, 114.0, 115.0,
+            100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0, 107.0, 108.0, 109.0, 110.0, 111.0,
+            112.0, 113.0, 114.0, 115.0,
         ]);
         let rsi = TechnicalIndicators::calculate_rsi(&prices, 14);
         assert!(rsi.is_some());
         let rsi_value = rsi.unwrap();
-        assert!(rsi_value > 80.0, "RSI with all gains should be very high, got {}", rsi_value);
+        assert!(
+            rsi_value > 80.0,
+            "RSI with all gains should be very high, got {}",
+            rsi_value
+        );
     }
 
     // ---- Edge cases: flat / alternating / zero-range ----------------------
@@ -546,7 +616,11 @@ mod tests {
     fn test_rsi_flat_series_returns_50() {
         let prices = create_test_prices(vec![100.0; 20]);
         let rsi = TechnicalIndicators::calculate_rsi(&prices, 14).unwrap();
-        assert!((rsi - 50.0).abs() < 1e-9, "Flat series should yield RSI=50, got {}", rsi);
+        assert!(
+            (rsi - 50.0).abs() < 1e-9,
+            "Flat series should yield RSI=50, got {}",
+            rsi
+        );
     }
 
     #[test]
@@ -621,14 +695,21 @@ mod tests {
     #[test]
     fn test_stochastic_at_top_of_range() {
         // Close equals the high over the lookback → %K = 100.
-        let mut prices = create_test_prices(
-            (0..20).map(|i| 100.0 + i as f64).collect::<Vec<f64>>(),
-        );
+        let mut prices =
+            create_test_prices((0..20).map(|i| 100.0 + i as f64).collect::<Vec<f64>>());
         // Force close == max high in the last 14 bars.
-        let max_high = prices.iter().rev().take(14).map(|p| p.high).fold(f64::NEG_INFINITY, f64::max);
+        let max_high = prices
+            .iter()
+            .rev()
+            .take(14)
+            .map(|p| p.high)
+            .fold(f64::NEG_INFINITY, f64::max);
         prices.last_mut().unwrap().close = max_high;
         let stoch = TechnicalIndicators::calculate_stochastic(&prices, 14, 3).unwrap();
-        assert!(stoch.k_line > 99.0, "Close at top → K near 100, got {}", stoch.k_line);
+        assert!(
+            stoch.k_line > 99.0,
+            "Close at top → K near 100, got {}",
+            stoch.k_line
+        );
     }
 }
-

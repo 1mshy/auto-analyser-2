@@ -14,6 +14,7 @@ A high-performance, production-ready stock market analysis platform combining a 
 - **Technical Indicators**: RSI, SMA (20/50), MACD with real-time calculation
 - **Smart Filtering**: Advanced filters by market cap, price, volume, RSI, sectors
 - **Opportunity Detection**: Automated identification of oversold/overbought stocks
+- **US/CAD Coverage**: US NASDAQ screener as the primary universe with configurable Canadian Yahoo tickers (`CANADIAN_SYMBOLS`) added alongside it
 - **Historical Analysis**: Full historical data processing and trend analysis
 
 ### 🌐 **Modern Frontend**
@@ -44,6 +45,7 @@ docker compose up -d
 # Access the application
 # Frontend: http://localhost
 # Backend API: http://localhost:3333/api
+# WebSocket: ws://localhost:3333/ws
 
 # View logs
 docker compose logs -f

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::env;
 
 #[derive(Debug, Clone)]
@@ -30,6 +30,9 @@ pub struct Config {
     /// Base URL of the frontend, used to render "view stock" links inside
     /// Discord embeds. e.g. `http://localhost:5173`. Optional.
     pub public_base_url: Option<String>,
+    /// Optional Canadian listings to include alongside the US-primary universe.
+    /// Use Yahoo suffixes like `.TO` and `.V`. Configurable via `CANADIAN_SYMBOLS`.
+    pub canadian_symbols: Vec<String>,
 }
 
 impl Config {
@@ -37,13 +40,13 @@ impl Config {
         dotenv::dotenv().ok();
 
         let OPENROUTER_API_KEY_STOCKS = env::var("OPENROUTER_API_KEY_STOCKS").ok();
-        let openrouter_enabled = OPENROUTER_API_KEY_STOCKS.is_some() 
+        let openrouter_enabled = OPENROUTER_API_KEY_STOCKS.is_some()
             && env::var("OPENROUTER_ENABLED")
                 .unwrap_or_else(|_| "true".to_string())
                 .parse()
                 .unwrap_or(true);
 
-        Ok(Config {
+        let config = Config {
             mongodb_uri: env::var("MONGODB_URI")
                 .unwrap_or_else(|_| "mongodb://localhost:27017".to_string()),
             database_name: env::var("DATABASE_NAME")
@@ -82,8 +85,40 @@ impl Config {
                 .parse()
                 .unwrap_or(true),
             public_base_url: env::var("PUBLIC_BASE_URL").ok().filter(|s| !s.is_empty()),
+            canadian_symbols: crate::symbols::parse_symbol_list(
+                &env::var("CANADIAN_SYMBOLS").unwrap_or_else(|_| {
+                    "SHOP.TO,RY.TO,TD.TO,BNS.TO,BMO.TO,CM.TO,ENB.TO,CNQ.TO,CNR.TO,CP.TO,TRI.TO,ATD.TO,SU.TO,BAM.TO,BN.TO,WCN.TO,CSU.TO,IMO.TO,ABX.TO,TECK-B.TO".to_string()
+                }),
+            ),
             OPENROUTER_API_KEY_STOCKS,
             openrouter_enabled,
-        })
+        };
+
+        config.validate()?;
+        Ok(config)
+    }
+
+    fn validate(&self) -> Result<()> {
+        if self.server_port == 0 {
+            bail!("SERVER_PORT must be greater than 0");
+        }
+        if self.analysis_interval_secs == 0 {
+            bail!("ANALYSIS_INTERVAL_SECS must be greater than 0");
+        }
+        if self.cache_ttl_secs == 0 {
+            bail!("CACHE_TTL_SECS must be greater than 0");
+        }
+        if self.yahoo_concurrency == 0 {
+            bail!("YAHOO_CONCURRENCY must be greater than 0");
+        }
+        if self.min_market_cap_usd < 0.0 || !self.min_market_cap_usd.is_finite() {
+            bail!("MIN_MARKET_CAP_USD must be a finite non-negative number");
+        }
+        if self.max_abs_price_change_percent <= 0.0
+            || !self.max_abs_price_change_percent.is_finite()
+        {
+            bail!("MAX_ABS_PRICE_CHANGE_PCT must be a finite positive number");
+        }
+        Ok(())
     }
 }

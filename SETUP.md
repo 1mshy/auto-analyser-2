@@ -54,7 +54,7 @@ DATABASE_NAME=stock_analyzer
 
 # Server settings
 SERVER_HOST=127.0.0.1
-SERVER_PORT=3000
+SERVER_PORT=3333
 
 # Analysis settings
 ANALYSIS_INTERVAL_SECS=3600  # 1 hour
@@ -127,7 +127,7 @@ curl -X POST http://localhost:3333/api/stocks/filter \
 ### Test WebSocket Connection
 ```javascript
 // In browser console or Node.js
-const ws = new WebSocket('ws://localhost:3000/ws');
+const ws = new WebSocket('ws://localhost:3333/ws');
 ws.onmessage = (event) => console.log(JSON.parse(event.data));
 ```
 
