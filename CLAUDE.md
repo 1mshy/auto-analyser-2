@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Before exploring the repo, check `.claude/INDEX.md` — it's a task→file map that tells you exactly which files to read for common changes.** Scoped notes also live at `src/CLAUDE.md`, `src/notifications/CLAUDE.md`, and `frontend/CLAUDE.md` and load automatically when working in those directories.
+
 ## Stack
 
 Rust (Axum) backend + React 19 / TypeScript / Chakra UI v3 frontend, MongoDB persistence, Moka caching, Yahoo Finance + NASDAQ screener as data sources, optional OpenRouter AI for analysis, Discord webhooks for alerts.
