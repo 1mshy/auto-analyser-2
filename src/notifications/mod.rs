@@ -7,9 +7,12 @@
 //!   on channels / rules / watchlists / history).
 //! - [`models::*`]   — serde-backed persisted types, re-exported for the API.
 //!
-//! Flow: `AnalysisEngine` calls `AlertEngine::evaluate_and_dispatch` once per
-//! cycle. Evaluation is state-aware (cooldowns / hysteresis / MACD cross)
-//! and dispatch is resilient (per-channel errors don't abort the batch).
+//! Flow: `AnalysisEngine` calls `AlertEngine::submit(analysis)` for every
+//! freshly-saved snapshot. A background worker drains an mpsc queue and
+//! evaluates rules per-symbol, so alert latency tracks fetch latency rather
+//! than full-cycle latency. State (cooldowns / hysteresis / MACD cross)
+//! persists in Mongo per `(rule_id, symbol)` and is therefore safe to update
+//! one symbol at a time.
 
 pub mod api;
 pub mod channels;
@@ -22,6 +25,7 @@ pub mod rules;
 use std::sync::Arc;
 
 use anyhow::Result;
+use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 use crate::db::MongoDB;
@@ -31,6 +35,12 @@ use self::dispatcher::Dispatcher;
 use self::evaluator::Evaluator;
 use self::models::{DeliveryResult, PendingNotification};
 use self::repo::NotificationsRepo;
+
+/// Buffer capacity of the analysis-submission queue. Sized generously so the
+/// fetch loop never blocks on a slow Mongo write or webhook; the worker
+/// drains continuously. If the queue ever fills, we drop new submissions and
+/// log a warning (the next cycle will re-evaluate the dropped symbols).
+const QUEUE_CAPACITY: usize = 256;
 
 #[derive(Clone)]
 pub struct AlertEngine {
@@ -42,6 +52,9 @@ struct AlertEngineInner {
     evaluator: Evaluator,
     dispatcher: Dispatcher,
     enabled: bool,
+    /// Sender half of the worker queue. `None` means no worker is running
+    /// (e.g. in tests where `new` was never called).
+    tx: Option<mpsc::Sender<StockAnalysis>>,
 }
 
 impl AlertEngine {
@@ -67,14 +80,88 @@ impl AlertEngine {
             info!("🔔 Notifications disabled via config");
         }
 
-        Ok(Self {
+        let (tx, rx) = mpsc::channel::<StockAnalysis>(QUEUE_CAPACITY);
+
+        let engine = Self {
             inner: Arc::new(AlertEngineInner {
                 repo,
                 evaluator,
                 dispatcher,
                 enabled,
+                tx: Some(tx),
             }),
-        })
+        };
+
+        engine.spawn_worker(rx);
+        Ok(engine)
+    }
+
+    /// Spawn the background worker that drains the submission queue and
+    /// evaluates rules one analysis at a time. Runs for the process lifetime;
+    /// exits cleanly when all `Sender`s are dropped.
+    fn spawn_worker(&self, mut rx: mpsc::Receiver<StockAnalysis>) {
+        let engine = self.clone();
+        tokio::spawn(async move {
+            while let Some(analysis) = rx.recv().await {
+                if let Err(e) = engine.evaluate_one(&analysis).await {
+                    warn!(
+                        "notifications: evaluation failed for {}: {}",
+                        analysis.symbol, e
+                    );
+                }
+            }
+            info!("notifications: worker stopped (all senders dropped)");
+        });
+    }
+
+    /// Non-blocking submit. Drops the analysis and warns if the queue is full
+    /// or the worker has exited — never blocks the analysis loop.
+    pub fn submit(&self, analysis: StockAnalysis) {
+        let Some(tx) = self.inner.tx.as_ref() else {
+            return;
+        };
+        if let Err(err) = tx.try_send(analysis) {
+            match err {
+                mpsc::error::TrySendError::Full(a) => {
+                    warn!(
+                        "notifications: queue full, dropping {} (next cycle will retry)",
+                        a.symbol
+                    );
+                }
+                mpsc::error::TrySendError::Closed(_) => {
+                    warn!("notifications: queue closed; worker is gone");
+                }
+            }
+        }
+    }
+
+    /// Evaluate a single analysis. Used both by the worker and by the
+    /// (legacy) batch path so the disabled-engine state-refresh behaviour
+    /// stays in one place.
+    async fn evaluate_one(&self, analysis: &StockAnalysis) -> Result<()> {
+        if !self.inner.enabled {
+            // Even when disabled, refresh MACD cross state so re-enabling
+            // doesn't fire stale cross signals on the next message.
+            return self
+                .inner
+                .evaluator
+                .refresh_cycle_state(std::slice::from_ref(analysis))
+                .await;
+        }
+        let pending = self
+            .inner
+            .evaluator
+            .evaluate_cycle(std::slice::from_ref(analysis))
+            .await?;
+        if pending.is_empty() {
+            return Ok(());
+        }
+        info!(
+            "🔔 {} notifications queued for dispatch ({})",
+            pending.len(),
+            analysis.symbol
+        );
+        self.inner.dispatcher.dispatch_all(pending).await
     }
 
     pub fn repo(&self) -> &NotificationsRepo {
@@ -89,8 +176,9 @@ impl AlertEngine {
         self.inner.enabled
     }
 
-    /// Called at the end of each analysis cycle. Bails silently if
-    /// notifications are globally disabled.
+    /// Batch evaluation entry point — kept for tests and any caller that
+    /// already has a complete `Vec<StockAnalysis>` in hand. The hot fetch
+    /// path should use [`Self::submit`] instead.
     pub async fn evaluate_and_dispatch(&self, analyses: &[StockAnalysis]) -> Result<()> {
         if !self.inner.enabled {
             self.inner.evaluator.refresh_cycle_state(analyses).await?;

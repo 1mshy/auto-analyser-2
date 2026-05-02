@@ -101,6 +101,8 @@ async fn main() -> anyhow::Result<()> {
         config.max_abs_price_change_percent,
         config.canadian_symbols.clone(),
         Some(alert_engine.clone()),
+        config.yahoo_circuit_failure_threshold,
+        config.yahoo_circuit_skip_cycles,
     );
     let progress = analysis_engine.get_progress();
     tracing::info!(

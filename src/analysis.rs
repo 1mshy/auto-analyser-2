@@ -10,10 +10,103 @@ use crate::{
 };
 use chrono::Utc;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info, warn};
+
+/// Per-symbol fetch health for the Yahoo circuit breaker.
+///
+/// Tracks consecutive non-rate-limit failures. When the count reaches the
+/// configured threshold, the breaker opens and the symbol is skipped for a
+/// fixed number of cycles before being probed again.
+#[derive(Debug, Default, Clone)]
+struct SymbolHealth {
+    consecutive_failures: u32,
+    /// Cycle number (inclusive) up to which the symbol must be skipped.
+    /// `None` means the breaker is closed.
+    open_until_cycle: Option<u64>,
+    last_failure_kind: Option<String>,
+}
+
+/// In-memory per-symbol circuit breaker for the Yahoo fetch path.
+///
+/// State is process-local — fine because `AnalysisEngine` is single-instance
+/// and a restart re-probing every symbol once is acceptable. Rate-limit (429)
+/// failures intentionally do *not* consume the budget; they're a global
+/// signal, not per-symbol.
+pub(crate) struct CircuitBreaker {
+    health: RwLock<HashMap<String, SymbolHealth>>,
+    cycle: AtomicU64,
+    failure_threshold: u32,
+    skip_cycles: u32,
+}
+
+impl CircuitBreaker {
+    pub(crate) fn new(failure_threshold: u32, skip_cycles: u32) -> Self {
+        Self {
+            health: RwLock::new(HashMap::new()),
+            cycle: AtomicU64::new(0),
+            failure_threshold,
+            skip_cycles,
+        }
+    }
+
+    /// Increment the cycle counter at the start of every cycle and return the
+    /// new value. The breaker compares `open_until_cycle` against this.
+    pub(crate) fn advance_cycle(&self) -> u64 {
+        self.cycle.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    fn current_cycle(&self) -> u64 {
+        self.cycle.load(Ordering::SeqCst)
+    }
+
+    pub(crate) async fn is_open(&self, symbol: &str) -> bool {
+        if self.failure_threshold == 0 {
+            return false;
+        }
+        let current = self.current_cycle();
+        let health = self.health.read().await;
+        match health.get(symbol).and_then(|h| h.open_until_cycle) {
+            Some(until) => current <= until,
+            None => false,
+        }
+    }
+
+    pub(crate) async fn record_success(&self, symbol: &str) {
+        let mut health = self.health.write().await;
+        if let Some(entry) = health.get_mut(symbol) {
+            if entry.consecutive_failures > 0 || entry.open_until_cycle.is_some() {
+                entry.consecutive_failures = 0;
+                entry.open_until_cycle = None;
+                entry.last_failure_kind = None;
+            }
+        }
+    }
+
+    pub(crate) async fn record_failure(&self, symbol: &str, error: &str) {
+        if self.failure_threshold == 0 {
+            return;
+        }
+        let current = self.current_cycle();
+        let mut health = self.health.write().await;
+        let entry = health.entry(symbol.to_string()).or_default();
+        entry.consecutive_failures = entry.consecutive_failures.saturating_add(1);
+        entry.last_failure_kind = Some(error.to_string());
+        if entry.consecutive_failures >= self.failure_threshold {
+            entry.open_until_cycle = Some(current + self.skip_cycles as u64);
+            entry.consecutive_failures = 0;
+            warn!(
+                "⛔ Circuit opened for {} (until cycle {}): last error = {}",
+                symbol,
+                current + self.skip_cycles as u64,
+                error
+            );
+        }
+    }
+}
 
 pub struct AnalysisEngine {
     db: MongoDB,
@@ -32,9 +125,12 @@ pub struct AnalysisEngine {
     /// Optional alert engine. When present, fresh analyses are fed to it at
     /// the end of every cycle so user-defined rules can fire.
     alert_engine: Option<AlertEngine>,
+    /// Per-symbol Yahoo fetch circuit breaker (in-memory, process-local).
+    breaker: Arc<CircuitBreaker>,
 }
 
 impl AnalysisEngine {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: MongoDB,
         cache: CacheLayer,
@@ -47,6 +143,8 @@ impl AnalysisEngine {
         max_abs_price_change_percent: f64,
         canadian_symbols: Vec<String>,
         alert_engine: Option<AlertEngine>,
+        circuit_failure_threshold: u32,
+        circuit_skip_cycles: u32,
     ) -> Self {
         let progress = Arc::new(RwLock::new(AnalysisProgress {
             total_stocks: 0,
@@ -83,6 +181,10 @@ impl AnalysisEngine {
             max_abs_price_change_percent,
             canadian_symbols,
             alert_engine,
+            breaker: Arc::new(CircuitBreaker::new(
+                circuit_failure_threshold,
+                circuit_skip_cycles,
+            )),
         }
     }
 
@@ -151,6 +253,10 @@ impl AnalysisEngine {
     async fn run_analysis_cycle(&self) -> anyhow::Result<()> {
         use crate::async_fetcher::FetchResult;
 
+        // Advance the cycle counter so the circuit breaker can compare
+        // `open_until_cycle` deterministically without timestamps.
+        self.breaker.advance_cycle();
+
         let cycle_started = Utc::now();
         {
             let mut progress = self.progress.write().await;
@@ -183,12 +289,20 @@ impl AnalysisEngine {
                     if elapsed < self.interval_secs {
                         debug!("⏭️  Skipping {} - analyzed {}s ago", symbol, elapsed);
                         skipped += 1;
+                    } else if self.breaker.is_open(symbol).await {
+                        debug!("⏹️  Skipping {} - circuit open", symbol);
+                        skipped += 1;
                     } else {
                         symbols_to_analyze.push(symbol.clone());
                     }
                 }
                 Ok(None) => {
-                    symbols_to_analyze.push(symbol.clone());
+                    if self.breaker.is_open(symbol).await {
+                        debug!("⏹️  Skipping {} - circuit open", symbol);
+                        skipped += 1;
+                    } else {
+                        symbols_to_analyze.push(symbol.clone());
+                    }
                 }
                 Err(e) => {
                     return Err(anyhow::anyhow!(
@@ -247,15 +361,14 @@ impl AnalysisEngine {
         let mut analyzed_count = 0;
         let mut error_count = 0;
         let mut success_count = 0;
-        // Collected so the alert engine can evaluate rules once per cycle
-        // against every freshly-saved analysis.
-        let mut fresh_analyses: Vec<StockAnalysis> = Vec::new();
 
         // Process results as they arrive
         while let Some(result) = rx.recv().await {
             match result {
                 FetchResult::Success { symbol, prices } => {
                     let current_symbol = symbol.clone();
+
+                    self.breaker.record_success(&symbol).await;
 
                     let market_cap = market_cap_map.get(&symbol).copied().flatten();
 
@@ -269,7 +382,12 @@ impl AnalysisEngine {
                                 error_count += 1;
                             } else {
                                 self.cache.set_stock(symbol.clone(), analysis.clone()).await;
-                                fresh_analyses.push(analysis);
+                                // Hand the analysis off to the alert engine
+                                // immediately so rule evaluation tracks
+                                // per-symbol latency, not full-cycle latency.
+                                if let Some(engine) = &self.alert_engine {
+                                    engine.submit(analysis);
+                                }
                                 success_count += 1;
                             }
                         }
@@ -302,6 +420,9 @@ impl AnalysisEngine {
                         debug!("Rate limited fetching {}: {}", symbol, error);
                     } else {
                         warn!("Failed to fetch {}: {}", symbol, error);
+                        // Only non-rate-limit failures consume the breaker
+                        // budget; 429s are global and shouldn't bench symbols.
+                        self.breaker.record_failure(&symbol, &error).await;
                     }
                     error_count += 1;
                     analyzed_count += 1;
@@ -327,15 +448,9 @@ impl AnalysisEngine {
         // Invalidate list caches after cycle
         self.cache.invalidate_all_lists().await;
 
-        // Fire user-defined alerts against this cycle's fresh analyses.
-        // Errors here are non-fatal — the analysis cycle has already succeeded.
-        if let Some(engine) = &self.alert_engine {
-            if !fresh_analyses.is_empty() {
-                if let Err(e) = engine.evaluate_and_dispatch(&fresh_analyses).await {
-                    warn!("alert evaluation failed: {}", e);
-                }
-            }
-        }
+        // Note: alert evaluation runs asynchronously per-analysis via
+        // `AlertEngine::submit` (see the success branch above). No cycle-end
+        // batch dispatch is needed.
 
         let completed = Utc::now();
         {
@@ -945,5 +1060,75 @@ mod tests {
             .collect();
 
         assert_eq!(kept, vec!["AAPL", "MSFT", "BRK-B"]);
+    }
+
+    // --- Circuit breaker -------------------------------------------------
+
+    #[tokio::test]
+    async fn breaker_closed_when_disabled() {
+        let cb = CircuitBreaker::new(0, 12);
+        cb.advance_cycle();
+        // Even a flood of failures should not open the breaker when disabled.
+        for _ in 0..10 {
+            cb.record_failure("AAPL", "boom").await;
+        }
+        assert!(!cb.is_open("AAPL").await);
+    }
+
+    #[tokio::test]
+    async fn breaker_opens_after_threshold() {
+        let cb = CircuitBreaker::new(5, 12);
+        cb.advance_cycle();
+        for _ in 0..4 {
+            cb.record_failure("AAPL", "delisted").await;
+        }
+        assert!(!cb.is_open("AAPL").await, "still under threshold");
+        cb.record_failure("AAPL", "delisted").await;
+        assert!(cb.is_open("AAPL").await, "should open at K=5");
+    }
+
+    #[tokio::test]
+    async fn breaker_success_resets_counter() {
+        let cb = CircuitBreaker::new(5, 12);
+        cb.advance_cycle();
+        for _ in 0..4 {
+            cb.record_failure("AAPL", "boom").await;
+        }
+        cb.record_success("AAPL").await;
+        // After a success, should require K fresh failures again.
+        for _ in 0..4 {
+            cb.record_failure("AAPL", "boom").await;
+        }
+        assert!(!cb.is_open("AAPL").await);
+        cb.record_failure("AAPL", "boom").await;
+        assert!(cb.is_open("AAPL").await);
+    }
+
+    #[tokio::test]
+    async fn breaker_closes_after_skip_cycles() {
+        let cb = CircuitBreaker::new(2, 3);
+        cb.advance_cycle(); // cycle 1
+        cb.record_failure("XYZ", "boom").await;
+        cb.record_failure("XYZ", "boom").await;
+        assert!(cb.is_open("XYZ").await, "open after threshold");
+        // Opened at cycle=1 with skip=3 → open_until = 4.
+        cb.advance_cycle(); // 2
+        assert!(cb.is_open("XYZ").await);
+        cb.advance_cycle(); // 3
+        assert!(cb.is_open("XYZ").await);
+        cb.advance_cycle(); // 4
+        assert!(cb.is_open("XYZ").await);
+        cb.advance_cycle(); // 5 → past 4
+        assert!(!cb.is_open("XYZ").await);
+    }
+
+    #[tokio::test]
+    async fn breaker_isolates_symbols() {
+        let cb = CircuitBreaker::new(2, 5);
+        cb.advance_cycle();
+        cb.record_failure("AAPL", "boom").await;
+        cb.record_failure("AAPL", "boom").await;
+        assert!(cb.is_open("AAPL").await);
+        assert!(!cb.is_open("MSFT").await, "MSFT should be untouched");
     }
 }

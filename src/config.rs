@@ -33,6 +33,13 @@ pub struct Config {
     /// Optional Canadian listings to include alongside the US-primary universe.
     /// Use Yahoo suffixes like `.TO` and `.V`. Configurable via `CANADIAN_SYMBOLS`.
     pub canadian_symbols: Vec<String>,
+    /// Per-symbol Yahoo circuit breaker: number of consecutive non-rate-limit
+    /// fetch failures before the breaker opens for that symbol. Configurable
+    /// via `YAHOO_CIRCUIT_FAILURES`. Set to 0 to disable the breaker entirely.
+    pub yahoo_circuit_failure_threshold: u32,
+    /// Number of subsequent cycles to skip a symbol after the breaker opens,
+    /// before it is probed again. Configurable via `YAHOO_CIRCUIT_SKIP_CYCLES`.
+    pub yahoo_circuit_skip_cycles: u32,
 }
 
 impl Config {
@@ -90,6 +97,12 @@ impl Config {
                     "SHOP.TO,RY.TO,TD.TO,BNS.TO,BMO.TO,CM.TO,ENB.TO,CNQ.TO,CNR.TO,CP.TO,TRI.TO,ATD.TO,SU.TO,BAM.TO,BN.TO,WCN.TO,CSU.TO,IMO.TO,ABX.TO,TECK-B.TO".to_string()
                 }),
             ),
+            yahoo_circuit_failure_threshold: env::var("YAHOO_CIRCUIT_FAILURES")
+                .unwrap_or_else(|_| "5".to_string())
+                .parse()?,
+            yahoo_circuit_skip_cycles: env::var("YAHOO_CIRCUIT_SKIP_CYCLES")
+                .unwrap_or_else(|_| "12".to_string())
+                .parse()?,
             OPENROUTER_API_KEY_STOCKS,
             openrouter_enabled,
         };

@@ -18,8 +18,9 @@ use serde_json::json;
 
 use crate::api::AppState;
 use crate::notifications::models::{
-    AddSymbolInput, CreateAlertRuleInput, CreateChannelInput, CreateWatchlistInput,
-    PendingNotification, UpdateAlertRuleInput, UpdateChannelInput, UpdateWatchlistInput,
+    AddSymbolInput, CreateAlertRuleInput, CreateChannelInput, CreatePositionInput,
+    CreateWatchlistInput, PendingNotification, Position, PositionView, UpdateAlertRuleInput,
+    UpdateChannelInput, UpdatePositionInput, UpdateWatchlistInput,
 };
 
 /// Attach every notifications route to the given router.
@@ -65,6 +66,14 @@ pub fn mount(router: Router<AppState>) -> Router<AppState> {
         .route("/api/alerts/history", get(list_history))
         .route("/api/alerts/history/unread-count", get(unread_count))
         .route("/api/alerts/history/:id/read", patch(mark_history_read))
+        // Positions
+        .route("/api/positions", get(list_positions).post(create_position))
+        .route(
+            "/api/positions/:id",
+            get(get_position)
+                .patch(update_position)
+                .delete(delete_position),
+        )
         // Meta
         .route("/api/alerts/status", get(alerts_status))
 }
@@ -547,6 +556,95 @@ async fn mark_history_read(
         .mark_history_read(&oid, input.read)
         .await
     {
+        Ok(true) => Json(json!({ "success": true })).into_response(),
+        Ok(false) => err(StatusCode::NOT_FOUND, "not found").into_response(),
+        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+// ---------- positions -------------------------------------------------------
+
+/// Build a `PositionView` for a single position by joining against the cached
+/// `StockAnalysis.price`. On cache miss, computed fields are `None` and the
+/// frontend renders dashes.
+async fn build_position_view(state: &AppState, position: Position) -> PositionView {
+    let current_price = state
+        .cache
+        .get_stock(&position.symbol)
+        .await
+        .map(|s| s.price);
+    PositionView::from_position(position, current_price)
+}
+
+async fn list_positions(State(state): State<AppState>) -> impl IntoResponse {
+    match state.alert_engine.repo().list_positions().await {
+        Ok(items) => {
+            let mut views = Vec::with_capacity(items.len());
+            for p in items {
+                views.push(build_position_view(&state, p).await);
+            }
+            Json(json!({ "success": true, "positions": views })).into_response()
+        }
+        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+async fn create_position(
+    State(state): State<AppState>,
+    Json(input): Json<CreatePositionInput>,
+) -> impl IntoResponse {
+    match state.alert_engine.repo().create_position(input).await {
+        Ok(p) => {
+            let view = build_position_view(&state, p).await;
+            Json(json!({ "success": true, "position": view })).into_response()
+        }
+        Err(e) => err(StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+    }
+}
+
+async fn get_position(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    let oid = match parse_oid(&id) {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    match state.alert_engine.repo().get_position(&oid).await {
+        Ok(Some(p)) => {
+            let view = build_position_view(&state, p).await;
+            Json(json!({ "success": true, "position": view })).into_response()
+        }
+        Ok(None) => err(StatusCode::NOT_FOUND, "not found").into_response(),
+        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+async fn update_position(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<UpdatePositionInput>,
+) -> impl IntoResponse {
+    let oid = match parse_oid(&id) {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    match state.alert_engine.repo().update_position(&oid, input).await {
+        Ok(Some(p)) => {
+            let view = build_position_view(&state, p).await;
+            Json(json!({ "success": true, "position": view })).into_response()
+        }
+        Ok(None) => err(StatusCode::NOT_FOUND, "not found").into_response(),
+        Err(e) => err(StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+    }
+}
+
+async fn delete_position(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let oid = match parse_oid(&id) {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    match state.alert_engine.repo().delete_position(&oid).await {
         Ok(true) => Json(json!({ "success": true })).into_response(),
         Ok(false) => err(StatusCode::NOT_FOUND, "not found").into_response(),
         Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),

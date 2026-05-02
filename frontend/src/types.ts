@@ -467,6 +467,42 @@ export interface Watchlist {
   updated_at: string;
 }
 
+/** Open position. Mirrors Rust `Position`. */
+export interface Position {
+  _id?: string;
+  symbol: string;
+  quantity: number;
+  cost_basis_per_share: number;
+  opened_at: string;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Position + computed P&L. Mirrors Rust `PositionView` (flat-flattened). */
+export interface PositionView extends Position {
+  current_price: number | null;
+  market_value: number | null;
+  cost_basis_total: number;
+  unrealized_pnl: number | null;
+  unrealized_pnl_pct: number | null;
+}
+
+export interface CreatePositionInput {
+  symbol: string;
+  quantity: number;
+  cost_basis_per_share: number;
+  opened_at?: string;
+  notes?: string | null;
+}
+
+export interface UpdatePositionInput {
+  quantity?: number;
+  cost_basis_per_share?: number;
+  opened_at?: string;
+  notes?: string | null;
+}
+
 /** Tagged union — one variant per `type`. Keep in sync with Rust `Condition`. */
 export type Condition =
   | { type: 'rsi_below'; value: number }

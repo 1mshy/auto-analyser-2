@@ -16,9 +16,9 @@ use mongodb::{
 use crate::db::MongoDB;
 
 use super::models::{
-    AlertRule, AlertState, CreateAlertRuleInput, CreateChannelInput, CreateWatchlistInput,
-    NotificationChannel, NotificationHistory, UpdateAlertRuleInput, UpdateChannelInput,
-    UpdateWatchlistInput, Watchlist,
+    AlertRule, AlertState, CreateAlertRuleInput, CreateChannelInput, CreatePositionInput,
+    CreateWatchlistInput, NotificationChannel, NotificationHistory, Position, UpdateAlertRuleInput,
+    UpdateChannelInput, UpdatePositionInput, UpdateWatchlistInput, Watchlist,
 };
 
 #[derive(Clone)]
@@ -51,6 +51,10 @@ impl NotificationsRepo {
 
     pub fn history(&self) -> Collection<NotificationHistory> {
         self.db.database().collection("notification_history")
+    }
+
+    pub fn positions(&self) -> Collection<Position> {
+        self.db.database().collection("positions")
     }
 
     // ----- indexes --------------------------------------------------------
@@ -95,6 +99,9 @@ impl NotificationsRepo {
                     .keys(doc! { "rule_id": 1, "created_at": -1 })
                     .build(),
             )
+            .await?;
+        self.positions()
+            .create_index(IndexModel::builder().keys(doc! { "symbol": 1 }).build())
             .await?;
         Ok(())
     }
@@ -248,6 +255,89 @@ impl NotificationsRepo {
 
     pub async fn delete_watchlist(&self, id: &ObjectId) -> Result<bool> {
         let res = self.watchlists().delete_one(doc! { "_id": id }).await?;
+        Ok(res.deleted_count > 0)
+    }
+
+    // ----- positions ------------------------------------------------------
+
+    pub async fn list_positions(&self) -> Result<Vec<Position>> {
+        collect(self.positions().find(doc! {}).await?).await
+    }
+
+    pub async fn get_position(&self, id: &ObjectId) -> Result<Option<Position>> {
+        Ok(self.positions().find_one(doc! { "_id": id }).await?)
+    }
+
+    pub async fn create_position(&self, input: CreatePositionInput) -> Result<Position> {
+        let symbol = crate::symbols::normalize_symbol_key(&input.symbol);
+        if symbol.is_empty() {
+            return Err(anyhow!("empty symbol"));
+        }
+        if !input.quantity.is_finite() || input.quantity == 0.0 {
+            return Err(anyhow!("quantity must be a non-zero finite number"));
+        }
+        if !input.cost_basis_per_share.is_finite() || input.cost_basis_per_share < 0.0 {
+            return Err(anyhow!(
+                "cost_basis_per_share must be a non-negative finite number"
+            ));
+        }
+        let now = Utc::now();
+        let position = Position {
+            id: None,
+            symbol,
+            quantity: input.quantity,
+            cost_basis_per_share: input.cost_basis_per_share,
+            opened_at: input.opened_at.unwrap_or(now),
+            notes: input.notes.filter(|s| !s.trim().is_empty()),
+            created_at: now,
+            updated_at: now,
+        };
+        let res = self.positions().insert_one(&position).await?;
+        Ok(Position {
+            id: res.inserted_id.as_object_id(),
+            ..position
+        })
+    }
+
+    pub async fn update_position(
+        &self,
+        id: &ObjectId,
+        update: UpdatePositionInput,
+    ) -> Result<Option<Position>> {
+        let mut set = doc! { "updated_at": mongodb::bson::DateTime::from_chrono(Utc::now()) };
+        if let Some(quantity) = update.quantity {
+            if !quantity.is_finite() || quantity == 0.0 {
+                return Err(anyhow!("quantity must be a non-zero finite number"));
+            }
+            set.insert("quantity", quantity);
+        }
+        if let Some(cost) = update.cost_basis_per_share {
+            if !cost.is_finite() || cost < 0.0 {
+                return Err(anyhow!(
+                    "cost_basis_per_share must be a non-negative finite number"
+                ));
+            }
+            set.insert("cost_basis_per_share", cost);
+        }
+        if let Some(opened_at) = update.opened_at {
+            set.insert("opened_at", mongodb::bson::DateTime::from_chrono(opened_at));
+        }
+        if let Some(notes) = update.notes {
+            let trimmed = notes.trim();
+            if trimmed.is_empty() {
+                set.insert("notes", mongodb::bson::Bson::Null);
+            } else {
+                set.insert("notes", trimmed);
+            }
+        }
+        self.positions()
+            .update_one(doc! { "_id": id }, doc! { "$set": set })
+            .await?;
+        self.get_position(id).await
+    }
+
+    pub async fn delete_position(&self, id: &ObjectId) -> Result<bool> {
+        let res = self.positions().delete_one(doc! { "_id": id }).await?;
         Ok(res.deleted_count > 0)
     }
 

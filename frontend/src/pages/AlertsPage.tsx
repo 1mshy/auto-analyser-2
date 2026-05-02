@@ -26,6 +26,7 @@ import {
   ConditionGroup,
   NotificationChannel,
   NotificationHistoryItem,
+  PositionView,
   QuietHours,
   Watchlist,
   defaultCondition,
@@ -33,10 +34,11 @@ import {
 import { ConditionBuilder, describeGroup } from '../components/alerts/ConditionBuilder';
 import { toaster } from '../components/ui/toaster';
 
-type TabId = 'watchlists' | 'rules' | 'channels' | 'inbox';
+type TabId = 'watchlists' | 'positions' | 'rules' | 'channels' | 'inbox';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'watchlists', label: 'Watchlists' },
+  { id: 'positions', label: 'Positions' },
   { id: 'rules', label: 'Rules' },
   { id: 'channels', label: 'Channels' },
   { id: 'inbox', label: 'Inbox' },
@@ -74,6 +76,7 @@ export const AlertsPage: React.FC = () => {
       </Surface>
 
       {tab === 'watchlists' && <WatchlistsTab />}
+      {tab === 'positions' && <PositionsTab />}
       {tab === 'rules' && <RulesTab />}
       {tab === 'channels' && <ChannelsTab />}
       {tab === 'inbox' && <InboxTab />}
@@ -261,6 +264,214 @@ const blankRule = (): Omit<AlertRule, '_id' | 'created_at' | 'updated_at'> => ({
   message_template: null,
   require_consecutive: 1,
 });
+
+// ---------- Positions tab --------------------------------------------------
+
+const fmtMoney = (n: number | null | undefined): string =>
+  n == null || !Number.isFinite(n) ? '—' : `$${n.toFixed(2)}`;
+
+const fmtPct = (n: number | null | undefined): string =>
+  n == null || !Number.isFinite(n) ? '—' : `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
+
+const PositionsTab: React.FC = () => {
+  const [items, setItems] = useState<PositionView[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [symbol, setSymbol] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [costBasis, setCostBasis] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      setItems(await api.alerts.listPositions());
+    } catch (e: any) {
+      toaster.create({ title: 'Failed to load positions', description: e.message, type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const totalMarketValue = useMemo(
+    () => items.reduce((acc, p) => acc + (p.market_value ?? 0), 0),
+    [items],
+  );
+  const totalCost = useMemo(() => items.reduce((acc, p) => acc + p.cost_basis_total, 0), [items]);
+  const totalPnl = useMemo(
+    () => items.reduce((acc, p) => acc + (p.unrealized_pnl ?? 0), 0),
+    [items],
+  );
+  const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : null;
+
+  const onAdd = async () => {
+    const sym = symbol.trim();
+    const qty = parseFloat(quantity);
+    const cost = parseFloat(costBasis);
+    if (!sym) {
+      toaster.create({ title: 'Symbol required', type: 'error' });
+      return;
+    }
+    if (!Number.isFinite(qty) || qty === 0) {
+      toaster.create({ title: 'Quantity must be a non-zero number', type: 'error' });
+      return;
+    }
+    if (!Number.isFinite(cost) || cost < 0) {
+      toaster.create({ title: 'Cost basis must be ≥ 0', type: 'error' });
+      return;
+    }
+    setAdding(true);
+    try {
+      await api.alerts.createPosition({
+        symbol: sym,
+        quantity: qty,
+        cost_basis_per_share: cost,
+      });
+      setSymbol('');
+      setQuantity('');
+      setCostBasis('');
+      await reload();
+    } catch (e: any) {
+      toaster.create({
+        title: 'Failed to add position',
+        description: e?.response?.data?.error ?? e.message,
+        type: 'error',
+      });
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const onDelete = async (id: string) => {
+    try {
+      await api.alerts.deletePosition(id);
+      await reload();
+    } catch (e: any) {
+      toaster.create({ title: 'Failed to delete', description: e.message, type: 'error' });
+    }
+  };
+
+  return (
+    <Surface p={{ base: 4, md: 6 }}>
+      <VStack align="stretch" gap={5}>
+        <Heading size="md">Positions</Heading>
+        <Text fontSize="sm" color="fg.subtle">
+          Track open holdings — quantity and cost basis. P&L is computed against the latest cached
+          price; "—" means we haven't fetched a fresh snapshot yet.
+        </Text>
+
+        <HStack gap={2} flexWrap="wrap">
+          <Input
+            placeholder="Symbol (e.g. AAPL)"
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+            maxW="160px"
+          />
+          <Input
+            placeholder="Quantity"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            type="number"
+            maxW="120px"
+          />
+          <Input
+            placeholder="Cost basis / share"
+            value={costBasis}
+            onChange={(e) => setCostBasis(e.target.value)}
+            type="number"
+            maxW="160px"
+          />
+          <Button onClick={onAdd} loading={adding}>
+            <Plus size={14} /> Add position
+          </Button>
+        </HStack>
+
+        {loading ? (
+          <Spinner />
+        ) : items.length === 0 ? (
+          <EmptyState
+            title="No positions yet"
+            description="Add your first position above to start tracking unrealized P&L."
+          />
+        ) : (
+          <>
+            <HStack gap={6} fontSize="sm">
+              <Box>
+                <Text color="fg.subtle">Market value</Text>
+                <Text fontWeight="bold">{fmtMoney(totalMarketValue)}</Text>
+              </Box>
+              <Box>
+                <Text color="fg.subtle">Cost basis</Text>
+                <Text fontWeight="bold">{fmtMoney(totalCost)}</Text>
+              </Box>
+              <Box>
+                <Text color="fg.subtle">Unrealized P&L</Text>
+                <Text fontWeight="bold" color={totalPnl >= 0 ? 'green.500' : 'red.500'}>
+                  {fmtMoney(totalPnl)} ({fmtPct(totalPnlPct)})
+                </Text>
+              </Box>
+            </HStack>
+
+            <Box overflowX="auto">
+              <Box as="table" w="100%" fontSize="sm">
+                <Box as="thead" color="fg.subtle">
+                  <Box as="tr">
+                    <Box as="th" textAlign="left" py={2}>Symbol</Box>
+                    <Box as="th" textAlign="right">Qty</Box>
+                    <Box as="th" textAlign="right">Cost</Box>
+                    <Box as="th" textAlign="right">Price</Box>
+                    <Box as="th" textAlign="right">Mkt value</Box>
+                    <Box as="th" textAlign="right">P&L</Box>
+                    <Box as="th" textAlign="right">P&L %</Box>
+                    <Box as="th" />
+                  </Box>
+                </Box>
+                <Box as="tbody">
+                  {items.map((p) => {
+                    const pnlColor =
+                      p.unrealized_pnl == null
+                        ? undefined
+                        : p.unrealized_pnl >= 0
+                          ? 'green.500'
+                          : 'red.500';
+                    return (
+                      <Box as="tr" key={p._id}>
+                        <Box as="td" py={2} fontWeight="bold">{p.symbol}</Box>
+                        <Box as="td" textAlign="right">{p.quantity}</Box>
+                        <Box as="td" textAlign="right">{fmtMoney(p.cost_basis_per_share)}</Box>
+                        <Box as="td" textAlign="right">{fmtMoney(p.current_price)}</Box>
+                        <Box as="td" textAlign="right">{fmtMoney(p.market_value)}</Box>
+                        <Box as="td" textAlign="right" color={pnlColor}>
+                          {fmtMoney(p.unrealized_pnl)}
+                        </Box>
+                        <Box as="td" textAlign="right" color={pnlColor}>
+                          {fmtPct(p.unrealized_pnl_pct)}
+                        </Box>
+                        <Box as="td" textAlign="right">
+                          <IconButton
+                            aria-label="Delete position"
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => p._id && onDelete(p._id)}
+                          >
+                            <Trash2 size={14} />
+                          </IconButton>
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Box>
+            </Box>
+          </>
+        )}
+      </VStack>
+    </Surface>
+  );
+};
 
 const RulesTab: React.FC = () => {
   const [rules, setRules] = useState<AlertRule[]>([]);

@@ -77,6 +77,65 @@ pub struct Watchlist {
 }
 
 // ---------------------------------------------------------------------------
+// Positions (open holdings, used for P&L tracking)
+// ---------------------------------------------------------------------------
+
+/// A single open position. Flat list — no portfolio grouping (yet). P&L is
+/// computed at response time against the latest cached `StockAnalysis.price`,
+/// not persisted, so cache invalidation is the source of truth.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Position {
+    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    pub id: Option<ObjectId>,
+    /// Normalized uppercase symbol (e.g. "AAPL", "SHOP.TO").
+    pub symbol: String,
+    pub quantity: f64,
+    pub cost_basis_per_share: f64,
+    pub opened_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Position + computed P&L for client responses. Computed fields are
+/// `Option` because the latest analysis may not be in the cache yet.
+#[derive(Debug, Clone, Serialize)]
+pub struct PositionView {
+    #[serde(flatten)]
+    pub position: Position,
+    pub current_price: Option<f64>,
+    pub market_value: Option<f64>,
+    pub cost_basis_total: f64,
+    pub unrealized_pnl: Option<f64>,
+    pub unrealized_pnl_pct: Option<f64>,
+}
+
+impl PositionView {
+    /// Construct a view by joining a `Position` against an optional current
+    /// price. The cost-basis total is always known; everything else falls
+    /// back to `None` when the price is missing.
+    pub fn from_position(position: Position, current_price: Option<f64>) -> Self {
+        let cost_basis_total = position.cost_basis_per_share * position.quantity;
+        let market_value = current_price.map(|p| p * position.quantity);
+        let unrealized_pnl = market_value.map(|mv| mv - cost_basis_total);
+        let unrealized_pnl_pct = if cost_basis_total > 0.0 {
+            unrealized_pnl.map(|p| (p / cost_basis_total) * 100.0)
+        } else {
+            None
+        };
+        Self {
+            position,
+            current_price,
+            market_value,
+            cost_basis_total,
+            unrealized_pnl,
+            unrealized_pnl_pct,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Alert rules: conditions, scope, quiet hours
 // ---------------------------------------------------------------------------
 
@@ -325,6 +384,26 @@ pub struct AddSymbolInput {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct CreatePositionInput {
+    pub symbol: String,
+    pub quantity: f64,
+    pub cost_basis_per_share: f64,
+    /// When the user opened the position. Defaults to `now()` if omitted.
+    #[serde(default)]
+    pub opened_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdatePositionInput {
+    pub quantity: Option<f64>,
+    pub cost_basis_per_share: Option<f64>,
+    pub opened_at: Option<DateTime<Utc>>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct CreateAlertRuleInput {
     pub name: String,
     #[serde(default = "default_true")]
@@ -358,4 +437,57 @@ pub struct UpdateAlertRuleInput {
 
 fn default_true() -> bool {
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn position(quantity: f64, cost: f64) -> Position {
+        let now = Utc::now();
+        Position {
+            id: None,
+            symbol: "AAPL".to_string(),
+            quantity,
+            cost_basis_per_share: cost,
+            opened_at: now,
+            notes: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn position_view_with_price_computes_pnl() {
+        let view = PositionView::from_position(position(10.0, 100.0), Some(110.0));
+        assert_eq!(view.cost_basis_total, 1000.0);
+        assert_eq!(view.market_value, Some(1100.0));
+        assert_eq!(view.unrealized_pnl, Some(100.0));
+        assert!((view.unrealized_pnl_pct.unwrap() - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn position_view_loss_is_negative() {
+        let view = PositionView::from_position(position(5.0, 100.0), Some(80.0));
+        assert_eq!(view.unrealized_pnl, Some(-100.0));
+        assert!((view.unrealized_pnl_pct.unwrap() + 20.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn position_view_without_price_is_partial() {
+        let view = PositionView::from_position(position(10.0, 100.0), None);
+        assert_eq!(view.cost_basis_total, 1000.0);
+        assert!(view.market_value.is_none());
+        assert!(view.unrealized_pnl.is_none());
+        assert!(view.unrealized_pnl_pct.is_none());
+    }
+
+    #[test]
+    fn position_view_zero_cost_basis_skips_pct() {
+        let view = PositionView::from_position(position(10.0, 0.0), Some(50.0));
+        assert_eq!(view.cost_basis_total, 0.0);
+        assert_eq!(view.market_value, Some(500.0));
+        assert_eq!(view.unrealized_pnl, Some(500.0));
+        assert!(view.unrealized_pnl_pct.is_none(), "no pct when basis is 0");
+    }
 }

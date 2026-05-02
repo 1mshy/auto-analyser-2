@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus } from './types';
+import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus, PositionView, CreatePositionInput, UpdatePositionInput } from './types';
 
 const API_BASE_URL = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
 
@@ -276,6 +276,27 @@ export const api = {
     removeSymbol: async (id: string, symbol: string): Promise<Watchlist> => {
       const r = await axios.delete(`${API_BASE_URL}/api/watchlists/${id}/symbols/${symbol}`);
       return r.data.watchlist;
+    },
+
+    // ---- positions ----
+    listPositions: async (): Promise<PositionView[]> => {
+      const r = await axios.get(`${API_BASE_URL}/api/positions`);
+      return r.data.positions || [];
+    },
+    createPosition: async (input: CreatePositionInput): Promise<PositionView> => {
+      const r = await axios.post(`${API_BASE_URL}/api/positions`, input);
+      return r.data.position;
+    },
+    getPosition: async (id: string): Promise<PositionView> => {
+      const r = await axios.get(`${API_BASE_URL}/api/positions/${id}`);
+      return r.data.position;
+    },
+    updatePosition: async (id: string, patch: UpdatePositionInput): Promise<PositionView> => {
+      const r = await axios.patch(`${API_BASE_URL}/api/positions/${id}`, patch);
+      return r.data.position;
+    },
+    deletePosition: async (id: string): Promise<void> => {
+      await axios.delete(`${API_BASE_URL}/api/positions/${id}`);
     },
 
     // ---- channels ----
