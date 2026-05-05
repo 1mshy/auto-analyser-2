@@ -61,7 +61,7 @@ const SectorCard: React.FC<{ sector: SectorPerformance }> = ({ sector }) => {
             <Text color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider" mb={1}>Top Performers</Text>
             <HStack gap={2} wrap="wrap">
               {sector.top_performers.slice(0, 3).map(stock => (
-                <Link key={stock.symbol} to={`/stocks/${stock.symbol}`}>
+                <Link key={stock.symbol} to={`/stocks/${encodeURIComponent(stock.symbol)}`}>
                   <SignalBadge tone="up" size="sm" className="num" data-num="" _hover={{ opacity: 0.8 }}>
                     {stock.symbol} {stock.price_change_percent != null ? `+${stock.price_change_percent.toFixed(1)}%` : ''}
                   </SignalBadge>
@@ -76,7 +76,7 @@ const SectorCard: React.FC<{ sector: SectorPerformance }> = ({ sector }) => {
             <Text color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider" mb={1}>Bottom Performers</Text>
             <HStack gap={2} wrap="wrap">
               {sector.bottom_performers.slice(0, 3).map(stock => (
-                <Link key={stock.symbol} to={`/stocks/${stock.symbol}`}>
+                <Link key={stock.symbol} to={`/stocks/${encodeURIComponent(stock.symbol)}`}>
                   <SignalBadge tone="down" size="sm" className="num" data-num="" _hover={{ opacity: 0.8 }}>
                     {stock.symbol} {stock.price_change_percent != null ? `${stock.price_change_percent.toFixed(1)}%` : ''}
                   </SignalBadge>

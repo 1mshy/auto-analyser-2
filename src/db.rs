@@ -229,11 +229,16 @@ impl MongoDB {
     pub async fn save_analysis(&self, analysis: &StockAnalysis) -> Result<()> {
         let collection = self.analysis_collection();
 
-        // Update or insert
+        // Normalize the symbol key so slash-format inputs (e.g. "BRK/A") don't
+        // create a duplicate document alongside the canonical dash-format ("BRK-A").
+        let normalized_symbol = crate::symbols::normalize_symbol_key(&analysis.symbol);
+        let mut doc = mongodb::bson::to_document(analysis)?;
+        doc.insert("symbol", &normalized_symbol);
+
         collection
             .update_one(
-                doc! { "symbol": &analysis.symbol },
-                doc! { "$set": mongodb::bson::to_document(analysis)? },
+                doc! { "symbol": &normalized_symbol },
+                doc! { "$set": doc },
             )
             .upsert(true)
             .await?;

@@ -227,7 +227,7 @@ const WatchlistsTab: React.FC = () => {
               )}
               {selected.symbols.map(sym => (
                 <HStack key={sym} bg="bg.inset" borderWidth="1px" borderColor="border.subtle" borderRadius="sm" px={2} py={1}>
-                  <RouterLink to={`/stocks/${sym}`}>
+                  <RouterLink to={`/stocks/${encodeURIComponent(sym)}`}>
                     <Text color="accent.fg" fontWeight="semibold">{sym}</Text>
                   </RouterLink>
                   <IconButton
@@ -1052,7 +1052,7 @@ const InboxTab: React.FC = () => {
                 <HStack justify="space-between" mb={1}>
                   <HStack>
                     {!e.read && <Badge colorPalette="blue">new</Badge>}
-                    <RouterLink to={`/stocks/${e.symbol}`}>
+                    <RouterLink to={`/stocks/${encodeURIComponent(e.symbol)}`}>
                       <Text color="accent.fg" fontWeight="bold">{e.symbol}</Text>
                     </RouterLink>
                     <Text color="fg.default">{e.rule_name}</Text>

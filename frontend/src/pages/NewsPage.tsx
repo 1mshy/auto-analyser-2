@@ -141,7 +141,7 @@ export const NewsPage: React.FC = () => {
                       {item.title}
                     </Text>
                     <HStack gap={2} wrap="wrap">
-                      <Link to={`/stocks/${item.symbol}`} onClick={(e) => e.stopPropagation()}>
+                      <Link to={`/stocks/${encodeURIComponent(item.symbol)}`} onClick={(e) => e.stopPropagation()}>
                         <SignalBadge tone="accent" size="xs">{item.symbol}</SignalBadge>
                       </Link>
                       {item.sector && (

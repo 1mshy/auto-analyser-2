@@ -48,7 +48,7 @@ const HeatmapCell: React.FC<HeatmapCellProps> = ({ stock, maxMarketCap }) => {
     const bgColor = getColor(stock.change_percent);
 
     return (
-        <Link to={`/stocks/${stock.symbol}`}>
+        <Link to={`/stocks/${encodeURIComponent(stock.symbol)}`}>
             <Box
                 bg={bgColor}
                 p={2}
@@ -143,7 +143,7 @@ const ContributorsList: React.FC<ContributorsListProps> = ({ stocks, type }) => 
             </HStack>
             <VStack gap={1} align="stretch">
                 {top5.map((stock, index) => (
-                    <Link key={stock.symbol} to={`/stocks/${stock.symbol}`}>
+                    <Link key={stock.symbol} to={`/stocks/${encodeURIComponent(stock.symbol)}`}>
                         <Flex
                             justify="space-between"
                             align="center"

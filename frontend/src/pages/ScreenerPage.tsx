@@ -304,7 +304,7 @@ export const ScreenerPage: React.FC = () => {
             const rsiIntent = stock.rsi != null && stock.rsi < 30 ? 'up' : stock.rsi != null && stock.rsi > 70 ? 'down' : 'neutral';
             const stochIntent = stock.stochastic?.k_line != null && stock.stochastic.k_line < 20 ? 'up' : stock.stochastic?.k_line != null && stock.stochastic.k_line > 80 ? 'down' : 'neutral';
             return (
-              <Link key={stock.symbol} to={`/stocks/${stock.symbol}`}>
+              <Link key={stock.symbol} to={`/stocks/${encodeURIComponent(stock.symbol)}`}>
                 <Flex
                   minW="860px"
                   px={4}

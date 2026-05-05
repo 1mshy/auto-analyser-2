@@ -29,7 +29,7 @@ const StockTableRow: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
   return (
     <Table.Row _hover={{ bg: 'bg.muted' }} borderBottomWidth="1px" borderColor="border.subtle">
       <Table.Cell>
-        <Link to={`/stocks/${stock.symbol}`}>
+        <Link to={`/stocks/${encodeURIComponent(stock.symbol)}`}>
           <HStack>
             <Badge colorPalette={tierColor} size="sm" variant="subtle">{tier.charAt(0).toUpperCase()}</Badge>
             <Text fontWeight="semibold" color="accent.fg" _hover={{ textDecoration: 'underline' }}>
@@ -87,7 +87,7 @@ const StockCardCompact: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
   const tierColor = getMarketCapTierColor(tier);
 
   return (
-    <Link to={`/stocks/${stock.symbol}`}>
+    <Link to={`/stocks/${encodeURIComponent(stock.symbol)}`}>
       <Surface interactive p={4}>
         <Flex justify="space-between" align="start" mb={2}>
           <VStack align="start" gap={0}>

@@ -58,7 +58,7 @@ const OpportunityCard: React.FC<{
             <SignalBadge tone={priorityTone}>Priority: {priority}</SignalBadge>
           </HStack>
           <HStack>
-            <Link to={`/stocks/${stock.symbol}`}>
+            <Link to={`/stocks/${encodeURIComponent(stock.symbol)}`}>
               <Heading size="md" color="fg.default" letterSpacing="tight" _hover={{ color: 'accent.fg' }}>
                 {stock.symbol}
               </Heading>

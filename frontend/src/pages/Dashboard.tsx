@@ -28,7 +28,7 @@ const CompactStockRow: React.FC<{
   const tierColor = getMarketCapTierColor(tier);
 
   return (
-    <Link to={`/stocks/${stock.symbol}`} style={{ width: '100%' }}>
+    <Link to={`/stocks/${encodeURIComponent(stock.symbol)}`} style={{ width: '100%' }}>
       <Flex
         justify="space-between"
         align="center"

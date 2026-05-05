@@ -110,7 +110,8 @@ const ProfileMetricCard: React.FC<{ label: string; value: string | number; color
 );
 
 export const StockDetailPage: React.FC = () => {
-  const { symbol } = useParams<{ symbol: string }>();
+  const { symbol: rawSymbol } = useParams<{ symbol: string }>();
+  const symbol = rawSymbol ? decodeURIComponent(rawSymbol) : rawSymbol;
   const [stock, setStock] = useState<StockAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResponse | null>(null);
