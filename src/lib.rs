@@ -14,6 +14,7 @@ pub mod config;
 pub mod db;
 pub mod indexes;
 pub mod indicators;
+pub mod marketaux;
 pub mod models;
 pub mod nasdaq;
 pub mod notifications;

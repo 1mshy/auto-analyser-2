@@ -3,12 +3,14 @@ use crate::{
     cache::CacheLayer,
     db::MongoDB,
     indicators::TechnicalIndicators,
+    marketaux::MarketauxClient,
     models::{AnalysisProgress, HistoricalPrice, NasdaqResponse, NasdaqTechnicals, StockAnalysis},
     nasdaq::NasdaqClient,
     notifications::AlertEngine,
+    openrouter::OpenRouterClient,
     yahoo::YahooFinanceClient,
 };
-use chrono::Utc;
+use chrono::{NaiveDate, Utc};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -127,6 +129,18 @@ pub struct AnalysisEngine {
     alert_engine: Option<AlertEngine>,
     /// Per-symbol Yahoo fetch circuit breaker (in-memory, process-local).
     breaker: Arc<CircuitBreaker>,
+    /// Optional Marketaux client; only `Some` when an API key is configured.
+    /// Drives the daily news prefetch loop.
+    marketaux_client: Option<MarketauxClient>,
+    /// Optional OpenRouter client used to summarize prefetched news. The
+    /// prefetch still persists raw articles when this is disabled.
+    openrouter_client: Option<OpenRouterClient>,
+    /// Skip the OpenRouter call when fewer than this many articles came back
+    /// from Marketaux. Mirrors the field on `Config`.
+    news_summary_min_articles: usize,
+    /// In-memory tracker for the daily prefetch — last UTC date the news
+    /// prefetch ran successfully. Reset to `None` on process restart.
+    last_news_prefetch_date: Arc<RwLock<Option<NaiveDate>>>,
 }
 
 impl AnalysisEngine {
@@ -145,6 +159,9 @@ impl AnalysisEngine {
         alert_engine: Option<AlertEngine>,
         circuit_failure_threshold: u32,
         circuit_skip_cycles: u32,
+        marketaux_client: Option<MarketauxClient>,
+        openrouter_client: Option<OpenRouterClient>,
+        news_summary_min_articles: usize,
     ) -> Self {
         let progress = Arc::new(RwLock::new(AnalysisProgress {
             total_stocks: 0,
@@ -185,6 +202,10 @@ impl AnalysisEngine {
                 circuit_failure_threshold,
                 circuit_skip_cycles,
             )),
+            marketaux_client,
+            openrouter_client,
+            news_summary_min_articles,
+            last_news_prefetch_date: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -473,8 +494,135 @@ impl AnalysisEngine {
             skipped,
             progress.errors
         );
+        drop(progress);
+
+        // Best-effort daily news prefetch. Errors don't abort — they're logged
+        // and surfaced via `progress.last_error` if a whole pass blows up.
+        self.prefetch_daily_news_if_due().await;
 
         Ok(())
+    }
+
+    /// Run the Marketaux + AI summary prefetch for the admin-curated symbol
+    /// list, but only once per UTC day. Each per-symbol failure is logged and
+    /// counted toward `progress.errors` rather than aborting the loop.
+    async fn prefetch_daily_news_if_due(&self) {
+        let Some(marketaux) = self.marketaux_client.as_ref() else {
+            return;
+        };
+        if !marketaux.is_configured() {
+            return;
+        }
+
+        let today = Utc::now().date_naive();
+        {
+            let last = self.last_news_prefetch_date.read().await;
+            if let Some(prev) = *last {
+                if prev >= today {
+                    return;
+                }
+            }
+        }
+
+        let symbols = match self.db.list_daily_news_symbols().await {
+            Ok(rows) => rows,
+            Err(e) => {
+                warn!("Daily news prefetch: failed to list symbols: {}", e);
+                let mut progress = self.progress.write().await;
+                progress.errors = progress.errors.saturating_add(1);
+                progress.last_error = Some(format!("daily news prefetch list failed: {}", e));
+                return;
+            }
+        };
+
+        if symbols.is_empty() {
+            *self.last_news_prefetch_date.write().await = Some(today);
+            return;
+        }
+
+        info!(
+            "📰 Daily news prefetch starting for {} symbol(s)",
+            symbols.len()
+        );
+
+        let date_today = today.format("%Y-%m-%d").to_string();
+        let mut local_errors: usize = 0;
+        for entry in &symbols {
+            let symbol = entry.symbol.to_uppercase();
+
+            // Skip symbols already summarized for today — keeps repeat runs
+            // (e.g. crash + restart same day) from burning the daily quota.
+            match self.db.get_news_summary_for_date(&symbol, &date_today).await {
+                Ok(Some(_)) => {
+                    debug!("📰 {} already has a summary for {}, skipping", symbol, date_today);
+                    continue;
+                }
+                Ok(None) => {}
+                Err(e) => warn!(
+                    "📰 Could not check existing summary for {}: {}",
+                    symbol, e
+                ),
+            }
+
+            marketaux.apply_delay().await;
+            let articles = match marketaux.fetch_news(&symbol, 10).await {
+                Ok(a) => a,
+                Err(e) => {
+                    warn!("📰 Marketaux fetch failed for {}: {}", symbol, e);
+                    local_errors += 1;
+                    continue;
+                }
+            };
+
+            if articles.len() < self.news_summary_min_articles {
+                debug!(
+                    "📰 {} returned {} articles (< {}), no summary",
+                    symbol,
+                    articles.len(),
+                    self.news_summary_min_articles
+                );
+                self.cache.invalidate_news_card(&symbol).await;
+                continue;
+            }
+
+            let summary = match self.openrouter_client.as_ref() {
+                Some(client) if client.is_enabled() => {
+                    match client.summarize_news(&symbol, &articles).await {
+                        Ok(s) => Some(s),
+                        Err(e) => {
+                            warn!("📰 News summarization failed for {}: {}", symbol, e);
+                            local_errors += 1;
+                            None
+                        }
+                    }
+                }
+                _ => None,
+            };
+
+            if let Some(s) = &summary {
+                if let Err(e) = self.db.upsert_news_summary(s).await {
+                    warn!("📰 Failed to persist news summary for {}: {}", symbol, e);
+                    local_errors += 1;
+                }
+            }
+
+            // Drop the cached card so the next request rebuilds it with the
+            // freshly persisted summary. CLAUDE.md hard rule: anything that
+            // changes server-side state must invalidate cached views of it.
+            self.cache.invalidate_news_card(&symbol).await;
+        }
+
+        info!(
+            "📰 Daily news prefetch finished ({} symbol(s), {} error(s))",
+            symbols.len(),
+            local_errors
+        );
+
+        *self.last_news_prefetch_date.write().await = Some(today);
+        if local_errors > 0 {
+            let mut progress = self.progress.write().await;
+            progress.errors = progress.errors.saturating_add(local_errors);
+        }
     }
 
     /// Process a stock with pre-fetched historical prices

@@ -29,6 +29,7 @@ import {
   getMarketCapTierLabel
 } from '../types';
 import { WatchButton } from '../components/alerts/WatchButton';
+import NewsCard from '../components/NewsCard';
 import { Surface, Num, SignalBadge } from '../components/ui/primitives';
 
 const toTradingViewSymbol = (symbol: string): string => {
@@ -415,16 +416,14 @@ export const StockDetailPage: React.FC = () => {
         >
           <Zap size={14} /> AI Analysis
         </Button>
-        {stock.news && stock.news.length > 0 && (
-          <Button
-            size="sm"
-            variant={activeTab === 'news' ? 'solid' : 'ghost'}
-            colorPalette={activeTab === 'news' ? 'blue' : 'gray'}
-            onClick={() => setActiveTab('news')}
-          >
-            News ({stock.news.length})
-          </Button>
-        )}
+        <Button
+          size="sm"
+          variant={activeTab === 'news' ? 'solid' : 'ghost'}
+          colorPalette={activeTab === 'news' ? 'blue' : 'gray'}
+          onClick={() => setActiveTab('news')}
+        >
+          News
+        </Button>
         <Button
           size="sm"
           variant={activeTab === 'insiders' ? 'solid' : 'ghost'}
@@ -1241,31 +1240,8 @@ export const StockDetailPage: React.FC = () => {
         </Card.Root>
       )}
 
-      {/* News Tab */}
-      {activeTab === 'news' && stock.news && stock.news.length > 0 && (
-        <VStack gap={3} align="stretch">
-          {stock.news.map((item, idx) => (
-            <Card.Root key={idx} bg="bg.surface" borderColor="border.default" borderRadius="lg" boxShadow="elevation.raised">
-              <Card.Body p={4}>
-                <a href={item.url} target="_blank" rel="noopener noreferrer">
-                  <Flex justify="space-between" align="start">
-                    <VStack align="start" gap={1} flex={1}>
-                      <Text color="fg.default" fontWeight="semibold" _hover={{ color: 'accent.fg' }}>
-                        {item.title}
-                      </Text>
-                      <HStack color="fg.subtle" fontSize="sm">
-                        <Text>{item.publisher}</Text>
-                        {item.ago && <Text>• {item.ago}</Text>}
-                      </HStack>
-                    </VStack>
-                    <Box color="fg.subtle" ml={2}><ExternalLink size={16} /></Box>
-                  </Flex>
-                </a>
-              </Card.Body>
-            </Card.Root>
-          ))}
-        </VStack>
-      )}
+      {/* News Tab — Marketaux + AI summary */}
+      {activeTab === 'news' && <NewsCard symbol={symbol!} />}
 
       {/* Insiders Tab */}
       {activeTab === 'insiders' && (

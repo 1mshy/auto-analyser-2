@@ -1,4 +1,4 @@
-use crate::models::{AIAnalysisResponse, StockAnalysis};
+use crate::models::{AIAnalysisResponse, NewsArticle, NewsSummary, StockAnalysis};
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use once_cell::sync::Lazy;
@@ -223,6 +223,90 @@ impl OpenRouterClient {
         ))
     }
 
+    /// Summarize a batch of news articles for `symbol` using the cycling free
+    /// model list. Mirrors `analyze_stock`'s rate-limit/retry loop — only the
+    /// system message, prompt, and response shape differ.
+    pub async fn summarize_news(
+        &self,
+        symbol: &str,
+        articles: &[NewsArticle],
+    ) -> Result<NewsSummary> {
+        if !self.is_enabled() {
+            return Err(anyhow!(
+                "OpenRouter is not enabled or API key not configured"
+            ));
+        }
+        if articles.is_empty() {
+            return Err(anyhow!("No articles to summarize for {}", symbol));
+        }
+
+        let free_models = get_free_models().await;
+        if free_models.is_empty() {
+            return Err(anyhow!("No free models available"));
+        }
+
+        let prompt = build_news_prompt(symbol, articles);
+        let system = "You are a financial news summarizer. Given a batch of recent headlines and snippets for a single stock, produce a concise 3-4 sentence summary that highlights the main catalysts, overall market sentiment, and any notable risks. Stay neutral, do not invent facts, and refer to information that's actually present in the input.";
+
+        let mut attempts = 0;
+        let max_attempts = free_models.len();
+
+        while attempts < max_attempts {
+            let current_idx = self.current_model_index();
+            let model = &free_models[current_idx % free_models.len()];
+
+            match self
+                .send_request_with_params(model, system, &prompt, 350, 0.3)
+                .await
+            {
+                Ok(text) => {
+                    let date = Utc::now().format("%Y-%m-%d").to_string();
+                    return Ok(NewsSummary {
+                        id: None,
+                        symbol: symbol.to_uppercase(),
+                        date,
+                        summary_text: text.trim().to_string(),
+                        model_used: model.clone(),
+                        article_count: articles.len(),
+                        generated_at: Utc::now(),
+                    });
+                }
+                Err(e) => {
+                    let err_msg = e.to_string().to_lowercase();
+                    if err_msg.contains("rate")
+                        || err_msg.contains("limit")
+                        || err_msg.contains("429")
+                        || err_msg.contains("quota")
+                        || err_msg.contains("exceeded")
+                        || err_msg.contains("did not match")
+                        || err_msg.contains("untagged enum")
+                        || err_msg.contains("parse")
+                        || err_msg.contains("deserialize")
+                    {
+                        let new_idx = self.advance_model_index();
+                        let next_model = &free_models[new_idx % free_models.len()];
+                        warn!(
+                            "News summary error on model {} (switching to {}): {}",
+                            model, next_model, e
+                        );
+                        attempts += 1;
+                    } else {
+                        return Err(anyhow!(
+                            "OpenRouter news summary error with {}: {}",
+                            model,
+                            e
+                        ));
+                    }
+                }
+            }
+        }
+
+        Err(anyhow!(
+            "All {} free models are rate limited for news summary. Try again later.",
+            free_models.len()
+        ))
+    }
+
     /// Build the analysis prompt from stock data
     fn build_analysis_prompt(&self, analysis: &StockAnalysis) -> String {
         let mut prompt = format!(
@@ -333,6 +417,47 @@ impl OpenRouterClient {
             .map_err(|e| anyhow!("OpenRouter request failed: {}", e))?;
 
         // Extract the response text
+        response
+            .choices
+            .first()
+            .and_then(|choice| choice.content().map(|s| s.to_string()))
+            .ok_or_else(|| anyhow!("No response content from OpenRouter"))
+    }
+
+    /// Send request to OpenRouter API with custom system message and tuning.
+    async fn send_request_with_params(
+        &self,
+        model: &str,
+        system: &str,
+        prompt: &str,
+        max_tokens: u32,
+        temperature: f64,
+    ) -> Result<String> {
+        info!("Sending OpenRouter request to model: {}", model);
+
+        let client = BaseOpenRouterClient::builder()
+            .api_key(&self.api_key)
+            .http_referer("https://github.com/1mshy/auto-analyser-2")
+            .x_title("Auto Stock Analyser")
+            .build()
+            .map_err(|e| anyhow!("Failed to build OpenRouter client: {}", e))?;
+
+        let request = ChatCompletionRequest::builder()
+            .model(model)
+            .messages(vec![
+                Message::new(Role::System, system),
+                Message::new(Role::User, prompt),
+            ])
+            .max_tokens(max_tokens)
+            .temperature(temperature)
+            .build()
+            .map_err(|e| anyhow!("Failed to build chat request: {}", e))?;
+
+        let response = client
+            .send_chat_completion(&request)
+            .await
+            .map_err(|e| anyhow!("OpenRouter request failed: {}", e))?;
+
         response
             .choices
             .first()
@@ -491,6 +616,43 @@ impl OpenRouterClient {
     }
 }
 
+/// Render a list of news articles into a compact prompt for the summarizer.
+/// Pure function so it can be unit-tested without network or API key.
+fn build_news_prompt(symbol: &str, articles: &[NewsArticle]) -> String {
+    let mut prompt = format!(
+        "Summarize the following recent news for stock ticker {}.\n\nArticles:\n",
+        symbol.to_uppercase()
+    );
+
+    for (idx, article) in articles.iter().take(8).enumerate() {
+        prompt.push_str(&format!("{}. {}", idx + 1, article.title.trim()));
+        if let Some(source) = article.source.as_deref() {
+            prompt.push_str(&format!(" ({})", source));
+        }
+        if let Some(published) = article.published_at.as_deref() {
+            prompt.push_str(&format!(" [{}]", published));
+        }
+        prompt.push('\n');
+        if let Some(snippet) = article.snippet.as_deref() {
+            let trimmed = snippet.trim();
+            if !trimmed.is_empty() {
+                prompt.push_str("   ");
+                prompt.push_str(trimmed);
+                prompt.push('\n');
+            }
+        }
+        if let Some(score) = article.sentiment_score {
+            prompt.push_str(&format!("   sentiment_score: {:.2}\n", score));
+        }
+    }
+
+    prompt.push_str(
+        "\nWrite 3-4 sentences covering the main catalysts driving these stories, the overall sentiment (bullish, bearish, mixed), and any notable risk factors. Do not invent quotes or numbers. Do not list the articles back; produce a single short paragraph.",
+    );
+
+    prompt
+}
+
 /// Events emitted during streaming AI analysis
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -608,5 +770,57 @@ mod tests {
         assert!(prompt.contains("RSI"));
         assert!(prompt.contains("SMA 20"));
         assert!(prompt.contains("MACD"));
+    }
+
+    #[test]
+    fn test_build_news_prompt_includes_titles_and_symbol() {
+        let articles = vec![
+            NewsArticle {
+                title: "Apple beats earnings".to_string(),
+                url: "https://example.com/1".to_string(),
+                source: Some("reuters".to_string()),
+                published_at: Some("2026-01-01T13:00:00Z".to_string()),
+                snippet: Some("AAPL posted strong Q4 results.".to_string()),
+                sentiment_score: Some(0.6),
+                image_url: None,
+            },
+            NewsArticle {
+                title: "Supplier issues flagged".to_string(),
+                url: "https://example.com/2".to_string(),
+                source: None,
+                published_at: None,
+                snippet: None,
+                sentiment_score: None,
+                image_url: None,
+            },
+        ];
+
+        let prompt = build_news_prompt("aapl", &articles);
+        assert!(prompt.contains("AAPL"));
+        assert!(prompt.contains("Apple beats earnings"));
+        assert!(prompt.contains("AAPL posted strong"));
+        assert!(prompt.contains("Supplier issues flagged"));
+        assert!(prompt.contains("sentiment_score: 0.60"));
+        assert!(prompt.contains("3-4 sentences"));
+    }
+
+    #[test]
+    fn test_build_news_prompt_caps_at_eight() {
+        let articles: Vec<NewsArticle> = (0..20)
+            .map(|i| NewsArticle {
+                title: format!("Headline {}", i),
+                url: format!("https://example.com/{}", i),
+                source: None,
+                published_at: None,
+                snippet: None,
+                sentiment_score: None,
+                image_url: None,
+            })
+            .collect();
+
+        let prompt = build_news_prompt("X", &articles);
+        assert!(prompt.contains("Headline 0"));
+        assert!(prompt.contains("Headline 7"));
+        assert!(!prompt.contains("Headline 8"));
     }
 }

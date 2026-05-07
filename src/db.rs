@@ -1,5 +1,6 @@
 use crate::models::{
-    AggregatedNewsItem, MarketSummary, SectorPerformance, Stock, StockAnalysis, StockFilter,
+    AggregatedNewsItem, DailyNewsSymbol, MarketSummary, NewsSummary, SectorPerformance, Stock,
+    StockAnalysis, StockFilter,
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -207,6 +208,43 @@ impl MongoDB {
                     .build(),
             )
             .await?;
+
+        // News-summary indexes are best-effort: missing indexes only slow
+        // queries, they don't break correctness, so we log on failure rather
+        // than aborting startup.
+        let summaries: Collection<NewsSummary> = database.collection("news_summaries");
+        if let Err(e) = summaries
+            .create_index(
+                mongodb::IndexModel::builder()
+                    .keys(doc! { "symbol": 1, "date": -1 })
+                    .options(
+                        mongodb::options::IndexOptions::builder()
+                            .unique(true)
+                            .build(),
+                    )
+                    .build(),
+            )
+            .await
+        {
+            tracing::warn!("Failed to create news_summaries index: {}", e);
+        }
+
+        let daily: Collection<DailyNewsSymbol> = database.collection("daily_news_symbols");
+        if let Err(e) = daily
+            .create_index(
+                mongodb::IndexModel::builder()
+                    .keys(doc! { "symbol": 1 })
+                    .options(
+                        mongodb::options::IndexOptions::builder()
+                            .unique(true)
+                            .build(),
+                    )
+                    .build(),
+            )
+            .await
+        {
+            tracing::warn!("Failed to create daily_news_symbols index: {}", e);
+        }
 
         Ok(())
     }
@@ -603,6 +641,106 @@ impl MongoDB {
             }
         }
         Ok(results)
+    }
+
+    // ----------------------------------------------------------------------
+    // News summaries (Marketaux + OpenRouter)
+    // ----------------------------------------------------------------------
+
+    fn news_summaries(&self) -> Collection<NewsSummary> {
+        self.database.collection("news_summaries")
+    }
+
+    fn daily_news_symbols(&self) -> Collection<DailyNewsSymbol> {
+        self.database.collection("daily_news_symbols")
+    }
+
+    /// Insert or replace today's summary for a symbol. The (symbol, date)
+    /// pair is unique so reruns within the same day overwrite rather than
+    /// duplicate.
+    pub async fn upsert_news_summary(&self, summary: &NewsSummary) -> Result<()> {
+        let collection = self.news_summaries();
+        let filter = doc! { "symbol": &summary.symbol, "date": &summary.date };
+        let mut doc = mongodb::bson::to_document(summary)?;
+        doc.remove("_id");
+        let update = doc! { "$set": doc };
+        let opts = mongodb::options::UpdateOptions::builder()
+            .upsert(true)
+            .build();
+        collection
+            .update_one(filter, update)
+            .with_options(opts)
+            .await?;
+        Ok(())
+    }
+
+    /// Fetch the most recent stored summary for a symbol on the given UTC
+    /// date, if any.
+    pub async fn get_news_summary_for_date(
+        &self,
+        symbol: &str,
+        date: &str,
+    ) -> Result<Option<NewsSummary>> {
+        Ok(self
+            .news_summaries()
+            .find_one(doc! { "symbol": symbol.to_uppercase(), "date": date })
+            .await?)
+    }
+
+    /// Most-recent summary regardless of date (used as a fallback when the
+    /// summary for *today* doesn't exist yet).
+    pub async fn get_latest_news_summary(&self, symbol: &str) -> Result<Option<NewsSummary>> {
+        Ok(self
+            .news_summaries()
+            .find_one(doc! { "symbol": symbol.to_uppercase() })
+            .sort(doc! { "date": -1 })
+            .await?)
+    }
+
+    pub async fn list_daily_news_symbols(&self) -> Result<Vec<DailyNewsSymbol>> {
+        let mut cursor = self
+            .daily_news_symbols()
+            .find(doc! {})
+            .sort(doc! { "symbol": 1 })
+            .await?;
+        let mut out = Vec::new();
+        while let Some(item) = cursor.next().await {
+            if let Ok(item) = item {
+                out.push(item);
+            }
+        }
+        Ok(out)
+    }
+
+    pub async fn add_daily_news_symbol(&self, symbol: &str) -> Result<DailyNewsSymbol> {
+        let symbol = symbol.to_uppercase();
+        let entry = DailyNewsSymbol {
+            id: None,
+            symbol: symbol.clone(),
+            added_at: chrono::Utc::now(),
+        };
+        let mut doc = mongodb::bson::to_document(&entry)?;
+        doc.remove("_id");
+        let opts = mongodb::options::UpdateOptions::builder()
+            .upsert(true)
+            .build();
+        self.daily_news_symbols()
+            .update_one(doc! { "symbol": &symbol }, doc! { "$set": doc })
+            .with_options(opts)
+            .await?;
+        Ok(self
+            .daily_news_symbols()
+            .find_one(doc! { "symbol": &symbol })
+            .await?
+            .unwrap_or(entry))
+    }
+
+    pub async fn remove_daily_news_symbol(&self, symbol: &str) -> Result<bool> {
+        let res = self
+            .daily_news_symbols()
+            .delete_one(doc! { "symbol": symbol.to_uppercase() })
+            .await?;
+        Ok(res.deleted_count > 0)
     }
 }
 

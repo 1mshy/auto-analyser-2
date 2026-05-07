@@ -1,4 +1,6 @@
-use crate::models::{CompanyProfile, EarningsData, InsiderTrade, NasdaqNewsItem, StockAnalysis};
+use crate::models::{
+    CompanyProfile, EarningsData, InsiderTrade, NasdaqNewsItem, NewsCardPayload, StockAnalysis,
+};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,6 +14,9 @@ pub struct CacheLayer {
     company_profile_cache: Arc<Cache<String, CompanyProfile>>,
     insider_cache: Arc<Cache<String, Vec<InsiderTrade>>>,
     generic_cache: Arc<Cache<String, String>>,
+    /// Cache for the Marketaux-backed news card (articles + AI summary).
+    /// Keyed on the upper-cased stock symbol.
+    news_card_cache: Arc<Cache<String, NewsCardPayload>>,
 }
 
 impl CacheLayer {
@@ -56,6 +61,13 @@ impl CacheLayer {
             .max_capacity(100)
             .build();
 
+        // News card cache (Marketaux articles + AI summary). Same TTL as the
+        // raw NASDAQ news cache by default.
+        let news_card_cache = Cache::builder()
+            .time_to_live(Duration::from_secs(news_ttl_secs))
+            .max_capacity(1_000)
+            .build();
+
         CacheLayer {
             stock_cache: Arc::new(stock_cache),
             list_cache: Arc::new(list_cache),
@@ -64,6 +76,7 @@ impl CacheLayer {
             company_profile_cache: Arc::new(company_profile_cache),
             insider_cache: Arc::new(insider_cache),
             generic_cache: Arc::new(generic_cache),
+            news_card_cache: Arc::new(news_card_cache),
         }
     }
 
@@ -102,6 +115,24 @@ impl CacheLayer {
 
     pub async fn invalidate_news(&self, symbol: &str) {
         self.news_cache.invalidate(symbol).await;
+    }
+
+    // ---- Marketaux news card payload --------------------------------------
+
+    pub async fn get_news_card(&self, symbol: &str) -> Option<NewsCardPayload> {
+        self.news_card_cache
+            .get(&symbol.to_uppercase())
+            .await
+    }
+
+    pub async fn set_news_card(&self, symbol: String, payload: NewsCardPayload) {
+        self.news_card_cache
+            .insert(symbol.to_uppercase(), payload)
+            .await;
+    }
+
+    pub async fn invalidate_news_card(&self, symbol: &str) {
+        self.news_card_cache.invalidate(&symbol.to_uppercase()).await;
     }
 
     // Earnings cache methods

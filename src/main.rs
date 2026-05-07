@@ -6,6 +6,7 @@ mod config;
 mod db;
 mod indexes;
 mod indicators;
+mod marketaux;
 mod models;
 mod nasdaq;
 mod notifications;
@@ -18,6 +19,7 @@ use api::{create_router, AppState};
 use cache::CacheLayer;
 use config::Config;
 use db::MongoDB;
+use marketaux::MarketauxClient;
 use nasdaq::NasdaqClient;
 use notifications::AlertEngine;
 use openrouter::OpenRouterClient;
@@ -88,6 +90,17 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
+    // Marketaux client (powers the per-stock news card and daily prefetch)
+    let marketaux_client = MarketauxClient::new(config.MARKETAUX_API_KEY.clone(), 250);
+    if marketaux_client.is_configured() {
+        tracing::info!(
+            "📰 Marketaux news client enabled (free tier: 100 req/day; min articles for AI summary: {})",
+            config.news_summary_min_articles
+        );
+    } else {
+        tracing::info!("📰 Marketaux news client disabled (set MARKETAUX_API_KEY to enable)");
+    }
+
     // Create analysis engine
     let analysis_engine = AnalysisEngine::new(
         db.clone(),
@@ -103,6 +116,17 @@ async fn main() -> anyhow::Result<()> {
         Some(alert_engine.clone()),
         config.yahoo_circuit_failure_threshold,
         config.yahoo_circuit_skip_cycles,
+        if marketaux_client.is_configured() {
+            Some(marketaux_client.clone())
+        } else {
+            None
+        },
+        if openrouter_client.is_enabled() {
+            Some(openrouter_client.clone())
+        } else {
+            None
+        },
+        config.news_summary_min_articles,
     );
     let progress = analysis_engine.get_progress();
     tracing::info!(
@@ -151,6 +175,8 @@ async fn main() -> anyhow::Result<()> {
         openrouter_client,
         nasdaq_client,
         alert_engine,
+        marketaux_client,
+        news_summary_min_articles: config.news_summary_min_articles,
     };
 
     // Build API router with CORS

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus, PositionView, CreatePositionInput, UpdatePositionInput } from './types';
+import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus, PositionView, CreatePositionInput, UpdatePositionInput, NewsCardPayload, DailyNewsSymbol } from './types';
 
 const API_BASE_URL = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
 
@@ -417,6 +417,28 @@ export const api = {
     markRead: async (id: string, read = true): Promise<void> => {
       await axios.patch(`${API_BASE_URL}/api/alerts/history/${id}/read`, { read });
     },
+  },
+
+  // Marketaux + AI news card
+  getStockNews: async (symbol: string): Promise<NewsCardPayload> => {
+    const response = await axios.get(`${API_BASE_URL}/api/stocks/${symbol}/news`);
+    if (response.data.success) {
+      return response.data.data as NewsCardPayload;
+    }
+    throw new Error(response.data.error || 'Failed to fetch news');
+  },
+
+  listDailyNewsSymbols: async (): Promise<DailyNewsSymbol[]> => {
+    const response = await axios.get(`${API_BASE_URL}/api/news/daily-symbols`);
+    return response.data.symbols || [];
+  },
+
+  addDailyNewsSymbol: async (symbol: string): Promise<void> => {
+    await axios.post(`${API_BASE_URL}/api/news/daily-symbols`, { symbol });
+  },
+
+  removeDailyNewsSymbol: async (symbol: string): Promise<void> => {
+    await axios.delete(`${API_BASE_URL}/api/news/daily-symbols/${symbol}`);
   },
 };
 

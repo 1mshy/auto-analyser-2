@@ -207,6 +207,58 @@ pub struct NasdaqNewsItem {
     pub ago: Option<String>,
 }
 
+// ---------------------------------------------------------------------------
+// Marketaux-backed news + AI summary
+// ---------------------------------------------------------------------------
+
+/// Article returned by the Marketaux `/news/all` endpoint, normalized to the
+/// shape the UI consumes. Other news providers can populate the same struct.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewsArticle {
+    pub title: String,
+    pub url: String,
+    pub source: Option<String>,
+    pub published_at: Option<String>,
+    pub snippet: Option<String>,
+    pub sentiment_score: Option<f64>,
+    pub image_url: Option<String>,
+}
+
+/// Persisted AI-generated summary for a (symbol, date) pair. Multiple summaries
+/// per symbol are kept so we can show a short history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewsSummary {
+    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    pub id: Option<ObjectId>,
+    pub symbol: String,
+    /// `YYYY-MM-DD` in UTC, used as the dedupe key alongside `symbol`.
+    pub date: String,
+    pub summary_text: String,
+    pub model_used: String,
+    pub article_count: usize,
+    pub generated_at: DateTime<Utc>,
+}
+
+/// Combined payload returned by `GET /api/stocks/:symbol/news`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewsCardPayload {
+    pub symbol: String,
+    pub articles: Vec<NewsArticle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<NewsSummary>,
+    pub fetched_at: DateTime<Utc>,
+}
+
+/// Symbol enrolled in the daily news pre-fetch loop. Tiny CRUD collection
+/// edited via the admin endpoints in `api.rs`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DailyNewsSymbol {
+    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    pub id: Option<ObjectId>,
+    pub symbol: String,
+    pub added_at: DateTime<Utc>,
+}
+
 // Company Profile from Yahoo Finance quoteSummary
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompanyProfile {

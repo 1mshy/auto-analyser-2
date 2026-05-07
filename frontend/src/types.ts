@@ -111,6 +111,38 @@ export interface NasdaqNewsItem {
   ago?: string;
 }
 
+// Marketaux-backed per-stock news card (mirrors src/models.rs::NewsArticle)
+export interface NewsArticle {
+  title: string;
+  url: string;
+  source?: string;
+  published_at?: string;
+  snippet?: string;
+  sentiment_score?: number;
+  image_url?: string;
+}
+
+export interface NewsSummary {
+  symbol: string;
+  date: string;
+  summary_text: string;
+  model_used: string;
+  article_count: number;
+  generated_at: string;
+}
+
+export interface NewsCardPayload {
+  symbol: string;
+  articles: NewsArticle[];
+  summary?: NewsSummary;
+  fetched_at: string;
+}
+
+export interface DailyNewsSymbol {
+  symbol: string;
+  added_at: string;
+}
+
 export interface CompanyProfile {
   // Price/identity fields
   short_name?: string;

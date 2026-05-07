@@ -42,6 +42,8 @@ services:
       - RUST_LOG=info
       - OPENROUTER_API_KEY_STOCKS=${OPENROUTER_API_KEY_STOCKS}
       - OPENROUTER_ENABLED=${OPENROUTER_ENABLED:-true}
+      - MARKETAUX_API_KEY=${MARKETAUX_API_KEY}
+      - MARKETAUX_ENABLED=${MARKETAUX_ENABLED:-true}
     depends_on:
       mongodb:
         condition: service_healthy

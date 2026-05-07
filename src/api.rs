@@ -3,7 +3,8 @@ use crate::{
     db::MongoDB,
     indexes::{IndexDataProvider, IndexHeatmapData, StockHeatmapItem},
     indicators::TechnicalIndicators,
-    models::StockFilter,
+    marketaux::MarketauxClient,
+    models::{NewsCardPayload, StockFilter},
     nasdaq::NasdaqClient,
     notifications::AlertEngine,
     openrouter::{OpenRouterClient, StreamEvent},
@@ -47,6 +48,10 @@ pub struct AppState {
     pub openrouter_client: OpenRouterClient,
     pub nasdaq_client: NasdaqClient,
     pub alert_engine: AlertEngine,
+    pub marketaux_client: MarketauxClient,
+    /// Skip the OpenRouter summarizer when fewer than this many articles came
+    /// back. Mirrors the field on `Config`.
+    pub news_summary_min_articles: usize,
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -67,6 +72,16 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/progress", get(get_progress))
         .route("/api/ai/status", get(get_ai_status))
         .route("/api/ai/models", get(get_ai_models))
+        // Marketaux + AI news card (per-stock)
+        .route("/api/stocks/:symbol/news", get(get_stock_news_card))
+        .route(
+            "/api/news/daily-symbols",
+            get(list_daily_news_symbols).post(add_daily_news_symbol),
+        )
+        .route(
+            "/api/news/daily-symbols/:symbol",
+            axum::routing::delete(remove_daily_news_symbol),
+        )
         // New analytics endpoints
         .route("/api/news", get(get_all_news))
         .route("/api/sectors", get(get_sector_performance))
@@ -1171,4 +1186,160 @@ async fn get_index_heatmap(
             "fallback_symbols": fallback_symbols
         }
     }))
+}
+
+// ============================================================================
+// Marketaux + AI news card endpoints
+// ============================================================================
+
+/// `GET /api/stocks/:symbol/news` — fetch news articles for `symbol` and an
+/// AI-generated summary, served from cache when fresh.
+async fn get_stock_news_card(
+    State(state): State<AppState>,
+    Path(symbol): Path<String>,
+) -> impl IntoResponse {
+    let symbol_upper = symbol.to_uppercase();
+
+    if !state.marketaux_client.is_configured() {
+        return Json(json!({
+            "success": false,
+            "error": "Marketaux is not configured. Set MARKETAUX_API_KEY to enable news."
+        }));
+    }
+
+    if let Some(cached) = state.cache.get_news_card(&symbol_upper).await {
+        return Json(json!({
+            "success": true,
+            "data": cached,
+            "cached": true,
+        }));
+    }
+
+    let articles = match state.marketaux_client.fetch_news(&symbol_upper, 10).await {
+        Ok(a) => a,
+        Err(e) => {
+            warn!("Marketaux fetch failed for {}: {}", symbol_upper, e);
+            return Json(json!({
+                "success": false,
+                "error": format!("News fetch failed: {}", e)
+            }));
+        }
+    };
+
+    let date_today = Utc::now().format("%Y-%m-%d").to_string();
+    let mut summary = match state
+        .db
+        .get_news_summary_for_date(&symbol_upper, &date_today)
+        .await
+    {
+        Ok(maybe) => maybe,
+        Err(e) => {
+            warn!(
+                "Failed to read existing news summary for {}: {}",
+                symbol_upper, e
+            );
+            None
+        }
+    };
+
+    if summary.is_none()
+        && articles.len() >= state.news_summary_min_articles
+        && state.openrouter_client.is_enabled()
+    {
+        match state
+            .openrouter_client
+            .summarize_news(&symbol_upper, &articles)
+            .await
+        {
+            Ok(generated) => {
+                if let Err(e) = state.db.upsert_news_summary(&generated).await {
+                    warn!("Failed to persist news summary for {}: {}", symbol_upper, e);
+                }
+                summary = Some(generated);
+            }
+            Err(e) => {
+                warn!("News summarization failed for {}: {}", symbol_upper, e);
+            }
+        }
+    }
+
+    let payload = NewsCardPayload {
+        symbol: symbol_upper.clone(),
+        articles,
+        summary,
+        fetched_at: Utc::now(),
+    };
+
+    state
+        .cache
+        .set_news_card(symbol_upper.clone(), payload.clone())
+        .await;
+
+    Json(json!({
+        "success": true,
+        "data": payload,
+        "cached": false,
+    }))
+}
+
+/// `GET /api/news/daily-symbols` — list symbols enrolled in the daily prefetch.
+async fn list_daily_news_symbols(State(state): State<AppState>) -> impl IntoResponse {
+    match state.db.list_daily_news_symbols().await {
+        Ok(symbols) => Json(json!({
+            "success": true,
+            "symbols": symbols,
+        })),
+        Err(e) => Json(json!({
+            "success": false,
+            "error": e.to_string(),
+        })),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DailyNewsSymbolBody {
+    pub symbol: String,
+}
+
+/// `POST /api/news/daily-symbols` — add a symbol to the daily prefetch list.
+async fn add_daily_news_symbol(
+    State(state): State<AppState>,
+    Json(body): Json<DailyNewsSymbolBody>,
+) -> impl IntoResponse {
+    let symbol = body.symbol.trim().to_uppercase();
+    if symbol.is_empty() {
+        return Json(json!({
+            "success": false,
+            "error": "symbol must not be empty",
+        }));
+    }
+    match state.db.add_daily_news_symbol(&symbol).await {
+        Ok(record) => Json(json!({
+            "success": true,
+            "symbol": record.symbol,
+        })),
+        Err(e) => Json(json!({
+            "success": false,
+            "error": e.to_string(),
+        })),
+    }
+}
+
+/// `DELETE /api/news/daily-symbols/:symbol` — drop a symbol from the daily list.
+async fn remove_daily_news_symbol(
+    State(state): State<AppState>,
+    Path(symbol): Path<String>,
+) -> impl IntoResponse {
+    let upper = symbol.to_uppercase();
+    match state.db.remove_daily_news_symbol(&upper).await {
+        Ok(removed) => Json(json!({
+            "success": true,
+            "symbol": upper,
+            "removed": removed,
+        })),
+        Err(e) => Json(json!({
+            "success": false,
+            "error": e.to_string(),
+        })),
+    }
 }

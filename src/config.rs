@@ -15,6 +15,15 @@ pub struct Config {
     pub news_cache_ttl_secs: u64,
     pub OPENROUTER_API_KEY_STOCKS: Option<String>,
     pub openrouter_enabled: bool,
+    /// Marketaux API key for stock-news fetches. SCREAMING_SNAKE on the field
+    /// to mirror the OpenRouter convention.
+    pub MARKETAUX_API_KEY: Option<String>,
+    /// Whether to enable the Marketaux-backed news feature. Derived from the
+    /// presence of the API key plus an explicit `MARKETAUX_ENABLED` override.
+    pub marketaux_enabled: bool,
+    /// Skip the OpenRouter summary call when fewer than this many articles
+    /// came back from Marketaux. Keeps token spend down on sparse symbols.
+    pub news_summary_min_articles: usize,
     /// Minimum market cap to accept a stock into the analysis pipeline.
     /// Below this, the screener-dredged small-caps / shell companies are
     /// excluded. Configurable via `MIN_MARKET_CAP_USD`.
@@ -49,6 +58,15 @@ impl Config {
         let OPENROUTER_API_KEY_STOCKS = env::var("OPENROUTER_API_KEY_STOCKS").ok();
         let openrouter_enabled = OPENROUTER_API_KEY_STOCKS.is_some()
             && env::var("OPENROUTER_ENABLED")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true);
+
+        let MARKETAUX_API_KEY = env::var("MARKETAUX_API_KEY")
+            .ok()
+            .filter(|s| !s.is_empty());
+        let marketaux_enabled = MARKETAUX_API_KEY.is_some()
+            && env::var("MARKETAUX_ENABLED")
                 .unwrap_or_else(|_| "true".to_string())
                 .parse()
                 .unwrap_or(true);
@@ -105,6 +123,12 @@ impl Config {
                 .parse()?,
             OPENROUTER_API_KEY_STOCKS,
             openrouter_enabled,
+            MARKETAUX_API_KEY,
+            marketaux_enabled,
+            news_summary_min_articles: env::var("NEWS_SUMMARY_MIN_ARTICLES")
+                .unwrap_or_else(|_| "2".to_string())
+                .parse()
+                .unwrap_or(2),
         };
 
         config.validate()?;
