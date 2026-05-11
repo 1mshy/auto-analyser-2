@@ -1,12 +1,12 @@
 use crate::models::{
-    AggregatedNewsItem, DailyNewsSymbol, MarketSummary, NewsSummary, SectorPerformance, Stock,
-    StockAnalysis, StockFilter,
+    AggregatedNewsItem, DailyNewsSymbol, MarketSummary, NasdaqNewsItem, NewsSummary,
+    SectorPerformance, Stock, StockAnalysis, StockFilter,
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use futures::stream::StreamExt;
 use mongodb::{
-    bson::{doc, Bson, Document, Regex},
+    bson::{doc, to_bson, Bson, Document, Regex},
     options::{ClientOptions, FindOptions, ServerApi, ServerApiVersion},
     Client, Collection, Database,
 };
@@ -274,10 +274,7 @@ impl MongoDB {
         doc.insert("symbol", &normalized_symbol);
 
         collection
-            .update_one(
-                doc! { "symbol": &normalized_symbol },
-                doc! { "$set": doc },
-            )
+            .update_one(doc! { "symbol": &normalized_symbol }, doc! { "$set": doc })
             .upsert(true)
             .await?;
 
@@ -624,6 +621,21 @@ impl MongoDB {
             .collect();
 
         Ok((paginated, total))
+    }
+
+    pub async fn set_analysis_news(&self, symbol: &str, news: &[NasdaqNewsItem]) -> Result<bool> {
+        let collection = self.analysis_collection();
+        let normalized_symbol = crate::symbols::normalize_symbol_key(symbol);
+        let news_bson = to_bson(news)?;
+
+        let result = collection
+            .update_one(
+                doc! { "symbol": &normalized_symbol },
+                doc! { "$set": { "news": news_bson } },
+            )
+            .await?;
+
+        Ok(result.matched_count > 0)
     }
 
     /// Get all analyses from the database

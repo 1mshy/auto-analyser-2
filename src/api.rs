@@ -1,10 +1,12 @@
 use crate::{
     cache::CacheLayer,
     db::MongoDB,
-    indexes::{IndexDataProvider, IndexHeatmapData, StockHeatmapItem},
+    indexes::{
+        IndexDataProvider, IndexHeatmapData, MarketIndexQuote, StockHeatmapItem, MARKET_INDEXES,
+    },
     indicators::TechnicalIndicators,
     marketaux::MarketauxClient,
-    models::{NewsCardPayload, StockFilter},
+    models::{AggregatedNewsItem, NasdaqNewsItem, NewsCardPayload, StockFilter},
     nasdaq::NasdaqClient,
     notifications::AlertEngine,
     openrouter::{OpenRouterClient, StreamEvent},
@@ -90,6 +92,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/stocks/:symbol/earnings", get(get_stock_earnings))
         .route("/api/analytics/correlation", get(get_correlation_matrix))
         // Index/Fund heatmap endpoints
+        .route("/api/market-indexes", get(get_market_indexes))
         .route("/api/indexes", get(get_indexes))
         .route("/api/indexes/:index_id", get(get_index_detail))
         .route("/api/indexes/:index_id/heatmap", get(get_index_heatmap))
@@ -595,13 +598,28 @@ async fn get_all_news(
 ) -> impl IntoResponse {
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(50).min(100);
+    let sector = query.sector.clone();
+    let search = query.search.clone();
 
     match state
         .db
-        .get_all_news(query.sector, query.search, page, page_size)
+        .get_all_news(sector.clone(), search.clone(), page, page_size)
         .await
     {
-        Ok((news, total)) => {
+        Ok((mut news, mut total)) => {
+            if let Some(on_demand) = get_on_demand_symbol_news(
+                &state,
+                sector.as_deref(),
+                search.as_deref(),
+                page,
+                page_size,
+            )
+            .await
+            {
+                merge_news_items(&mut news, on_demand);
+                total = total.max(news.len() as u64);
+            }
+
             let total_pages = ((total as f64) / (page_size as f64)).ceil() as u32;
             Json(json!({
                 "success": true,
@@ -618,6 +636,123 @@ async fn get_all_news(
             "success": false,
             "error": e.to_string()
         })),
+    }
+}
+
+fn news_search_symbol(search: Option<&str>) -> Option<String> {
+    let raw = search?.trim();
+    if raw.is_empty() || raw.len() > 16 {
+        return None;
+    }
+    if !raw
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '/'))
+    {
+        return None;
+    }
+
+    Some(crate::symbols::normalize_symbol_key(raw))
+}
+
+async fn get_on_demand_symbol_news(
+    state: &AppState,
+    sector: Option<&str>,
+    search: Option<&str>,
+    page: u32,
+    page_size: u32,
+) -> Option<Vec<AggregatedNewsItem>> {
+    if page != 1 {
+        return None;
+    }
+
+    let symbol = news_search_symbol(search)?;
+    let analysis = state
+        .db
+        .get_analysis_by_symbol(&symbol)
+        .await
+        .ok()
+        .flatten();
+    let symbol_sector = analysis.as_ref().and_then(|a| a.sector.clone());
+    if let Some(required_sector) = sector {
+        if symbol_sector.as_deref() != Some(required_sector) {
+            return None;
+        }
+    }
+
+    let limit = page_size.clamp(1, 100) as usize;
+    let articles = match get_cached_or_fetch_nasdaq_news(state, &symbol, limit).await {
+        Ok(articles) => articles,
+        Err(e) => {
+            warn!("On-demand NASDAQ news fetch failed for {}: {}", symbol, e);
+            return None;
+        }
+    };
+
+    if articles.is_empty() {
+        return None;
+    }
+
+    Some(news_articles_to_aggregated(
+        &symbol,
+        symbol_sector,
+        articles,
+    ))
+}
+
+async fn get_cached_or_fetch_nasdaq_news(
+    state: &AppState,
+    symbol: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<NasdaqNewsItem>> {
+    if let Some(cached) = state.cache.get_news(symbol).await {
+        return Ok(cached);
+    }
+
+    state.nasdaq_client.apply_delay().await;
+    let articles = state.nasdaq_client.get_news(symbol, limit).await?;
+
+    if !articles.is_empty() {
+        state
+            .cache
+            .set_news(symbol.to_string(), articles.clone())
+            .await;
+        match state.db.set_analysis_news(symbol, &articles).await {
+            Ok(true) => {
+                state.cache.invalidate_stock(symbol).await;
+                state.cache.invalidate_all_lists().await;
+            }
+            Ok(false) => {}
+            Err(e) => warn!("Failed to persist on-demand news for {}: {}", symbol, e),
+        }
+    }
+
+    Ok(articles)
+}
+
+fn news_articles_to_aggregated(
+    symbol: &str,
+    sector: Option<String>,
+    articles: Vec<NasdaqNewsItem>,
+) -> Vec<AggregatedNewsItem> {
+    articles
+        .into_iter()
+        .map(|item| AggregatedNewsItem {
+            symbol: symbol.to_string(),
+            sector: sector.clone(),
+            title: item.title,
+            url: item.url,
+            publisher: item.publisher,
+            created: item.created,
+            ago: item.ago,
+        })
+        .collect()
+}
+
+fn merge_news_items(news: &mut Vec<AggregatedNewsItem>, on_demand: Vec<AggregatedNewsItem>) {
+    for item in on_demand.into_iter().rev() {
+        if !news.iter().any(|existing| existing.url == item.url) {
+            news.insert(0, item);
+        }
     }
 }
 
@@ -968,6 +1103,92 @@ async fn get_indexes() -> impl IntoResponse {
         "success": true,
         "indexes": indexes
     }))
+}
+
+/// Get live quotes for the broad market indexes shown on the Sectors page.
+async fn get_market_indexes(State(state): State<AppState>) -> impl IntoResponse {
+    const CACHE_KEY: &str = "market_indexes";
+
+    if let Some(cached) = state.cache.get_generic(CACHE_KEY).await {
+        return Json(serde_json::from_str(&cached).unwrap_or(json!({
+            "success": false,
+            "error": "Cache parse error"
+        })));
+    }
+
+    let yahoo = state.yahoo_client.clone();
+    let quotes: Vec<MarketIndexQuote> = stream::iter(MARKET_INDEXES.iter().copied())
+        .map(|entry| {
+            let yahoo = yahoo.clone();
+            async move {
+                let mut q = MarketIndexQuote {
+                    id: entry.id.to_string(),
+                    name: entry.name.to_string(),
+                    description: entry.description.to_string(),
+                    yahoo_ticker: entry.yahoo_ticker.to_string(),
+                    heatmap_id: entry.heatmap_id.map(|s| s.to_string()),
+                    value: None,
+                    change: None,
+                    change_percent: None,
+                    error: None,
+                };
+
+                match yahoo.get_historical_prices(entry.yahoo_ticker, 5).await {
+                    Ok(prices) if prices.len() >= 2 => {
+                        let last = prices.last().unwrap();
+                        let prev = &prices[prices.len() - 2];
+                        let change = last.close - prev.close;
+                        let change_percent = if prev.close.abs() > f64::EPSILON {
+                            (change / prev.close) * 100.0
+                        } else {
+                            0.0
+                        };
+                        q.value = Some(last.close);
+                        q.change = Some(change);
+                        q.change_percent = Some(change_percent);
+                    }
+                    Ok(prices) if prices.len() == 1 => {
+                        q.value = Some(prices[0].close);
+                        q.error = Some("Only one bar available".to_string());
+                    }
+                    Ok(_) => {
+                        q.error = Some("No price data".to_string());
+                    }
+                    Err(e) => {
+                        q.error = Some(e.to_string());
+                    }
+                }
+
+                q
+            }
+        })
+        .buffer_unordered(6)
+        .collect::<Vec<_>>()
+        .await;
+
+    // Preserve catalog order regardless of completion order.
+    let order: std::collections::HashMap<&str, usize> = MARKET_INDEXES
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (e.id, i))
+        .collect();
+    let mut quotes = quotes;
+    quotes.sort_by_key(|q| order.get(q.id.as_str()).copied().unwrap_or(usize::MAX));
+
+    let response = json!({
+        "success": true,
+        "indexes": quotes,
+        "generated_at": chrono::Utc::now().to_rfc3339(),
+    });
+
+    if let Ok(serialized) = serde_json::to_string(&response) {
+        state
+            .cache
+            .set_generic(CACHE_KEY.to_string(), serialized)
+            .await;
+    }
+
+    Json(response)
 }
 
 /// Get details for a specific index
@@ -1341,5 +1562,66 @@ async fn remove_daily_news_symbol(
             "success": false,
             "error": e.to_string(),
         })),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn news_search_symbol_accepts_ticker_shapes() {
+        assert_eq!(news_search_symbol(Some("aapl")).as_deref(), Some("AAPL"));
+        assert_eq!(news_search_symbol(Some("brk.b")).as_deref(), Some("BRK-B"));
+        assert_eq!(
+            news_search_symbol(Some("shop.to")).as_deref(),
+            Some("SHOP.TO")
+        );
+    }
+
+    #[test]
+    fn news_search_symbol_rejects_keyword_queries() {
+        assert!(news_search_symbol(Some("apple earnings")).is_none());
+        assert!(news_search_symbol(Some("")).is_none());
+        assert!(news_search_symbol(Some("THISQUERYISTOOLONG")).is_none());
+    }
+
+    #[test]
+    fn merge_news_items_dedupes_by_url_and_prefers_on_demand_first() {
+        let mut news = vec![AggregatedNewsItem {
+            symbol: "MSFT".to_string(),
+            sector: None,
+            title: "Existing".to_string(),
+            url: "https://example.com/existing".to_string(),
+            publisher: None,
+            created: None,
+            ago: None,
+        }];
+        let on_demand = vec![
+            AggregatedNewsItem {
+                symbol: "AAPL".to_string(),
+                sector: None,
+                title: "Fetched".to_string(),
+                url: "https://example.com/fetched".to_string(),
+                publisher: None,
+                created: None,
+                ago: None,
+            },
+            AggregatedNewsItem {
+                symbol: "AAPL".to_string(),
+                sector: None,
+                title: "Duplicate".to_string(),
+                url: "https://example.com/existing".to_string(),
+                publisher: None,
+                created: None,
+                ago: None,
+            },
+        ];
+
+        merge_news_items(&mut news, on_demand);
+
+        assert_eq!(news.len(), 2);
+        assert_eq!(news[0].title, "Fetched");
+        assert_eq!(news[1].title, "Existing");
     }
 }

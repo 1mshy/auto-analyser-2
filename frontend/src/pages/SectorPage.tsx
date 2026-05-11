@@ -12,10 +12,92 @@ import {
   SimpleGrid,
   Button,
 } from '@chakra-ui/react';
-import { PieChart } from 'lucide-react';
+import { PieChart, BarChart3, ArrowUpRight } from 'lucide-react';
 import { api } from '../api';
-import { SectorPerformance } from '../types';
+import { SectorPerformance, MarketIndexQuote } from '../types';
 import { Surface, Num, SignalBadge, PageHeader, EmptyState } from '../components/ui/primitives';
+
+const IndexFundCard: React.FC<{ index: MarketIndexQuote }> = ({ index }) => {
+  const cp = index.change_percent;
+  const accent: 'up' | 'down' | undefined =
+    cp == null ? undefined : cp >= 0 ? 'up' : 'down';
+  const hasError = index.value == null;
+
+  const body = (
+    <Surface accent={accent} p={4} variant="raised" position="relative" overflow="hidden" h="100%">
+      <VStack align="start" gap={2}>
+        <Flex justify="space-between" w="100%" align="start" gap={2}>
+          <Box>
+            <Text fontSize="sm" fontWeight="semibold" color="fg.default" letterSpacing="tight">
+              {index.name}
+            </Text>
+            <Text color="fg.subtle" fontSize="xs" className="num" data-num="">
+              {index.yahoo_ticker}
+            </Text>
+          </Box>
+          {index.heatmap_id && (
+            <SignalBadge tone="info" size="xs">
+              <HStack gap={1}>
+                <Text>Heatmap</Text>
+                <ArrowUpRight size={10} />
+              </HStack>
+            </SignalBadge>
+          )}
+        </Flex>
+
+        {hasError ? (
+          <Text color="fg.muted" fontSize="xs">
+            {index.error || 'Quote unavailable'}
+          </Text>
+        ) : (
+          <SimpleGrid columns={2} gap={3} w="100%">
+            <Box>
+              <Text color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider" mb={1}>
+                Value
+              </Text>
+              <Num
+                value={index.value as number}
+                decimals={2}
+                fontSize="md"
+                fontWeight="semibold"
+              />
+            </Box>
+            <Box>
+              <Text color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider" mb={1}>
+                Daily
+              </Text>
+              {cp != null ? (
+                <Num
+                  value={cp}
+                  intent="auto"
+                  sign="always"
+                  suffix="%"
+                  decimals={2}
+                  fontSize="md"
+                  fontWeight="semibold"
+                />
+              ) : (
+                <Text color="fg.muted" fontSize="sm">—</Text>
+              )}
+            </Box>
+          </SimpleGrid>
+        )}
+
+        <Text color="fg.subtle" fontSize="xs" lineClamp={2}>
+          {index.description}
+        </Text>
+      </VStack>
+    </Surface>
+  );
+
+  return index.heatmap_id ? (
+    <Link to="/funds" style={{ textDecoration: 'none' }}>
+      {body}
+    </Link>
+  ) : (
+    body
+  );
+};
 
 const SectorCard: React.FC<{ sector: SectorPerformance }> = ({ sector }) => {
   const isPositive = sector.avg_change_percent >= 0;
@@ -92,6 +174,8 @@ const SectorCard: React.FC<{ sector: SectorPerformance }> = ({ sector }) => {
 
 export const SectorPage: React.FC = () => {
   const [sectors, setSectors] = useState<SectorPerformance[]>([]);
+  const [indexes, setIndexes] = useState<MarketIndexQuote[]>([]);
+  const [indexesLoading, setIndexesLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'performance' | 'rsi' | 'count'>('performance');
 
@@ -108,6 +192,21 @@ export const SectorPage: React.FC = () => {
       }
     };
     fetchSectors();
+  }, []);
+
+  useEffect(() => {
+    const fetchIndexes = async () => {
+      try {
+        setIndexesLoading(true);
+        const data = await api.getMarketIndexes();
+        setIndexes(data);
+      } catch (err) {
+        console.error('Failed to fetch market indexes:', err);
+      } finally {
+        setIndexesLoading(false);
+      }
+    };
+    fetchIndexes();
   }, []);
 
   const sortedSectors = [...sectors].sort((a, b) => {
@@ -143,6 +242,31 @@ export const SectorPage: React.FC = () => {
           </HStack>
         }
       />
+
+      <Box mb={6}>
+        <Flex align="center" gap={2} mb={3}>
+          <BarChart3 size={18} />
+          <Text fontSize="sm" fontWeight="semibold" color="fg.default" textTransform="uppercase" letterSpacing="wider">
+            Index Funds
+          </Text>
+          <Text color="fg.subtle" fontSize="xs">
+            Live values from Yahoo Finance
+          </Text>
+        </Flex>
+        {indexesLoading ? (
+          <Flex justify="center" py={6}>
+            <Spinner size="md" color="accent.solid" />
+          </Flex>
+        ) : indexes.length === 0 ? (
+          <Text color="fg.muted" fontSize="sm">No index data available.</Text>
+        ) : (
+          <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} gap={3}>
+            {indexes.map(idx => (
+              <IndexFundCard key={idx.id} index={idx} />
+            ))}
+          </SimpleGrid>
+        )}
+      </Box>
 
       {loading ? (
         <Flex justify="center" py={12}>

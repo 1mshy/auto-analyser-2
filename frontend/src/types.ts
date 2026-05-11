@@ -425,6 +425,19 @@ export interface IndexInfo {
   symbol_count: number;
 }
 
+// Live quote for a broad market index, surfaced on the Sectors page.
+export interface MarketIndexQuote {
+  id: string;
+  name: string;
+  description: string;
+  yahoo_ticker: string;
+  heatmap_id: string | null;
+  value: number | null;
+  change: number | null;
+  change_percent: number | null;
+  error: string | null;
+}
+
 export interface IndexHeatmapData {
   index_id: string;
   index_name: string;

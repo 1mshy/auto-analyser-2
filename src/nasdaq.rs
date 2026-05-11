@@ -5,6 +5,8 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{debug, warn};
 
+const NEWS_BY_SYMBOL_URL: &str = "https://www.nasdaq.com/api/news/topic/articlebysymbol";
+
 /// NASDAQ API client for fetching technicals and news
 #[derive(Clone)]
 pub struct NasdaqClient {
@@ -217,17 +219,13 @@ impl NasdaqClient {
 
     /// Fetch news for a stock from NASDAQ API
     pub async fn get_news(&self, symbol: &str, limit: usize) -> Result<Vec<NasdaqNewsItem>> {
-        let url = format!(
-            "https://api.nasdaq.com/api/news/headline/{}?limit={}",
-            symbol.to_uppercase(),
-            limit
-        );
+        let url = build_news_url(symbol, limit);
 
         debug!("Fetching NASDAQ news for {}", symbol);
 
         let response = self
             .client
-            .get(&url)
+            .get(url)
             .send()
             .await
             .map_err(|e| anyhow!("NASDAQ news request failed for {}: {}", symbol, e))?;
@@ -349,6 +347,19 @@ impl NasdaqClient {
 // ============================================================================
 // Pure parsing functions (offline-testable)
 // ============================================================================
+
+fn build_news_url(symbol: &str, limit: usize) -> reqwest::Url {
+    let query = format!("{}|STOCKS", symbol.trim().to_ascii_uppercase());
+    let params = [
+        ("q", query),
+        ("offset", "0".to_string()),
+        ("limit", limit.to_string()),
+        ("fallback", "true".to_string()),
+    ];
+
+    reqwest::Url::parse_with_params(NEWS_BY_SYMBOL_URL, params)
+        .expect("NASDAQ news URL constant must be valid")
+}
 
 /// Parse a NASDAQ `/api/quote/{sym}/info` response into `NasdaqTechnicals`.
 pub(crate) fn parse_technicals_response(text: &str, symbol: &str) -> Result<NasdaqTechnicals> {
@@ -812,16 +823,32 @@ mod tests {
     // ---- parse_news_response ------------------------------------------------
 
     #[test]
+    fn test_build_news_url_uses_current_article_endpoint() {
+        let url = build_news_url("aapl", 10);
+
+        assert_eq!(
+            url.as_str(),
+            "https://www.nasdaq.com/api/news/topic/articlebysymbol?q=AAPL%7CSTOCKS&offset=0&limit=10&fallback=true"
+        );
+    }
+
+    #[test]
     fn test_parse_news_response_rows() {
         let json = r#"{
             "data": {
+                "message": null,
+                "totalrecords": 8905,
                 "rows": [
                     {
                         "title": "Apple beats earnings",
                         "url": "/articles/apple-beats-earnings",
                         "publisher": "Reuters",
                         "created": "2024-01-01",
-                        "ago": "2 hours ago"
+                        "ago": "2 hours ago",
+                        "id": 25379586,
+                        "image": "",
+                        "primarysymbol": "aapl",
+                        "related_symbols": ["aapl|stocks"]
                     },
                     {
                         "title": null,

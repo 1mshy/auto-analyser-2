@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus, PositionView, CreatePositionInput, UpdatePositionInput, NewsCardPayload, DailyNewsSymbol } from './types';
+import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, MarketIndexQuote, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus, PositionView, CreatePositionInput, UpdatePositionInput, NewsCardPayload, DailyNewsSymbol } from './types';
 
 const API_BASE_URL = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
 
@@ -215,6 +215,12 @@ export const api = {
   getSectorPerformance: async (): Promise<SectorPerformance[]> => {
     const response = await axios.get(`${API_BASE_URL}/api/sectors`);
     return response.data.sectors || [];
+  },
+
+  // Live quotes for the broad market indexes shown on the Sectors page.
+  getMarketIndexes: async (): Promise<MarketIndexQuote[]> => {
+    const response = await axios.get(`${API_BASE_URL}/api/market-indexes`);
+    return response.data.indexes || [];
   },
 
   // Get correlation matrix

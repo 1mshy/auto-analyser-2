@@ -37,6 +37,121 @@ pub struct StockHeatmapItem {
     pub sector: Option<String>,
 }
 
+/// Static catalog entry for a tracked market index.
+#[derive(Debug, Clone, Copy)]
+pub struct MarketIndexEntry {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub description: &'static str,
+    /// Yahoo Finance ticker (e.g. "^GSPC"). Used to fetch the headline value.
+    pub yahoo_ticker: &'static str,
+    /// If set, this index has a constituent list and an associated heatmap
+    /// reachable via /api/indexes/:heatmap_id.
+    pub heatmap_id: Option<&'static str>,
+}
+
+/// Live quote for a market index, returned by /api/market-indexes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketIndexQuote {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub yahoo_ticker: String,
+    pub heatmap_id: Option<String>,
+    pub value: Option<f64>,
+    pub change: Option<f64>,
+    pub change_percent: Option<f64>,
+    pub error: Option<String>,
+}
+
+/// The full list of market indexes shown in the Sectors view.
+pub static MARKET_INDEXES: &[MarketIndexEntry] = &[
+    MarketIndexEntry {
+        id: "sp500",
+        name: "S&P 500",
+        description: "500 largest US companies by market cap",
+        yahoo_ticker: "^GSPC",
+        heatmap_id: Some("sp500"),
+    },
+    MarketIndexEntry {
+        id: "nasdaq100",
+        name: "Nasdaq 100",
+        description: "100 largest non-financial companies on the Nasdaq",
+        yahoo_ticker: "^NDX",
+        heatmap_id: Some("nasdaq100"),
+    },
+    MarketIndexEntry {
+        id: "nasdaq_composite",
+        name: "Nasdaq Composite",
+        description: "All ~3,000 stocks listed on the Nasdaq exchange",
+        yahoo_ticker: "^IXIC",
+        heatmap_id: None,
+    },
+    MarketIndexEntry {
+        id: "dow_composite",
+        name: "Dow Jones Composite Average",
+        description: "65 stocks: industrial + transport + utilities",
+        yahoo_ticker: "^DJA",
+        heatmap_id: None,
+    },
+    MarketIndexEntry {
+        id: "dow_industrial",
+        name: "Dow Jones Industrial Average",
+        description: "30 large-cap blue-chip US companies",
+        yahoo_ticker: "^DJI",
+        heatmap_id: Some("dow30"),
+    },
+    MarketIndexEntry {
+        id: "dow_transport",
+        name: "Dow Jones Transportation Average",
+        description: "20 large US transportation companies",
+        yahoo_ticker: "^DJT",
+        heatmap_id: None,
+    },
+    MarketIndexEntry {
+        id: "dow_utility",
+        name: "Dow Jones Utility Average",
+        description: "15 large US utility companies",
+        yahoo_ticker: "^DJU",
+        heatmap_id: None,
+    },
+    MarketIndexEntry {
+        id: "kbw_bank",
+        name: "KBW Nasdaq Bank Index",
+        description: "24 large US national money-center & regional banks",
+        yahoo_ticker: "^BKX",
+        heatmap_id: None,
+    },
+    MarketIndexEntry {
+        id: "russell1000",
+        name: "Russell 1000",
+        description: "1,000 largest US public companies",
+        yahoo_ticker: "^RUI",
+        heatmap_id: None,
+    },
+    MarketIndexEntry {
+        id: "russell2000",
+        name: "Russell 2000",
+        description: "2,000 small-cap US companies",
+        yahoo_ticker: "^RUT",
+        heatmap_id: Some("russell2000"),
+    },
+    MarketIndexEntry {
+        id: "russell3000",
+        name: "Russell 3000",
+        description: "Russell 1000 + Russell 2000 — the broad US market",
+        yahoo_ticker: "^RUA",
+        heatmap_id: None,
+    },
+    MarketIndexEntry {
+        id: "tsx_composite",
+        name: "S&P/TSX Composite",
+        description: "Headline index of the Toronto Stock Exchange",
+        yahoo_ticker: "^GSPTSE",
+        heatmap_id: None,
+    },
+];
+
 /// Provider for index constituent data
 pub struct IndexDataProvider;
 
