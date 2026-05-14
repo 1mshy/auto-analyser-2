@@ -445,16 +445,37 @@ export interface DiscordChannelConfig {
   avatar_url?: string;
 }
 
+export interface EmailChannelConfig {
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password: string;
+  from_addr: string;
+  to_addrs: string[];
+  use_tls: boolean;
+}
+
 /** Mirrors Rust `ChannelConfig` (tagged by `kind`). Flattened onto the parent. */
-export type ChannelConfig = { kind: 'discord' } & DiscordChannelConfig;
+export type ChannelConfig =
+  | ({ kind: 'discord' } & DiscordChannelConfig)
+  | ({ kind: 'email' } & EmailChannelConfig);
 
 export interface NotificationChannel {
   _id?: string;
   name: string;
-  kind: 'discord';
-  webhook_url: string;
+  kind: 'discord' | 'email';
+  // Flattened from the active `ChannelConfig` variant — fields are present
+  // only when the matching `kind` is set.
+  webhook_url?: string;
   username?: string;
   avatar_url?: string;
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_username?: string;
+  smtp_password?: string;
+  from_addr?: string;
+  to_addrs?: string[];
+  use_tls?: boolean;
   enabled: boolean;
   created_at: string;
 }

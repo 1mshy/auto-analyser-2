@@ -24,6 +24,7 @@ use crate::models::StockAnalysis;
 #[serde(rename_all = "snake_case")]
 pub enum ChannelKind {
     Discord,
+    Email,
 }
 
 /// Config blob for a delivery channel. Tagged so each kind can own its own
@@ -32,12 +33,14 @@ pub enum ChannelKind {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChannelConfig {
     Discord(DiscordChannelConfig),
+    Email(EmailChannelConfig),
 }
 
 impl ChannelConfig {
     pub fn kind(&self) -> ChannelKind {
         match self {
             ChannelConfig::Discord(_) => ChannelKind::Discord,
+            ChannelConfig::Email(_) => ChannelKind::Email,
         }
     }
 }
@@ -358,4 +361,18 @@ pub struct UpdateAlertRuleInput {
 
 fn default_true() -> bool {
     true
+}
+
+/// SMTP configuration for the Email notification channel. Stored per channel
+/// in Mongo — the dispatcher constructs a single `AsyncSmtpTransport` per
+/// channel and reuses it for every send.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailChannelConfig {
+    pub smtp_host: String,
+    pub smtp_port: u16,
+    pub smtp_username: String,
+    pub smtp_password: String,
+    pub from_addr: String,
+    pub to_addrs: Vec<String>,
+    pub use_tls: bool,
 }

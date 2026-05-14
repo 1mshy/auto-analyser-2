@@ -377,6 +377,9 @@ async fn list_channels(State(state): State<AppState>) -> impl IntoResponse {
                         crate::notifications::models::ChannelConfig::Discord(d) => {
                             d.webhook_url = mask_secret(&d.webhook_url);
                         }
+                        crate::notifications::models::ChannelConfig::Email(e) => {
+                            e.smtp_password = mask_secret(&e.smtp_password);
+                        }
                     }
                     c
                 })
@@ -411,6 +414,9 @@ async fn get_channel(State(state): State<AppState>, Path(id): Path<String>) -> i
                 crate::notifications::models::ChannelConfig::Discord(d) => {
                     d.webhook_url = mask_secret(&d.webhook_url);
                 }
+                crate::notifications::models::ChannelConfig::Email(e) => {
+                    e.smtp_password = mask_secret(&e.smtp_password);
+                }
             }
             Json(json!({ "success": true, "channel": ch })).into_response()
         }
@@ -433,6 +439,9 @@ async fn update_channel(
             match &mut ch.config {
                 crate::notifications::models::ChannelConfig::Discord(d) => {
                     d.webhook_url = mask_secret(&d.webhook_url);
+                }
+                crate::notifications::models::ChannelConfig::Email(e) => {
+                    e.smtp_password = mask_secret(&e.smtp_password);
                 }
             }
             Json(json!({ "success": true, "channel": ch })).into_response()

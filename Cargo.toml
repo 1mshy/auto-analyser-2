@@ -59,6 +59,9 @@ rand = "0.8"
 openrouter-rs = "0.4"
 chrono-tz = "0.10.4"
 
+# SMTP email channel
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "tokio1-rustls-tls", "builder"] }
+
 [[bin]]
 name = "rate_limit_tester"
 path = "src/bin/rate_limit_tester.rs"
