@@ -13,6 +13,7 @@ use crate::models::StockAnalysis;
 use crate::notifications::models::{ChannelConfig, NotificationChannel};
 
 pub mod discord;
+pub mod slack;
 
 /// A message produced by the dispatcher, rendered once and fanned out to
 /// every destination channel. Individual channels decide how to format it.
@@ -45,5 +46,6 @@ pub trait Channel: Send + Sync {
 pub fn build_channel(channel: &NotificationChannel, http: reqwest::Client) -> Box<dyn Channel> {
     match &channel.config {
         ChannelConfig::Discord(cfg) => Box::new(discord::DiscordChannel::new(cfg.clone(), http)),
+        ChannelConfig::Slack(cfg) => Box::new(slack::SlackChannel::new(cfg.clone(), http)),
     }
 }

@@ -24,6 +24,7 @@ use crate::models::StockAnalysis;
 #[serde(rename_all = "snake_case")]
 pub enum ChannelKind {
     Discord,
+    Slack,
 }
 
 /// Config blob for a delivery channel. Tagged so each kind can own its own
@@ -32,12 +33,14 @@ pub enum ChannelKind {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChannelConfig {
     Discord(DiscordChannelConfig),
+    Slack(SlackChannelConfig),
 }
 
 impl ChannelConfig {
     pub fn kind(&self) -> ChannelKind {
         match self {
             ChannelConfig::Discord(_) => ChannelKind::Discord,
+            ChannelConfig::Slack(_) => ChannelKind::Slack,
         }
     }
 }
@@ -358,4 +361,24 @@ pub struct UpdateAlertRuleInput {
 
 fn default_true() -> bool {
     true
+}
+
+// ---------------------------------------------------------------------------
+// Slack channel config (incoming webhook)
+// ---------------------------------------------------------------------------
+
+/// User-supplied configuration for a Slack incoming-webhook channel.
+///
+/// Only `webhook_url` is required. The optional fields are forwarded verbatim
+/// to Slack when set and let users override the workspace defaults configured
+/// on the webhook itself (target channel, sender name, emoji icon).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlackChannelConfig {
+    pub webhook_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_emoji: Option<String>,
 }

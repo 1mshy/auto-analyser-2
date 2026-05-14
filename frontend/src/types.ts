@@ -445,16 +445,30 @@ export interface DiscordChannelConfig {
   avatar_url?: string;
 }
 
+/** Mirrors Rust `SlackChannelConfig`. */
+export interface SlackChannelConfig {
+  webhook_url: string;
+  channel?: string;
+  username?: string;
+  icon_emoji?: string;
+}
+
 /** Mirrors Rust `ChannelConfig` (tagged by `kind`). Flattened onto the parent. */
-export type ChannelConfig = { kind: 'discord' } & DiscordChannelConfig;
+export type ChannelConfig =
+  | ({ kind: 'discord' } & DiscordChannelConfig)
+  | ({ kind: 'slack' } & SlackChannelConfig);
 
 export interface NotificationChannel {
   _id?: string;
   name: string;
-  kind: 'discord';
+  kind: 'discord' | 'slack';
   webhook_url: string;
   username?: string;
   avatar_url?: string;
+  /** Slack: override target channel for this webhook. */
+  channel?: string;
+  /** Slack: override sender emoji (e.g. `:chart_with_upwards_trend:`). */
+  icon_emoji?: string;
   enabled: boolean;
   created_at: string;
 }
