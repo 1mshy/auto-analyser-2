@@ -467,6 +467,13 @@ export interface Watchlist {
   updated_at: string;
 }
 
+/** Mirrors Rust `TelegramChannelConfig`. `parse_mode` accepts `"MarkdownV2"` or `"HTML"`; any other value (or undefined) sends plain text. */
+export interface TelegramChannelConfig {
+  bot_token: string;
+  chat_id: string;
+  parse_mode?: 'MarkdownV2' | 'HTML';
+}
+
 /** Tagged union — one variant per `type`. Keep in sync with Rust `Condition`. */
 export type Condition =
   | { type: 'rsi_below'; value: number }

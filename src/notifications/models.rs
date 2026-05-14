@@ -24,6 +24,7 @@ use crate::models::StockAnalysis;
 #[serde(rename_all = "snake_case")]
 pub enum ChannelKind {
     Discord,
+    Telegram,
 }
 
 /// Config blob for a delivery channel. Tagged so each kind can own its own
@@ -32,12 +33,14 @@ pub enum ChannelKind {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChannelConfig {
     Discord(DiscordChannelConfig),
+    Telegram(TelegramChannelConfig),
 }
 
 impl ChannelConfig {
     pub fn kind(&self) -> ChannelKind {
         match self {
             ChannelConfig::Discord(_) => ChannelKind::Discord,
+            ChannelConfig::Telegram(_) => ChannelKind::Telegram,
         }
     }
 }
@@ -358,4 +361,17 @@ pub struct UpdateAlertRuleInput {
 
 fn default_true() -> bool {
     true
+}
+
+/// Telegram Bot API channel config. Posts to
+/// `https://api.telegram.org/bot{bot_token}/sendMessage`.
+///
+/// `parse_mode` is optional; supported values are `"MarkdownV2"` and `"HTML"`.
+/// Any other value (or `None`) sends plain text.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramChannelConfig {
+    pub bot_token: String,
+    pub chat_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parse_mode: Option<String>,
 }
