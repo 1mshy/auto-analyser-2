@@ -397,5 +397,26 @@ export const api = {
       await axios.patch(`${API_BASE_URL}/api/alerts/history/${id}/read`, { read });
     },
   },
+
+  // Dividends
+  getDividends: async (opts: { symbol?: string; min_yield?: number } = {}): Promise<import('./types').DividendSummary[]> => {
+    const params = new URLSearchParams();
+    if (opts.symbol) params.append('symbol', opts.symbol);
+    if (opts.min_yield !== undefined) params.append('min_yield', String(opts.min_yield));
+    const qs = params.toString();
+    const url = qs ? `${API_BASE_URL}/api/dividends?${qs}` : `${API_BASE_URL}/api/dividends`;
+    const r = await axios.get(url);
+    return r.data?.data || [];
+  },
+  getDividendHistory: async (symbol: string): Promise<{ summary: import('./types').DividendSummary | null; history: import('./types').DividendPayment[] }> => {
+    const r = await axios.get(`${API_BASE_URL}/api/dividends/${encodeURIComponent(symbol)}`);
+    if (r.data?.success) {
+      return {
+        summary: r.data.data?.summary ?? null,
+        history: r.data.data?.history ?? [],
+      };
+    }
+    return { summary: null, history: [] };
+  },
 };
 

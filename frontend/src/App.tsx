@@ -15,6 +15,7 @@ import { useWebSocket, useMarketOpenRefresh } from './hooks';
 import { AnalysisProgress } from './types';
 import { api } from './api';
 import { SettingsProvider } from './contexts/SettingsContext';
+import { DividendsPage } from './pages/DividendsPage';
 
 function App() {
   const { progress: wsProgress } = useWebSocket();
@@ -72,6 +73,7 @@ function App() {
             <Route path="/sectors" element={<SectorPage />} />
             <Route path="/screener" element={<ScreenerPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
+            <Route path="/dividends" element={<DividendsPage />} />
           </Routes>
         </Box>
       </Router>

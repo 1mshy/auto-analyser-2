@@ -591,3 +591,23 @@ export function defaultCondition(type: ConditionType): Condition {
   }
 }
 
+export interface DividendPayment {
+  symbol: string;
+  ex_date: string;
+  pay_date?: string;
+  amount: number;
+  frequency?: "quarterly" | "semi-annual" | "annual" | "monthly" | string;
+}
+
+export interface DividendSummary {
+  symbol: string;
+  company_name?: string;
+  trailing_annual_dividend: number;
+  trailing_yield_pct: number;
+  five_year_growth_rate_pct?: number;
+  payout_frequency?: string;
+  next_ex_date?: string;
+  next_payment_amount?: number;
+  payment_count_5y: number;
+  updated_at: string;
+}

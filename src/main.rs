@@ -4,6 +4,7 @@ mod async_fetcher;
 mod cache;
 mod config;
 mod db;
+mod dividends;
 mod indexes;
 mod indicators;
 mod models;

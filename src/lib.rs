@@ -12,6 +12,7 @@ pub mod async_fetcher;
 pub mod cache;
 pub mod config;
 pub mod db;
+pub mod dividends;
 pub mod indexes;
 pub mod indicators;
 pub mod models;
