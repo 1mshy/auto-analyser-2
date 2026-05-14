@@ -7,6 +7,7 @@ mod db;
 mod indexes;
 mod indicators;
 mod marketaux;
+mod metrics;
 mod models;
 mod nasdaq;
 mod notifications;

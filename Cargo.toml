@@ -59,6 +59,9 @@ rand = "0.8"
 openrouter-rs = "0.4"
 chrono-tz = "0.10.4"
 
+# Prometheus metrics
+prometheus = { version = "0.13", default-features = false }
+
 [[bin]]
 name = "rate_limit_tester"
 path = "src/bin/rate_limit_tester.rs"

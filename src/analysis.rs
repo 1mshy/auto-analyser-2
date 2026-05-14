@@ -500,6 +500,8 @@ impl AnalysisEngine {
         // and surfaced via `progress.last_error` if a whole pass blows up.
         self.prefetch_daily_news_if_due().await;
 
+        crate::metrics::ANALYSIS_CYCLE_COMPLETED_TOTAL.inc(); // metrics: unit-13
+
         Ok(())
     }
 

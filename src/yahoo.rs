@@ -498,7 +498,12 @@ impl YahooFinanceClient {
         symbol: &str,
         days: i64,
     ) -> Result<Vec<HistoricalPrice>> {
-        self.get_historical_prices(symbol, days).await
+        let result = self.get_historical_prices(symbol, days).await;
+        let status_label = if result.is_ok() { "ok" } else { "error" };
+        crate::metrics::YAHOO_REQUESTS_TOTAL
+            .with_label_values(&[status_label])
+            .inc(); // metrics: unit-13
+        result
     }
 
     /// Fetch company profile with financial data from Yahoo Finance quoteSummary endpoint

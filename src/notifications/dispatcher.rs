@@ -99,14 +99,22 @@ impl Dispatcher {
                 }
             };
             let channel: Box<dyn Channel> = build_channel(ch, self.http.clone());
+            let channel_kind = match ch.config.kind() {
+                crate::notifications::models::ChannelKind::Discord => "discord",
+            };
             match channel.send(&rendered).await {
-                Ok(_) => delivered.push(DeliveryResult {
-                    channel_id: *cid,
-                    channel_name: ch.name.clone(),
-                    ok: true,
-                    error: None,
-                    sent_at: Utc::now(),
-                }),
+                Ok(_) => {
+                    delivered.push(DeliveryResult {
+                        channel_id: *cid,
+                        channel_name: ch.name.clone(),
+                        ok: true,
+                        error: None,
+                        sent_at: Utc::now(),
+                    });
+                    crate::metrics::ALERTS_DISPATCHED_TOTAL
+                        .with_label_values(&[channel_kind, "ok"])
+                        .inc(); // metrics: unit-13
+                }
                 Err(e) => {
                     warn!("channel {} send failed: {}", ch.name, e);
                     delivered.push(DeliveryResult {
@@ -116,6 +124,9 @@ impl Dispatcher {
                         error: Some(e.to_string()),
                         sent_at: Utc::now(),
                     });
+                    crate::metrics::ALERTS_DISPATCHED_TOTAL
+                        .with_label_values(&[channel_kind, "error"])
+                        .inc(); // metrics: unit-13
                 }
             }
         }
