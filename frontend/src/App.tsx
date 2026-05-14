@@ -11,6 +11,7 @@ import { SectorPage } from './pages/SectorPage';
 import { ScreenerPage } from './pages/ScreenerPage';
 import { StockDetailPage } from './pages/StockDetailPage';
 import { AlertsPage } from './pages/AlertsPage';
+import { CryptoPage } from './pages/CryptoPage';
 import { useWebSocket, useMarketOpenRefresh } from './hooks';
 import { AnalysisProgress } from './types';
 import { api } from './api';
@@ -72,6 +73,7 @@ function App() {
             <Route path="/sectors" element={<SectorPage />} />
             <Route path="/screener" element={<ScreenerPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
+            <Route path="/crypto" element={<CryptoPage />} />
           </Routes>
         </Box>
       </Router>

@@ -220,3 +220,10 @@ mod tests {
         assert!(IndexDataProvider::get_index_info("invalid").is_none());
     }
 }
+
+// MongoDB index registry note (append-only):
+// The `crypto_assets` collection has a unique index on `id` (CoinGecko slug).
+// It is created best-effort, non-fatal on startup by `crate::crypto::ensure_indexes`.
+// This file owns stock-index constituent data, not Mongo schema indexes; the
+// note exists so future contributors searching `indexes.rs` for collection
+// schema find a pointer to the real registration site.

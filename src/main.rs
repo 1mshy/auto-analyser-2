@@ -3,6 +3,7 @@ mod api;
 mod async_fetcher;
 mod cache;
 mod config;
+mod crypto;
 mod db;
 mod indexes;
 mod indicators;
@@ -46,6 +47,9 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Connecting to MongoDB at {}...", config.mongodb_uri);
     let db = MongoDB::new(&config.mongodb_uri, &config.database_name).await?;
     tracing::info!("✅ Connected to MongoDB database: {}", config.database_name);
+
+    // Best-effort: register the crypto_assets unique-on-id index.
+    crypto::ensure_indexes(&db).await;
 
     // Initialize cache
     let cache = CacheLayer::new(config.cache_ttl_secs, config.news_cache_ttl_secs);
@@ -149,6 +153,7 @@ async fn main() -> anyhow::Result<()> {
         openrouter_client,
         nasdaq_client,
         alert_engine,
+        crypto_refresh_guard: crypto::RefreshGuard::new(),
     };
 
     // Build API router with CORS

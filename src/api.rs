@@ -1,5 +1,6 @@
 use crate::{
     cache::CacheLayer,
+    crypto,
     db::MongoDB,
     indexes::{IndexDataProvider, IndexHeatmapData, StockHeatmapItem},
     indicators::TechnicalIndicators,
@@ -47,6 +48,7 @@ pub struct AppState {
     pub openrouter_client: OpenRouterClient,
     pub nasdaq_client: NasdaqClient,
     pub alert_engine: AlertEngine,
+    pub crypto_refresh_guard: crypto::RefreshGuard,
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -78,7 +80,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/indexes", get(get_indexes))
         .route("/api/indexes/:index_id", get(get_index_detail))
         .route("/api/indexes/:index_id/heatmap", get(get_index_heatmap))
-        .route("/ws", get(websocket_handler));
+        .route("/ws", get(websocket_handler))
+        // Crypto (CoinGecko-backed)
+        .route("/api/crypto", get(crypto::list_crypto))
+        .route("/api/crypto/:id", get(crypto::get_crypto));
 
     crate::notifications::api::mount(router).with_state(state)
 }

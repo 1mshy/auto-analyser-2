@@ -591,3 +591,15 @@ export function defaultCondition(type: ConditionType): Condition {
   }
 }
 
+export interface CryptoAsset {
+  id: string;
+  symbol: string;
+  name: string;
+  current_price: number;
+  market_cap: number;
+  price_change_24h: number;
+  price_change_pct_24h: number;
+  volume_24h: number;
+  image?: string;
+  updated_at: string;
+}

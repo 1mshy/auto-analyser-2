@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus } from './types';
+import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus, CryptoAsset } from './types';
 
 const API_BASE_URL = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
 
@@ -396,6 +396,22 @@ export const api = {
     markRead: async (id: string, read = true): Promise<void> => {
       await axios.patch(`${API_BASE_URL}/api/alerts/history/${id}/read`, { read });
     },
+  },
+
+  // Crypto (CoinGecko-backed)
+  getCrypto: async (): Promise<CryptoAsset[]> => {
+    const response = await axios.get(`${API_BASE_URL}/api/crypto`);
+    if (response.data?.success) {
+      return (response.data.data as CryptoAsset[]) || [];
+    }
+    return [];
+  },
+  getCryptoById: async (id: string): Promise<CryptoAsset | null> => {
+    const response = await axios.get(`${API_BASE_URL}/api/crypto/${encodeURIComponent(id)}`);
+    if (response.data?.success) {
+      return response.data.data as CryptoAsset;
+    }
+    return null;
   },
 };
 

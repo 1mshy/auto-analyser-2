@@ -11,6 +11,7 @@ pub mod api;
 pub mod async_fetcher;
 pub mod cache;
 pub mod config;
+pub mod crypto;
 pub mod db;
 pub mod indexes;
 pub mod indicators;
