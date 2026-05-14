@@ -24,6 +24,7 @@ use crate::models::StockAnalysis;
 #[serde(rename_all = "snake_case")]
 pub enum ChannelKind {
     Discord,
+    Webhook,
 }
 
 /// Config blob for a delivery channel. Tagged so each kind can own its own
@@ -32,12 +33,14 @@ pub enum ChannelKind {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ChannelConfig {
     Discord(DiscordChannelConfig),
+    Webhook(WebhookChannelConfig),
 }
 
 impl ChannelConfig {
     pub fn kind(&self) -> ChannelKind {
         match self {
             ChannelConfig::Discord(_) => ChannelKind::Discord,
+            ChannelConfig::Webhook(_) => ChannelKind::Webhook,
         }
     }
 }
@@ -358,4 +361,23 @@ pub struct UpdateAlertRuleInput {
 
 fn default_true() -> bool {
     true
+}
+
+// ---------------------------------------------------------------------------
+// Webhook channel config (generic HTTP webhook delivery)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookChannelConfig {
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headers: Option<std::collections::HashMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u64>,
 }

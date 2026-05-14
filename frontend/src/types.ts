@@ -591,3 +591,18 @@ export function defaultCondition(type: ConditionType): Condition {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Generic webhook channel config (mirrors Rust `WebhookChannelConfig`).
+// ---------------------------------------------------------------------------
+
+export interface WebhookChannelConfig {
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body_template?: string;
+  content_type?: string;
+  timeout_ms?: number;
+}
+
+export type WebhookChannelConfigTagged = { kind: 'webhook' } & WebhookChannelConfig;
+

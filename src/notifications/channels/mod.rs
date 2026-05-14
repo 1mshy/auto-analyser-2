@@ -45,5 +45,8 @@ pub trait Channel: Send + Sync {
 pub fn build_channel(channel: &NotificationChannel, http: reqwest::Client) -> Box<dyn Channel> {
     match &channel.config {
         ChannelConfig::Discord(cfg) => Box::new(discord::DiscordChannel::new(cfg.clone(), http)),
+        ChannelConfig::Webhook(cfg) => Box::new(webhook::WebhookChannel::new(cfg.clone(), http)),
     }
 }
+
+pub mod webhook;
