@@ -15,7 +15,7 @@ import {
   Table,
   IconButton,
 } from '@chakra-ui/react';
-import { Grid, List, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { Grid, List, ChevronLeft, ChevronRight, Search, Download } from 'lucide-react'; // export: unit-14
 import { api, FilterResponse } from '../api';
 import { StockAnalysis, StockFilter, PaginationInfo, getMarketCapTier, getMarketCapTierColor, getMarketCapTierLabel } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
@@ -297,6 +297,19 @@ export const StocksPage: React.FC = () => {
         subtitle={`${pagination.total.toLocaleString()} analyzed stocks · ${filteredStocks.length.toLocaleString()} visible in this view`}
         actions={
           <HStack>
+            {/* export: unit-14 */}
+            <Button asChild size="sm" variant="outline" colorPalette="blue">
+              <a href={api.getExportStocksUrl({ format: 'csv', filter: getFilterFromParams() })} download>
+                <Download size={14} style={{ marginRight: 6 }} />
+                Export CSV
+              </a>
+            </Button>
+            <Button asChild size="sm" variant="outline" colorPalette="gray">
+              <a href={api.getExportStocksUrl({ format: 'json', filter: getFilterFromParams() })} download>
+                JSON
+              </a>
+            </Button>
+            {/* /export: unit-14 */}
             <IconButton
               aria-label="Table view"
               variant={viewMode === 'table' ? 'solid' : 'outline'}

@@ -80,6 +80,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/indexes/:index_id/heatmap", get(get_index_heatmap))
         .route("/ws", get(websocket_handler));
 
+    // export: unit-14 — bulk CSV/JSON download
+    let router = router.route("/api/export/stocks", get(crate::export::export_stocks));
+
     crate::notifications::api::mount(router).with_state(state)
 }
 

@@ -59,6 +59,9 @@ rand = "0.8"
 openrouter-rs = "0.4"
 chrono-tz = "0.10.4"
 
+# CSV export (unit-14)
+csv = "1.3"
+
 [[bin]]
 name = "rate_limit_tester"
 path = "src/bin/rate_limit_tester.rs"

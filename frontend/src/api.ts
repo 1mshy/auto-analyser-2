@@ -397,5 +397,45 @@ export const api = {
       await axios.patch(`${API_BASE_URL}/api/alerts/history/${id}/read`, { read });
     },
   },
+
+  // export: unit-14 — build a URL for the bulk CSV/JSON download endpoint.
+  // Triggered via `<a href={...} download>` or `window.location.href = url`,
+  // not via fetch — the browser handles the Content-Disposition attachment.
+  getExportStocksUrl: (opts: { format: "csv" | "json"; filter?: StockFilter }): string => {
+    const params = new URLSearchParams();
+    params.set('format', opts.format);
+    const f = opts.filter;
+    if (f) {
+      const append = (key: string, value: unknown): void => {
+        if (value === undefined || value === null) return;
+        if (typeof value === 'string' && value.length === 0) return;
+        if (Array.isArray(value)) {
+          if (value.length === 0) return;
+          params.set(key, value.join(','));
+          return;
+        }
+        params.set(key, String(value));
+      };
+      append('min_price', f.min_price);
+      append('max_price', f.max_price);
+      append('min_volume', f.min_volume);
+      append('min_market_cap', f.min_market_cap);
+      append('max_market_cap', f.max_market_cap);
+      append('min_rsi', f.min_rsi);
+      append('max_rsi', f.max_rsi);
+      append('sectors', f.sectors);
+      append('only_oversold', f.only_oversold);
+      append('only_overbought', f.only_overbought);
+      append('symbol_search', f.symbol_search);
+      append('min_stochastic_k', f.min_stochastic_k);
+      append('max_stochastic_k', f.max_stochastic_k);
+      append('min_bandwidth', f.min_bandwidth);
+      append('max_bandwidth', f.max_bandwidth);
+      append('max_abs_price_change_percent', f.max_abs_price_change_percent);
+      append('sort_by', f.sort_by);
+      append('sort_order', f.sort_order);
+    }
+    return `${API_BASE_URL}/api/export/stocks?${params.toString()}`;
+  },
 };
 
