@@ -220,3 +220,18 @@ mod tests {
         assert!(IndexDataProvider::get_index_info("invalid").is_none());
     }
 }
+
+// ---------------------------------------------------------------------------
+// short_interest collection indexes
+// ---------------------------------------------------------------------------
+//
+// MongoDB indexes for the `short_interest` collection live in
+// `src/short_interest.rs::ShortInterestRepo::create_indexes` (best-effort,
+// non-fatal). That collection has:
+//
+//   - unique index on `symbol`
+//   - descending index on `short_pct_of_float`
+//
+// They are kept beside the collection's owning module — same pattern as
+// `notifications/repo.rs::create_indexes` — so this file remains focused on
+// stock-index (S&P 500, NASDAQ 100, etc.) constituent data only.

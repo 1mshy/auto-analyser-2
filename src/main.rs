@@ -10,6 +10,7 @@ mod models;
 mod nasdaq;
 mod notifications;
 mod openrouter;
+mod short_interest;
 mod symbols;
 mod yahoo;
 

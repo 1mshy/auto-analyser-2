@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Box, Flex, Text, HStack, Container } from '@chakra-ui/react';
 import { Home, List, TrendingUp, Activity, BarChart3, Newspaper, PieChart, Search, Bell } from 'lucide-react';
+import { Flame } from 'lucide-react';
 import SettingsPanel from './SettingsPanel';
 import { useSettings } from '../contexts/SettingsContext';
 import { api } from '../api';
@@ -203,6 +204,12 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
                   {unread > 99 ? '99+' : unread}
                 </SignalBadge>
               ) : undefined}
+            />
+            <NavItem
+              to="/short-squeeze"
+              icon={<Flame size={16} />}
+              label="Short Squeeze"
+              isActive={location.pathname === '/short-squeeze'}
             />
           </HStack>
 

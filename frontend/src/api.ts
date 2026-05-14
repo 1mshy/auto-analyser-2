@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus } from './types';
+import type { ShortInterest, SqueezeCandidate } from './types';
 
 const API_BASE_URL = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
 
@@ -396,6 +397,28 @@ export const api = {
     markRead: async (id: string, read = true): Promise<void> => {
       await axios.patch(`${API_BASE_URL}/api/alerts/history/${id}/read`, { read });
     },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Short interest / short-squeeze candidates
+  // ---------------------------------------------------------------------------
+  getShortInterest: async (opts: { symbol?: string; min_pct?: number } = {}): Promise<ShortInterest[]> => {
+    const params = new URLSearchParams();
+    if (opts.symbol) params.append('symbol', opts.symbol);
+    if (opts.min_pct != null) params.append('min_pct', String(opts.min_pct));
+    const qs = params.toString();
+    const url = `${API_BASE_URL}/api/short-interest${qs ? `?${qs}` : ''}`;
+    const r = await axios.get(url);
+    return r.data?.success ? (r.data.data || []) : [];
+  },
+
+  getSqueezeCandidates: async (limit?: number): Promise<SqueezeCandidate[]> => {
+    const params = new URLSearchParams();
+    if (limit != null) params.append('limit', String(limit));
+    const qs = params.toString();
+    const url = `${API_BASE_URL}/api/short-interest/squeeze-candidates${qs ? `?${qs}` : ''}`;
+    const r = await axios.get(url);
+    return r.data?.success ? (r.data.data || []) : [];
   },
 };
 

@@ -591,3 +591,24 @@ export function defaultCondition(type: ConditionType): Condition {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Short interest / short-squeeze candidates
+// ---------------------------------------------------------------------------
+
+export interface ShortInterest {
+  symbol: string;
+  company_name?: string;
+  short_interest: number;
+  float: number;
+  short_pct_of_float: number;
+  days_to_cover: number;
+  report_date: string;
+  updated_at: string;
+}
+
+export interface SqueezeCandidate extends ShortInterest {
+  squeeze_score: number;
+  rsi?: number;
+  price_change_pct?: number;
+}
+

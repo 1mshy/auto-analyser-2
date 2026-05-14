@@ -15,6 +15,9 @@ import { useWebSocket, useMarketOpenRefresh } from './hooks';
 import { AnalysisProgress } from './types';
 import { api } from './api';
 import { SettingsProvider } from './contexts/SettingsContext';
+// Short squeeze candidates page (added by Unit 9). Imported at the end of the
+// import block to keep the diff append-only.
+import { ShortSqueezePage } from './pages/ShortSqueezePage';
 
 function App() {
   const { progress: wsProgress } = useWebSocket();
@@ -72,6 +75,7 @@ function App() {
             <Route path="/sectors" element={<SectorPage />} />
             <Route path="/screener" element={<ScreenerPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
+            <Route path="/short-squeeze" element={<ShortSqueezePage />} />
           </Routes>
         </Box>
       </Router>

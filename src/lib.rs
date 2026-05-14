@@ -18,5 +18,6 @@ pub mod models;
 pub mod nasdaq;
 pub mod notifications;
 pub mod openrouter;
+pub mod short_interest;
 pub mod symbols;
 pub mod yahoo;
