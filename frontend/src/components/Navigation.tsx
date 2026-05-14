@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Box, Flex, Text, HStack, Container } from '@chakra-ui/react';
-import { Home, List, TrendingUp, Activity, BarChart3, Newspaper, PieChart, Search, Bell } from 'lucide-react';
+import { Box, Flex, Text, HStack, Container, IconButton } from '@chakra-ui/react';
+import { Home, List, TrendingUp, Activity, BarChart3, Newspaper, PieChart, Search, Bell, Menu } from 'lucide-react';
 import SettingsPanel from './SettingsPanel';
 import { useSettings } from '../contexts/SettingsContext';
 import { api } from '../api';
 import { SignalBadge, Num } from './ui/primitives';
+/* responsive: unit-15 */
+import { useIsMobile } from '../theme/responsive';
+import MobileDrawer from './MobileDrawer';
 
 interface NavItemProps {
   to: string;
@@ -55,6 +58,9 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
   const location = useLocation();
   const { isFiltered, settings } = useSettings();
   const [unread, setUnread] = useState(0);
+  /* responsive: unit-15 */
+  const isMobile = useIsMobile();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,7 +132,22 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
             </HStack>
           </Link>
 
-          {/* Navigation Links */}
+          {/* responsive: unit-15 — hamburger button visible only on mobile */}
+          {isMobile && (
+            <IconButton
+              aria-label="Open navigation menu"
+              variant="ghost"
+              size="sm"
+              onClick={() => setDrawerOpen(true)}
+              color="fg.muted"
+              _hover={{ color: 'fg.default', bg: 'bg.muted' }}
+            >
+              <Menu size={20} />
+            </IconButton>
+          )}
+
+          {/* Navigation Links — desktop only (responsive: unit-15) */}
+          {!isMobile && (
           <HStack
             gap={1}
             flex={1}
@@ -205,6 +226,7 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
               ) : undefined}
             />
           </HStack>
+          )}
 
           {/* Right Side: Status + Settings */}
           <HStack gap={2} flexShrink={0}>
@@ -248,6 +270,10 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
           </HStack>
         </Flex>
       </Container>
+      {/* responsive: unit-15 — mobile slide-in nav drawer */}
+      {isMobile && (
+        <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} unread={unread} />
+      )}
     </Box>
   );
 };
