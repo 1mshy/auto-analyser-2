@@ -359,6 +359,8 @@ impl AnalysisEngine {
             progress.errors
         );
 
+        crate::metrics::ANALYSIS_CYCLE_COMPLETED_TOTAL.inc(); // metrics: unit-13
+
         Ok(())
     }
 

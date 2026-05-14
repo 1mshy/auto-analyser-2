@@ -78,6 +78,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/indexes", get(get_indexes))
         .route("/api/indexes/:index_id", get(get_index_detail))
         .route("/api/indexes/:index_id/heatmap", get(get_index_heatmap))
+        .route("/metrics", get(crate::metrics::metrics_handler))
         .route("/ws", get(websocket_handler));
 
     crate::notifications::api::mount(router).with_state(state)

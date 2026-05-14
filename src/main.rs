@@ -6,6 +6,7 @@ mod config;
 mod db;
 mod indexes;
 mod indicators;
+mod metrics;
 mod models;
 mod nasdaq;
 mod notifications;
