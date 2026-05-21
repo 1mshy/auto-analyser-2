@@ -1,6 +1,7 @@
 mod analysis;
 mod api;
 mod async_fetcher;
+mod backtest;
 mod cache;
 mod config;
 mod db;
