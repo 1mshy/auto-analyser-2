@@ -9,6 +9,7 @@
 pub mod analysis;
 pub mod api;
 pub mod async_fetcher;
+pub mod backtest;
 pub mod cache;
 pub mod config;
 pub mod db;

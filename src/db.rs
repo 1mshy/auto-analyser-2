@@ -1,12 +1,12 @@
 use crate::models::{
-    AggregatedNewsItem, DailyNewsSymbol, MarketSummary, NasdaqNewsItem, NewsSummary,
-    SectorPerformance, Stock, StockAnalysis, StockFilter,
+    AggregatedNewsItem, BacktestRun, BacktestSummary, DailyNewsSymbol, MarketSummary,
+    NasdaqNewsItem, NewsSummary, SectorPerformance, Stock, StockAnalysis, StockFilter,
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use futures::stream::StreamExt;
 use mongodb::{
-    bson::{doc, to_bson, Bson, Document, Regex},
+    bson::{doc, oid::ObjectId, to_bson, Bson, Document, Regex},
     options::{ClientOptions, FindOptions, ServerApi, ServerApiVersion},
     Client, Collection, Database,
 };
@@ -244,6 +244,20 @@ impl MongoDB {
             .await
         {
             tracing::warn!("Failed to create daily_news_symbols index: {}", e);
+        }
+
+        // Backtest runs are append-only and listed most-recent-first; index
+        // `ran_at` descending. Best-effort, like the others.
+        let backtests: Collection<BacktestRun> = database.collection("backtests");
+        if let Err(e) = backtests
+            .create_index(
+                mongodb::IndexModel::builder()
+                    .keys(doc! { "ran_at": -1 })
+                    .build(),
+            )
+            .await
+        {
+            tracing::warn!("Failed to create backtests index: {}", e);
         }
 
         Ok(())
@@ -753,6 +767,54 @@ impl MongoDB {
             .delete_one(doc! { "symbol": symbol.to_uppercase() })
             .await?;
         Ok(res.deleted_count > 0)
+    }
+
+    // ----------------------------------------------------------------------
+    // Backtests (append-only run records — NOT keyed on symbol)
+    // ----------------------------------------------------------------------
+
+    fn backtests(&self) -> Collection<BacktestRun> {
+        self.database.collection("backtests")
+    }
+
+    /// Persist a backtest run. Append-only: each call inserts a new immutable
+    /// document (no upsert). We generate the `_id` up front and mirror it onto
+    /// the embedded summary so the list endpoint can return summaries that
+    /// round-trip to the detail endpoint. Returns the run with its id set.
+    pub async fn save_backtest(&self, mut run: BacktestRun) -> Result<BacktestRun> {
+        let oid = ObjectId::new();
+        run.id = Some(oid);
+        run.summary.id = Some(oid);
+        self.backtests().insert_one(&run).await?;
+        Ok(run)
+    }
+
+    /// Fetch a full backtest run (results + equity curves) by id.
+    pub async fn get_backtest_by_id(&self, id: &ObjectId) -> Result<Option<BacktestRun>> {
+        Ok(self.backtests().find_one(doc! { "_id": *id }).await?)
+    }
+
+    /// List run summaries, most recent first. Projects away the heavy embedded
+    /// `results` (per-symbol trade logs + equity curves) via `$replaceRoot` on
+    /// the precomputed `summary` subdocument, so the list stays lightweight.
+    pub async fn list_backtest_summaries(&self, limit: i64) -> Result<Vec<BacktestSummary>> {
+        let pipeline = vec![
+            doc! { "$sort": { "ran_at": -1 } },
+            doc! { "$limit": limit.max(1) },
+            doc! { "$replaceRoot": { "newRoot": "$summary" } },
+        ];
+        let mut cursor = self.backtests().aggregate(pipeline).await?;
+        let mut out = Vec::new();
+        while let Some(doc) = cursor.next().await {
+            match doc {
+                Ok(doc) => match mongodb::bson::from_document::<BacktestSummary>(doc) {
+                    Ok(summary) => out.push(summary),
+                    Err(e) => tracing::warn!("skipping malformed backtest summary: {}", e),
+                },
+                Err(e) => tracing::warn!("backtest summary cursor error: {}", e),
+            }
+        }
+        Ok(out)
     }
 }
 
