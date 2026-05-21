@@ -774,6 +774,19 @@ export interface CreateBacktestInput {
   lookback_days?: number | null;
 }
 
+/**
+ * The backend serializes Mongo `_id` as BSON extended-JSON
+ * (`{ "$oid": "<hex>" }`) via serde_json — the same shape every `_id` in this
+ * app's API uses. Normalize either that object or a plain string to the hex id.
+ */
+export function extractObjectId(
+  id: string | { $oid?: string } | null | undefined,
+): string | undefined {
+  if (!id) return undefined;
+  if (typeof id === 'string') return id;
+  return id.$oid;
+}
+
 export const EXIT_REASON_LABELS: Record<ExitReason, string> = {
   stop_loss: 'Stop loss',
   take_profit: 'Take profit',

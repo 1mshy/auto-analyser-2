@@ -36,6 +36,7 @@ import {
   Strategy,
   Trade,
   defaultStrategy,
+  extractObjectId,
 } from '../types';
 
 // --- small formatting helpers ----------------------------------------------
@@ -268,9 +269,11 @@ export const Backtest: React.FC = () => {
                   Recent runs
                 </Text>
                 <VStack align="stretch" gap={1}>
-                  {recent.slice(0, 8).map((s) => (
+                  {recent.slice(0, 8).map((s, i) => {
+                    const id = extractObjectId(s._id as any);
+                    return (
                     <HStack
-                      key={s._id}
+                      key={id || i}
                       justify="space-between"
                       bg="bg.inset"
                       borderWidth="1px"
@@ -280,7 +283,7 @@ export const Backtest: React.FC = () => {
                       py={2}
                       cursor="pointer"
                       _hover={{ bg: 'bg.muted' }}
-                      onClick={() => openRun(s._id)}
+                      onClick={() => openRun(id)}
                     >
                       <VStack align="start" gap={0}>
                         <Text fontSize="sm" color="fg.default" truncate maxW="220px">
@@ -294,7 +297,8 @@ export const Backtest: React.FC = () => {
                         {fmtPct(s.total_return_pct)}
                       </SignalBadge>
                     </HStack>
-                  ))}
+                    );
+                  })}
                 </VStack>
               </Box>
             )}

@@ -69,6 +69,15 @@ the next reader doesn't have to reverse-engineer the "why".
   (best-effort, non-fatal — same pattern as the news indexes), *not* in
   `indexes.rs`. Despite CLAUDE.md's wording, `src/indexes.rs` is the market-index
   constituent catalog; all real Mongo index creation lives in `db.rs`.
+- **`_id` JSON shape = extended-JSON, app-wide.** `axum::Json` uses serde_json,
+  under which bson `ObjectId` serializes as `{ "$oid": "<hex>" }`, NOT a plain
+  string — confirmed against the running app (`GET /api/watchlists` returns the
+  same shape). The frontend `_id?: string` types across the app are therefore
+  loose; the Backtest page normalizes via `extractObjectId()` (in `types.ts`)
+  wherever it round-trips an id back to the server (the "recent runs" list).
+  A `db.rs` unit test (`backtest_id_serializes_as_bson_extjson_oid`) locks this
+  contract so a future serde change is caught. The `$replaceRoot`+`from_document`
+  list path is likewise covered by `backtest_summary_survives_replace_root_round_trip`.
 - **16MB document ceiling.** A run embeds full equity curves + trade logs for
   every symbol. For daily bars × a few dozen symbols this is far under Mongo's
   16MB limit. Future work on intraday bars or very large watchlists should chunk
