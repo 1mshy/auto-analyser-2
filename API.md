@@ -182,6 +182,65 @@ ws.onmessage = (event) => {
 
 ---
 
+## Backtesting
+
+Run a rule-based strategy over historical prices and measure its performance.
+Entry/exit reuse the alert engine's condition trees. Full reference, including
+the strategy spec and metric definitions, is in `BACKTESTING.md`.
+
+### Run a backtest
+
+```
+POST /api/backtest
+```
+
+**Request body:**
+```jsonc
+{
+  "symbols": ["AAPL", "MSFT"],          // and/or a "watchlist_id"; union is simulated (≤ 25)
+  "label": "RSI mean-reversion",         // optional
+  "start_date": "2022-01-01T00:00:00Z",  // optional ISO-8601 window bounds
+  "end_date":   "2024-01-01T00:00:00Z",
+  "lookback_days": 730,                  // optional; overrides the date-derived Yahoo lookback
+  "strategy": {
+    "entry": { "op": "leaf", "condition": { "type": "rsi_below", "value": 30 } },
+    "exit":  { "op": "leaf", "condition": { "type": "rsi_above", "value": 70 } },
+    "stop_loss_pct": 8,
+    "take_profit_pct": 20,
+    "max_holding_bars": null,
+    "position_size_pct": 1.0,
+    "initial_capital": 10000,
+    "commission_bps": 5,
+    "slippage_bps": 5
+  }
+}
+```
+
+**Response:** `{ "success": true, "run": { ... } }` — the run embeds a result per
+symbol (trade log, equity curve, metrics), an aggregate `summary`, and `_id`.
+
+### List backtests
+
+```
+GET /api/backtests
+```
+
+Returns lightweight summaries (heavy equity curves omitted), most recent first:
+```json
+{ "success": true, "count": 3, "backtests": [ { "_id": "…", "label": "…", "total_return_pct": 12.5, "trade_count": 7, "win_rate_pct": 57.1, "max_drawdown_pct": 9.3, "ran_at": "…" } ] }
+```
+
+### Get a backtest run
+
+```
+GET /api/backtest/:id
+```
+
+Returns the full run (`{ "success": true, "run": { ... } }`) or
+`{ "success": false, "error": "…" }` if the id is invalid or not found.
+
+---
+
 ## Technical Indicators
 
 ### RSI (Relative Strength Index)

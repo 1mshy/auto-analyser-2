@@ -93,4 +93,4 @@ CRA + React 19 + Chakra UI v3 + framer-motion + recharts + lucide-react. Key fil
 
 ## Reference docs in repo
 
-`API.md` (HTTP surface), `NOTIFICATIONS.md` (alert engine condition + placeholder reference), `STRUCTURE.md` (older per-module breakdown), `DOCKER.md` / `DOCKER_QUICK_REF.md` (compose details), `RSI_FIX_DETAILED.md` / `YAHOO_*_FIX*.md` (historical incidents — useful when something behaves "wrong" and you suspect regression).
+`API.md` (HTTP surface), `NOTIFICATIONS.md` (alert engine condition + placeholder reference), `BACKTESTING.md` (backtesting engine: strategy spec, metric definitions, API surface; decisions in `NOTES_BACKTESTING.md`), `STRUCTURE.md` (older per-module breakdown), `DOCKER.md` / `DOCKER_QUICK_REF.md` (compose details), `RSI_FIX_DETAILED.md` / `YAHOO_*_FIX*.md` (historical incidents — useful when something behaves "wrong" and you suspect regression).
