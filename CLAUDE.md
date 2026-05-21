@@ -44,7 +44,7 @@ make rebuild                    # full rebuild
 - `config.rs` — single `Config` struct loaded from `.env` (note: `OPENROUTER_API_KEY_STOCKS` is intentionally SCREAMING_SNAKE on the struct field too). Includes optional `CANADIAN_SYMBOLS` for the CAD side of the analysis universe.
 - `models.rs` — serde data types: `Stock`, `StockAnalysis`, `HistoricalPrice`, `MACDIndicator`, `StockFilter`, `AnalysisProgress`. Mongo `_id` is `Option<ObjectId>` with `skip_serializing_if`.
 - `db.rs` — `MongoDB` struct: connection, upserts on `symbol`, `$and`-built dynamic filters in `get_latest_analyses`, indexes on `symbol` (asc) and `analyzed_at` (desc).
-- `indexes.rs` — applied at startup via `db.rs`.
+- `indexes.rs` — embedded market-index constituent lists (S&P 500, Nasdaq 100, Dow 30, Russell 2000) + the `MARKET_INDEXES` catalog and heatmap types. **Not** Mongo index creation — that lives in `db.rs::create_indexes` (best-effort, non-fatal).
 - `yahoo.rs` / `nasdaq.rs` — HTTP clients (must spoof a desktop User-Agent). NASDAQ supplies the symbol universe + market caps + sector + 52w hi/lo; Yahoo supplies OHLCV history.
 - `async_fetcher.rs` — concurrent Yahoo batch fetcher governed by `YAHOO_CONCURRENCY` and `YAHOO_REQUEST_DELAY_MS`.
 - `indicators.rs` — pure functions returning `Option<f64>`. **RSI uses Wilder's Smoothing** (matches TradingView): oversold < 30, overbought > 70. SMA(20/50), MACD(12/26 + signal-line approximation), EMA helper.

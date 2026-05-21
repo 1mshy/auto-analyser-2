@@ -756,7 +756,7 @@ mod tests {
         let res = simulate("TP", &prices, &strat);
         // First trade is the TP; entry re-fires afterwards so there may be a
         // trailing EndOfData trade — assert on the first.
-        assert!(res.trades.len() >= 1);
+        assert!(!res.trades.is_empty());
         let t = &res.trades[0];
         assert_eq!(t.exit_reason, ExitReason::TakeProfit);
         assert!((t.exit_price - 105.0).abs() < 1e-9, "exit {}", t.exit_price);
