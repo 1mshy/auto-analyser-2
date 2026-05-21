@@ -89,3 +89,41 @@ the next reader doesn't have to reverse-engineer the "why".
 - **Cache is untouched.** Backtests never mutate `StockAnalysis`, so the
   CLAUDE.md cache-invalidation rule does not apply. `cache.rs` and `config.rs`
   were intentionally not modified.
+
+## Status (what shipped)
+
+End-to-end on branch `feat/backtesting-engine`:
+
+- `src/backtest.rs` — pure simulator + metrics, 14 deterministic unit tests.
+- `src/indicators.rs` — `highest_high` / `lowest_low` rolling helpers + tests.
+- `src/models.rs` — all backtest serde types + serde tests.
+- `src/db.rs` — append-only `backtests` collection (save/get/list) + index.
+- `src/api.rs` — `POST /api/backtest`, `GET /api/backtests`, `GET /api/backtest/:id`.
+- `frontend/` — `types.ts`, `api.ts`, `pages/Backtest.tsx`, route + nav (desktop
+  and mobile), and a `Backtest.test.tsx` smoke test.
+- Docs — `BACKTESTING.md`, linked from `API.md` and `CLAUDE.md`.
+
+Verified: `cargo build` (0 errors), `cargo clippy` (0 errors, no new warnings —
+`backtest.rs` is lint-clean), `cargo test` (408 passed), `npm run build`
+(compiles), `react-scripts test` (3 passed).
+
+## Recommended follow-ups
+
+- **`sector_equals` / `volume_above` realism.** Sector is `None` per-symbol so
+  `sector_equals` never fires; consider passing the symbol's sector into the
+  snapshot for completeness. `volume_above` already works (per-bar volume).
+- **Portfolio-level equity.** Each symbol is simulated independently with its
+  own capital; there's no shared-capital portfolio or allocation across the
+  watchlist. A combined portfolio curve would be a natural next step.
+- **Benchmark comparison.** Overlay a buy-and-hold (or index) curve so the
+  strategy's alpha is visible, not just absolute return.
+- **Parameter sweeps.** A grid over (RSI threshold, stop %, …) returning a
+  heatmap of returns would make tuning practical.
+- **Risk-free rate in Sharpe.** Currently uses a 0% risk-free rate; make it
+  configurable for more accurate Sharpe.
+- **Equity-curve size guard.** For very long windows × large watchlists, embed
+  a down-sampled curve or store curves in a side collection to stay clear of
+  Mongo's 16MB document ceiling.
+- **CRA/Jest + Chakra v3.** The smoke test mocks `@chakra-ui/react` because
+  CRA's Jest 27 resolver can't follow ark-ui `exports` subpaths. A migration to
+  Vitest (or jest 28+) would allow rendering the real components.
