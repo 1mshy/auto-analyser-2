@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Box, Flex, Text, HStack, Container, IconButton } from '@chakra-ui/react';
-import { Home, List, TrendingUp, Activity, BarChart3, Newspaper, PieChart, Search, Bell, Menu } from 'lucide-react';
+import { Home, List, TrendingUp, Activity, BarChart3, Newspaper, PieChart, Search, Bell, Menu, FlaskConical } from 'lucide-react';
 import SettingsPanel from './SettingsPanel';
 import { useSettings } from '../contexts/SettingsContext';
 import { api } from '../api';
@@ -200,6 +200,12 @@ export const Navigation: React.FC<NavigationProps> = ({ totalStocks, analyzedCou
               icon={<Search size={16} />}
               label="Screener"
               isActive={location.pathname === '/screener'}
+            />
+            <NavItem
+              to="/backtest"
+              icon={<FlaskConical size={16} />}
+              label="Backtest"
+              isActive={location.pathname === '/backtest'}
             />
             <NavItem
               to="/alerts"
