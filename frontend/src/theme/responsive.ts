@@ -1,19 +1,18 @@
 /**
- * Responsive helpers — breakpoint constants and a SSR-safe `useIsMobile()` hook.
+ * Responsive helpers — a SSR-safe `useIsMobile()` hook plus JS-level breakpoint
+ * constants.
  *
- * Kept independent of Chakra's responsive system: many existing components use
- * Chakra's `{ base, md, lg }` token syntax for CSS-level responsiveness, but a
- * few JS-level branches (e.g. swapping a horizontal nav for a hamburger
- * drawer) need a boolean, hence this module.
+ * Breakpoint values are NOT redeclared here: they are derived from
+ * `breakpointPx` in `design-tokens.ts` — the single source of truth shared with
+ * Chakra's responsive system (`chakraBreakpoints`). Many components use Chakra's
+ * `{ base, md, lg }` token syntax for CSS-level responsiveness, but a few
+ * JS-level branches (e.g. swapping a horizontal nav for a hamburger drawer)
+ * need a boolean, hence this module.
  */
 import { useMemo, useSyncExternalStore } from 'react';
+import { breakpointPx } from './design-tokens';
 
-export const BREAKPOINTS = {
-  sm: 640,
-  md: 768,
-  lg: 1024,
-  xl: 1280,
-} as const;
+export const BREAKPOINTS = breakpointPx;
 
 export type BreakpointKey = keyof typeof BREAKPOINTS;
 

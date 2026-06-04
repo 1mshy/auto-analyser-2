@@ -1,5 +1,6 @@
 import { createSystem, defaultConfig, defineConfig } from "@chakra-ui/react";
 import {
+  chakraBreakpoints,
   chakraGlobalCss,
   chakraSemanticTokens,
   chakraTokens,
@@ -8,6 +9,7 @@ import {
 const customConfig = defineConfig({
   globalCss: chakraGlobalCss,
   theme: {
+    breakpoints: chakraBreakpoints,
     tokens: chakraTokens,
     semanticTokens: chakraSemanticTokens,
   },

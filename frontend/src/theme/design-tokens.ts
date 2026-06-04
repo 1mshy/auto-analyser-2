@@ -23,8 +23,6 @@ export const designTokens = {
     accentMuted: "rgba(78, 161, 255, 0.16)",
     positive: "#2ebd85",
     negative: "#ff5c70",
-    warning: "#f5a524",
-    info: "#64b5f6",
   },
   typography: {
     ui: 'Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
@@ -64,6 +62,28 @@ export const designTokens = {
     navHeight: "56px",
   },
 } as const;
+
+/**
+ * Breakpoint scale in px — the single source of truth for both Chakra's
+ * responsive system (via `chakraBreakpoints`) and the JS-level helpers in
+ * `responsive.ts`. Change values here and both layers stay in sync.
+ */
+export const breakpointPx = {
+  sm: 640,
+  md: 768,
+  lg: 1024,
+  xl: 1280,
+  "2xl": 1536,
+} as const;
+
+/** Chakra `theme.breakpoints` form (px strings) derived from `breakpointPx`. */
+export const chakraBreakpoints = {
+  sm: `${breakpointPx.sm}px`,
+  md: `${breakpointPx.md}px`,
+  lg: `${breakpointPx.lg}px`,
+  xl: `${breakpointPx.xl}px`,
+  "2xl": `${breakpointPx["2xl"]}px`,
+};
 
 export const chakraGlobalCss = {
   "html, body": {
@@ -116,6 +136,11 @@ export const chakraTokens = {
     densePanel: { value: designTokens.layout.densePanelWidth },
     nav: { value: designTokens.layout.navHeight },
   },
+  durations: {
+    fast: { value: "120ms" },
+    standard: { value: "180ms" },
+    slow: { value: "240ms" },
+  },
   colors: {
     canvas: { value: designTokens.color.canvas },
     surface: { value: designTokens.color.surface },
@@ -164,6 +189,30 @@ export const chakraTokens = {
       700: { value: "#a92d3f" },
       800: { value: "#771d2c" },
       900: { value: "#480f19" },
+    },
+    signalWarn: {
+      50: { value: "#fdf3e0" },
+      100: { value: "#fbe2b8" },
+      200: { value: "#f8cd84" },
+      300: { value: "#f5c46b" },
+      400: { value: "#f5b13f" },
+      500: { value: "#f5a524" },
+      600: { value: "#d4860a" },
+      700: { value: "#a66708" },
+      800: { value: "#7a4c08" },
+      900: { value: "#4d3005" },
+    },
+    signalInfo: {
+      50: { value: "#eaf5ff" },
+      100: { value: "#cfe8ff" },
+      200: { value: "#a6d4fb" },
+      300: { value: "#9ccdf9" },
+      400: { value: "#7ec0f8" },
+      500: { value: "#64b5f6" },
+      600: { value: "#3f93d8" },
+      700: { value: "#2f72ab" },
+      800: { value: "#21527c" },
+      900: { value: "#14334e" },
     },
   },
 } as const;
@@ -264,10 +313,10 @@ export const chakraSemanticTokens = {
     },
 
     "signal.warn.solid": {
-      value: { _light: "{colors.orange.600}", _dark: "{colors.orange.400}" },
+      value: { _light: "{colors.signalWarn.600}", _dark: "{colors.signalWarn.500}" },
     },
     "signal.warn.fg": {
-      value: { _light: "{colors.orange.700}", _dark: "{colors.orange.300}" },
+      value: { _light: "{colors.signalWarn.700}", _dark: "{colors.signalWarn.300}" },
     },
     "signal.warn.muted": {
       value: { _light: "{colors.orange.100}", _dark: "rgba(245, 165, 36, 0.16)" },
@@ -277,10 +326,10 @@ export const chakraSemanticTokens = {
     },
 
     "signal.info.solid": {
-      value: { _light: "{colors.blue.600}", _dark: "{colors.blue.400}" },
+      value: { _light: "{colors.signalInfo.600}", _dark: "{colors.signalInfo.500}" },
     },
     "signal.info.fg": {
-      value: { _light: "{colors.blue.700}", _dark: "{colors.blue.300}" },
+      value: { _light: "{colors.signalInfo.700}", _dark: "{colors.signalInfo.300}" },
     },
     "signal.info.muted": {
       value: { _light: "{colors.blue.100}", _dark: "rgba(100, 181, 246, 0.16)" },
@@ -288,6 +337,26 @@ export const chakraSemanticTokens = {
     "signal.info.subtle": {
       value: { _light: "{colors.blue.50}", _dark: "rgba(100, 181, 246, 0.08)" },
     },
+
+    "skeleton.base": {
+      value: { _light: "#e4e4e7", _dark: "#151b24" },
+    },
+    "skeleton.highlight": {
+      value: { _light: "#f4f4f5", _dark: "#202633" },
+    },
+
+    "chart.grid": {
+      value: { _light: "#e4e4e7", _dark: "#202633" },
+    },
+    "chart.axis": {
+      value: { _light: "#71717a", _dark: "#747f8f" },
+    },
+    "chart.series.1": { value: "#4ea1ff" },
+    "chart.series.2": { value: "#2ebd85" },
+    "chart.series.3": { value: "#f5a524" },
+    "chart.series.4": { value: "#ff5c70" },
+    "chart.series.5": { value: "#64b5f6" },
+    "chart.series.6": { value: "#a78bfa" },
   },
   shadows: {
     "elevation.raised": {

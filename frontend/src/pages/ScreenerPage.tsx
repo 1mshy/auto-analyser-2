@@ -38,6 +38,35 @@ const savePresets = (presets: ScreenerPreset[]) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
 };
 
+/**
+ * Hoisted to module scope (and memoized) so its component identity is stable
+ * across ScreenerPage renders. Previously declared inside the component body,
+ * which created a brand-new component type every render and remounted each
+ * input — losing focus after a single keystroke.
+ */
+const FilterInput: React.FC<{
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}> = React.memo(({ label, value, onChange, placeholder }) => (
+  <Box>
+    <Text color="fg.muted" fontSize="xs" mb={1} textTransform="uppercase" letterSpacing="wider">{label}</Text>
+    <Input
+      size="sm"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      bg="bg.inset"
+      borderColor="border.subtle"
+      color="fg.default"
+      _placeholder={{ color: 'fg.subtle' }}
+      type="number"
+    />
+  </Box>
+));
+FilterInput.displayName = 'FilterInput';
+
 export const ScreenerPage: React.FC = () => {
   const [stocks, setStocks] = useState<StockAnalysis[]>([]);
   const [loading, setLoading] = useState(false);
@@ -129,23 +158,6 @@ export const ScreenerPage: React.FC = () => {
     setSortOrder(f.sort_order || 'desc');
     setPage(1);
   };
-
-  const FilterInput: React.FC<{ label: string; value: string; onChange: (v: string) => void; placeholder: string }> = ({ label, value, onChange, placeholder }) => (
-    <Box>
-      <Text color="fg.muted" fontSize="xs" mb={1} textTransform="uppercase" letterSpacing="wider">{label}</Text>
-      <Input
-        size="sm"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        bg="bg.inset"
-        borderColor="border.subtle"
-        color="fg.default"
-        _placeholder={{ color: 'fg.subtle' }}
-        type="number"
-      />
-    </Box>
-  );
 
   return (
     <Container maxW="page" py={{ base: 5, md: 8 }}>
