@@ -1,4 +1,4 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useQuery, keepPreviousData, type UseQueryResult } from '@tanstack/react-query';
 import { api, FilterResponse } from './api';
 import {
   GlobalSettings,
@@ -51,6 +51,8 @@ export function useFilterStocks(
     queryKey: queryKeys.stocksFilter(filter),
     queryFn: () => api.filterStocks(filter),
     enabled,
+    // Keep showing the current page while the next one loads (smooth paging).
+    placeholderData: keepPreviousData,
   });
 }
 

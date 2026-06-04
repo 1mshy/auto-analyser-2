@@ -30,7 +30,8 @@ import {
 } from '../types';
 import { WatchButton } from '../components/alerts/WatchButton';
 import NewsCard from '../components/NewsCard';
-import { Surface, Num, SignalBadge } from '../components/ui/primitives';
+import { Surface, Num, SignalBadge, ErrorState, Skeleton, SkeletonText } from '../components/ui/primitives';
+import { useStock } from '../queries';
 
 const toTradingViewSymbol = (symbol: string): string => {
   const upper = symbol.toUpperCase();
@@ -113,8 +114,10 @@ const ProfileMetricCard: React.FC<{ label: string; value: string | number; color
 export const StockDetailPage: React.FC = () => {
   const { symbol: rawSymbol } = useParams<{ symbol: string }>();
   const symbol = rawSymbol ? decodeURIComponent(rawSymbol) : rawSymbol;
-  const [stock, setStock] = useState<StockAnalysis | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: stockData, isLoading, isError, refetch } = useStock(
+    symbol ? symbol.toUpperCase() : ''
+  );
+  const stock = stockData?.stock ?? null;
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResponse | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
@@ -132,26 +135,6 @@ export const StockDetailPage: React.FC = () => {
   const [isStreaming, setIsStreaming] = useState(false);
   const streamCleanupRef = useRef<(() => void) | null>(null);
   const streamingModelRef = useRef<string | null>(null);
-
-  const fetchStock = useCallback(async () => {
-    if (!symbol) return;
-
-    try {
-      setLoading(true);
-      setStock(null);
-
-      // Fetch stock data directly by symbol
-      const result = await api.getStock(symbol.toUpperCase());
-      if (result.stock) {
-        setStock(result.stock);
-      }
-
-    } catch (err) {
-      console.error('Failed to fetch stock:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [symbol]);
 
   const checkAIStatus = useCallback(async () => {
     try {
@@ -253,11 +236,10 @@ export const StockDetailPage: React.FC = () => {
   }, [symbol]);
 
   useEffect(() => {
-    fetchStock();
     checkAIStatus();
     fetchCompanyProfile();
     fetchEarnings();
-  }, [fetchStock, checkAIStatus, fetchCompanyProfile, fetchEarnings]);
+  }, [checkAIStatus, fetchCompanyProfile, fetchEarnings]);
 
   // Cleanup stream on unmount
   useEffect(() => {
@@ -268,12 +250,30 @@ export const StockDetailPage: React.FC = () => {
     };
   }, []);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <Container maxW="page" py={{ base: 5, md: 8 }}>
-        <Flex justify="center" align="center" minH="50vh">
-          <Spinner size="xl" color="accent.solid" />
-        </Flex>
+        <VStack align="stretch" gap={4}>
+          <Skeleton h="10" w="64" />
+          <SimpleGrid columns={{ base: 2, md: 4 }} gap={3}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Surface key={i} p={4}><SkeletonText lines={2} /></Surface>
+            ))}
+          </SimpleGrid>
+          <Surface p={4}><SkeletonText lines={8} /></Surface>
+        </VStack>
+      </Container>
+    );
+  }
+
+  if (isError) {
+    return (
+      <Container maxW="page" py={{ base: 5, md: 8 }}>
+        <ErrorState
+          title="Couldn’t load this stock"
+          description={`The request for "${symbol}" failed — a network or server error, not a missing symbol. Check that the backend is reachable, then retry.`}
+          onRetry={() => refetch()}
+        />
       </Container>
     );
   }

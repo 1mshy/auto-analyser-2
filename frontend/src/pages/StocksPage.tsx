@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   Box,
@@ -7,7 +7,6 @@ import {
   SimpleGrid,
   Flex,
   Badge,
-  Spinner,
   HStack,
   VStack,
   Button,
@@ -16,10 +15,10 @@ import {
   IconButton,
 } from '@chakra-ui/react';
 import { Grid, List, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import { api, FilterResponse } from '../api';
 import { StockAnalysis, StockFilter, PaginationInfo, getMarketCapTier, getMarketCapTierColor, getMarketCapTierLabel } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
-import { Surface, Num, SignalBadge, PageHeader } from '../components/ui/primitives';
+import { Surface, Num, SignalBadge, PageHeader, ErrorState, SkeletonRow } from '../components/ui/primitives';
+import { useFilterStocks } from '../queries';
 
 const StockTableRow: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
   const tier = getMarketCapTier(stock.market_cap);
@@ -192,9 +191,6 @@ const Pagination: React.FC<{
 export const StocksPage: React.FC = () => {
   const { settings } = useSettings();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [stocks, setStocks] = useState<StockAnalysis[]>([]);
-  const [pagination, setPagination] = useState<PaginationInfo>({ page: 1, page_size: 50, total: 0, total_pages: 0 });
-  const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -233,24 +229,11 @@ export const StocksPage: React.FC = () => {
     };
   }, [searchParams, settings, debouncedSearch]);
 
-  const fetchStocks = useCallback(async () => {
-    try {
-      setLoading(true);
-      const filter = getFilterFromParams();
-      const response: FilterResponse = await api.filterStocks(filter);
-      
-      setStocks(response.stocks);
-      setPagination(response.pagination);
-    } catch (err) {
-      console.error('Failed to fetch stocks:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [getFilterFromParams]);
-
-  useEffect(() => {
-    fetchStocks();
-  }, [fetchStocks]);
+  const filter = useMemo(() => getFilterFromParams(), [getFilterFromParams]);
+  const { data, isLoading, isError, isFetching, refetch } = useFilterStocks(filter);
+  const stocks = data?.stocks ?? [];
+  const pagination: PaginationInfo =
+    data?.pagination ?? { page: 1, page_size: 50, total: 0, total_pages: 0 };
 
   const handlePageChange = (newPage: number) => {
     const params = new URLSearchParams(searchParams);
@@ -294,7 +277,7 @@ export const StocksPage: React.FC = () => {
       <PageHeader
         eyebrow="Universe"
         title="All Stocks"
-        subtitle={`${pagination.total.toLocaleString()} analyzed stocks · ${filteredStocks.length.toLocaleString()} visible in this view`}
+        subtitle={`${pagination.total.toLocaleString()} analyzed stocks · ${filteredStocks.length.toLocaleString()} visible${isFetching && !isLoading ? ' · updating…' : ' in this view'}`}
         actions={
           <HStack>
             <IconButton
@@ -394,10 +377,20 @@ export const StocksPage: React.FC = () => {
       </Surface>
 
       {/* Content */}
-      {loading ? (
-        <Flex justify="center" align="center" minH="50vh">
-          <Spinner size="xl" color="accent.solid" />
-        </Flex>
+      {isLoading ? (
+        <Surface p={4} variant="raised">
+          <VStack gap={3} align="stretch">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <SkeletonRow key={i} cols={7} />
+            ))}
+          </VStack>
+        </Surface>
+      ) : isError ? (
+        <ErrorState
+          title="Couldn’t load stocks"
+          description="The stock list request failed. Check that the backend is reachable, then retry."
+          onRetry={() => refetch()}
+        />
       ) : viewMode === 'table' ? (
         <Surface overflowX="auto" p={0} variant="raised">
           <Table.Root size="sm">
@@ -428,7 +421,7 @@ export const StocksPage: React.FC = () => {
       )}
 
       {/* Pagination */}
-      {!loading && pagination.total_pages > 1 && (
+      {!isLoading && pagination.total_pages > 1 && (
         <Pagination pagination={pagination} onPageChange={handlePageChange} />
       )}
     </Container>
