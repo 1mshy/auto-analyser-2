@@ -12,12 +12,13 @@ import {
   HStack,
   VStack,
 } from '@chakra-ui/react';
-import { TrendingUp, TrendingDown, AlertCircle, Target, DollarSign, Sparkles } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, DollarSign, Sparkles } from 'lucide-react';
 import { api } from '../api';
 import MarkdownContent from '../components/MarkdownContent';
-import { StockAnalysis, MarketSummary, getMarketCapTier, getMarketCapTierColor, AIAnalysisResponse } from '../types';
+import { StockAnalysis, getMarketCapTier, getMarketCapTierColor, AIAnalysisResponse } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
-import { Surface, Num, SignalBadge, PageHeader, StatBlock } from '../components/ui/primitives';
+import { Surface, Num, SignalBadge, PageHeader, StatBlock, ErrorState, Skeleton, SkeletonText } from '../components/ui/primitives';
+import { useMarketSummary, useAIStatus } from '../queries';
 
 const CompactStockRow: React.FC<{
   stock: StockAnalysis;
@@ -139,35 +140,17 @@ const SectionCard: React.FC<{
 
 export const Dashboard: React.FC = () => {
   const { settings } = useSettings();
-  const [summary, setSummary] = useState<MarketSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [aiEnabled, setAiEnabled] = useState(false);
+  const {
+    data: summary,
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+  } = useMarketSummary(settings);
+  const { data: aiStatus } = useAIStatus();
+  const aiEnabled = aiStatus?.enabled ?? false;
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, AIAnalysisResponse>>({});
   const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({});
-
-  const fetchMarketSummary = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await api.getMarketSummary(settings);
-      setSummary(data);
-      setError(null);
-    } catch (err) {
-      setError('Failed to load market summary');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [settings]);
-
-  const checkAIStatus = useCallback(async () => {
-    try {
-      const status = await api.getAIStatus();
-      setAiEnabled(status.enabled);
-    } catch (err) {
-      console.error('Failed to check AI status:', err);
-    }
-  }, []);
 
   const fetchAIAnalysis = useCallback(async (symbol: string) => {
     if (aiAnalyses[symbol] || aiLoading[symbol]) return;
@@ -184,14 +167,6 @@ export const Dashboard: React.FC = () => {
   }, [aiAnalyses, aiLoading]);
 
   useEffect(() => {
-    fetchMarketSummary();
-    checkAIStatus();
-
-    const interval = setInterval(fetchMarketSummary, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [fetchMarketSummary, checkAIStatus]);
-
-  useEffect(() => {
     if (aiEnabled && summary?.most_oversold) {
       summary.most_oversold.slice(0, 3).forEach(stock => {
         fetchAIAnalysis(stock.symbol);
@@ -199,36 +174,47 @@ export const Dashboard: React.FC = () => {
     }
   }, [aiEnabled, summary?.most_oversold, fetchAIAnalysis]);
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <Container maxW="container.xl" py={8}>
-        <Flex justify="center" align="center" minH="50vh">
-          <Spinner size="xl" color="accent.solid" />
-        </Flex>
+      <Container maxW="page" py={8}>
+        <Box mb={6}>
+          <Skeleton h="7" w="56" mb={2} />
+          <Skeleton h="4" w="72" />
+        </Box>
+        <SimpleGrid columns={{ base: 2, md: 4 }} gap={3} mb={6}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Surface key={i} p={4}><SkeletonText lines={2} /></Surface>
+          ))}
+        </SimpleGrid>
+        <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Surface key={i} p={4}><SkeletonText lines={5} /></Surface>
+          ))}
+        </SimpleGrid>
       </Container>
     );
   }
 
-  if (error || !summary) {
+  if (isError || !summary) {
     return (
-      <Container maxW="container.xl" py={8}>
-        <Flex justify="center" align="center" minH="50vh">
-          <VStack>
-            <Box color="signal.down.fg"><AlertCircle size={48} /></Box>
-            <Text color="signal.down.fg">{error || 'Failed to load data'}</Text>
-          </VStack>
-        </Flex>
+      <Container maxW="page" py={8}>
+        <ErrorState
+          title="Couldn’t load market overview"
+          description="The market summary request failed. Check that the backend is reachable, then retry."
+          onRetry={() => refetch()}
+        />
       </Container>
     );
   }
 
   return (
-    <Container maxW="container.xl" py={8}>
+    <Container maxW="page" py={8}>
       <PageHeader
         title="Market Overview"
         subtitle={
           <>
             Analyzing {summary.total_stocks.toLocaleString()} stocks · Last updated {new Date(summary.generated_at).toLocaleTimeString()}
+            {isFetching && ' · updating…'}
           </>
         }
       />
