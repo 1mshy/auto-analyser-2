@@ -14,7 +14,7 @@ use chrono::{NaiveDate, Utc};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info, warn};
 
@@ -141,6 +141,9 @@ pub struct AnalysisEngine {
     /// In-memory tracker for the daily prefetch — last UTC date the news
     /// prefetch ran successfully. Reset to `None` on process restart.
     last_news_prefetch_date: Arc<RwLock<Option<NaiveDate>>>,
+    /// Optional broadcast of freshly saved analyses for WebSocket push.
+    /// Send errors (no connected clients) are ignored.
+    stock_tx: Option<broadcast::Sender<StockAnalysis>>,
 }
 
 impl AnalysisEngine {
@@ -206,7 +209,15 @@ impl AnalysisEngine {
             openrouter_client,
             news_summary_min_articles,
             last_news_prefetch_date: Arc::new(RwLock::new(None)),
+            stock_tx: None,
         }
+    }
+
+    /// Attach the broadcast channel used to push per-symbol analyses to
+    /// WebSocket clients as each save lands.
+    pub fn with_stock_broadcast(mut self, tx: broadcast::Sender<StockAnalysis>) -> Self {
+        self.stock_tx = Some(tx);
+        self
     }
 
     /// Load existing data from MongoDB and populate cache
@@ -403,6 +414,23 @@ impl AnalysisEngine {
                                 error_count += 1;
                             } else {
                                 self.cache.set_stock(symbol.clone(), analysis.clone()).await;
+                                // Push a lean copy to WebSocket clients: drop
+                                // the Mongo id and heavy payloads, keeping only
+                                // the fields the live table renders (plus the
+                                // 52-week range from technicals).
+                                if let Some(tx) = &self.stock_tx {
+                                    let mut lean = analysis.clone();
+                                    lean.id = None;
+                                    lean.earnings = None;
+                                    lean.news = None;
+                                    lean.technicals =
+                                        lean.technicals.take().map(|t| NasdaqTechnicals {
+                                            fifty_two_week_high: t.fifty_two_week_high,
+                                            fifty_two_week_low: t.fifty_two_week_low,
+                                            ..NasdaqTechnicals::default()
+                                        });
+                                    let _ = tx.send(lean);
+                                }
                                 // Hand the analysis off to the alert engine
                                 // immediately so rule evaluation tracks
                                 // per-symbol latency, not full-cycle latency.
@@ -554,16 +582,20 @@ impl AnalysisEngine {
 
             // Skip symbols already summarized for today — keeps repeat runs
             // (e.g. crash + restart same day) from burning the daily quota.
-            match self.db.get_news_summary_for_date(&symbol, &date_today).await {
+            match self
+                .db
+                .get_news_summary_for_date(&symbol, &date_today)
+                .await
+            {
                 Ok(Some(_)) => {
-                    debug!("📰 {} already has a summary for {}, skipping", symbol, date_today);
+                    debug!(
+                        "📰 {} already has a summary for {}, skipping",
+                        symbol, date_today
+                    );
                     continue;
                 }
                 Ok(None) => {}
-                Err(e) => warn!(
-                    "📰 Could not check existing summary for {}: {}",
-                    symbol, e
-                ),
+                Err(e) => warn!("📰 Could not check existing summary for {}: {}", symbol, e),
             }
 
             marketaux.apply_delay().await;

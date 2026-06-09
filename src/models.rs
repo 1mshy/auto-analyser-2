@@ -173,8 +173,22 @@ pub struct AnalysisProgress {
     pub last_error: Option<String>,
 }
 
+/// Tagged envelope for everything pushed over the `/ws` socket. Internally
+/// tagged so each message flattens to `{"type": "...", ...payload fields}`,
+/// which is what the frontend discriminated union expects.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum WsMessage {
+    /// Periodic keepalive carrying the current cycle progress.
+    Progress(AnalysisProgress),
+    /// A freshly analyzed symbol, pushed as soon as it is saved.
+    StockUpdate(Box<StockAnalysis>),
+    /// The client lagged behind the broadcast and should refetch via REST.
+    Resync,
+}
+
 // NASDAQ Technicals (from /api/quote/{symbol}/info endpoint)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NasdaqTechnicals {
     pub exchange: Option<String>,
     pub sector: Option<String>,
@@ -729,6 +743,60 @@ mod tests {
 
         assert!(!analysis.is_oversold);
         assert!(analysis.is_overbought);
+    }
+
+    #[test]
+    fn test_ws_message_wire_format() {
+        let progress = AnalysisProgress {
+            total_stocks: 60,
+            analyzed: 30,
+            current_symbol: Some("AAPL".to_string()),
+            cycle_start: Utc::now(),
+            errors: 2,
+            last_cycle_started: None,
+            last_cycle_completed: None,
+            last_successful_cycle: None,
+            last_error: None,
+        };
+        let v = serde_json::to_value(WsMessage::Progress(progress)).unwrap();
+        assert_eq!(v["type"], "progress");
+        assert_eq!(v["total_stocks"], 60);
+        assert_eq!(v["analyzed"], 30);
+        assert_eq!(v["current_symbol"], "AAPL");
+
+        let analysis = StockAnalysis {
+            id: None,
+            symbol: "MSFT".to_string(),
+            price: 350.0,
+            price_change: Some(5.0),
+            price_change_percent: Some(1.45),
+            rsi: Some(65.5),
+            sma_20: None,
+            sma_50: None,
+            macd: None,
+            volume: None,
+            market_cap: None,
+            sector: Some("Technology".to_string()),
+            is_oversold: false,
+            is_overbought: false,
+            analyzed_at: Utc::now(),
+            bollinger: None,
+            stochastic: None,
+            earnings: None,
+            technicals: None,
+            news: None,
+        };
+        let v = serde_json::to_value(WsMessage::StockUpdate(Box::new(analysis))).unwrap();
+        assert_eq!(v["type"], "stock_update");
+        assert_eq!(v["symbol"], "MSFT");
+        assert_eq!(v["price"], 350.0);
+        assert_eq!(v["rsi"], 65.5);
+        // skip_serializing_if still applies inside the envelope
+        assert!(v.get("_id").is_none());
+        assert!(v.get("news").is_none());
+
+        let v = serde_json::to_value(WsMessage::Resync).unwrap();
+        assert_eq!(v, serde_json::json!({ "type": "resync" }));
     }
 
     #[test]

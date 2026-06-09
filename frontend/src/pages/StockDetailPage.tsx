@@ -19,7 +19,6 @@ import { ArrowLeft, TrendingUp, TrendingDown, Zap, RefreshCw, ExternalLink } fro
 import { api } from '../api';
 import MarkdownContent from '../components/MarkdownContent';
 import {
-  StockAnalysis,
   AIAnalysisResponse,
   CompanyProfile,
   InsiderTrade,

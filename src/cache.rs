@@ -120,9 +120,7 @@ impl CacheLayer {
     // ---- Marketaux news card payload --------------------------------------
 
     pub async fn get_news_card(&self, symbol: &str) -> Option<NewsCardPayload> {
-        self.news_card_cache
-            .get(&symbol.to_uppercase())
-            .await
+        self.news_card_cache.get(&symbol.to_uppercase()).await
     }
 
     pub async fn set_news_card(&self, symbol: String, payload: NewsCardPayload) {
@@ -132,7 +130,9 @@ impl CacheLayer {
     }
 
     pub async fn invalidate_news_card(&self, symbol: &str) {
-        self.news_card_cache.invalidate(&symbol.to_uppercase()).await;
+        self.news_card_cache
+            .invalidate(&symbol.to_uppercase())
+            .await;
     }
 
     // Earnings cache methods

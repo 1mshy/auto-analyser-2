@@ -43,7 +43,9 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
             size="sm"
             variant="outline"
             onClick={onRetry}
-            colorPalette="gray"
+            borderColor="border.default"
+            color="fg.default"
+            _hover={{ bg: "bg.muted", borderColor: "border.emphasis" }}
           >
             <RotateCw size={14} />
             {retryLabel}

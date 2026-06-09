@@ -1,5 +1,5 @@
 import React from "react";
-import { Heading, Text, VStack } from "@chakra-ui/react";
+import { Box, Heading, Text, VStack } from "@chakra-ui/react";
 import { Surface } from "./Surface";
 
 export interface EmptyStateProps {
@@ -23,7 +23,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   return (
     <Surface variant="inset" py={py} px={6} textAlign="center">
       <VStack gap={3}>
-        {icon && <div style={{ color: "var(--chakra-colors-fg-subtle)" }}>{icon}</div>}
+        {icon && <Box color="fg.subtle" lineHeight="0">{icon}</Box>}
         <Heading size="md" color="fg.default" fontWeight="semibold">
           {title}
         </Heading>

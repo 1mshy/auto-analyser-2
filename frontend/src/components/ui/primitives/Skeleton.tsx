@@ -6,15 +6,20 @@ export interface SkeletonProps extends BoxProps {}
 
 /**
  * Base skeleton block. Colors come from the `skeleton.*` semantic tokens (so it
- * adapts to color mode); the pulse keyframe lives in `index.css` and is disabled
- * under `prefers-reduced-motion`.
+ * adapts to color mode): `skeleton.base` fill with a `skeleton.highlight` shimmer
+ * sweep. The shimmer keyframe lives in `index.css` and is disabled under
+ * `prefers-reduced-motion`, leaving a static `skeleton.base` block.
  */
 export const Skeleton: React.FC<SkeletonProps> = ({ borderRadius = "sm", ...rest }) => (
   <Box
     data-skeleton
     bg="skeleton.base"
+    backgroundImage="linear-gradient(90deg, transparent 30%, {colors.skeleton.highlight} 50%, transparent 70%)"
+    backgroundSize="200% 100%"
+    backgroundPosition="200% 0"
+    backgroundRepeat="no-repeat"
     borderRadius={borderRadius}
-    animation="skeleton-pulse 1.4s ease-in-out infinite"
+    animation="skeleton-shimmer 1.4s ease-in-out infinite"
     {...rest}
   />
 );

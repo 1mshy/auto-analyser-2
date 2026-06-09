@@ -100,6 +100,25 @@ export const chakraGlobalCss = {
     outlineColor: "accent.solid",
     outlineOffset: "2px",
   },
+  "::-webkit-scrollbar": {
+    width: "10px",
+    height: "10px",
+  },
+  "::-webkit-scrollbar-track": {
+    bg: "transparent",
+  },
+  "::-webkit-scrollbar-thumb": {
+    bg: "border.default",
+    borderRadius: "md",
+  },
+  "::-webkit-scrollbar-thumb:hover": {
+    bg: "border.emphasis",
+  },
+  "@media (prefers-reduced-motion: reduce)": {
+    "*, *::before, *::after": {
+      transition: "none !important",
+    },
+  },
 };
 
 export const chakraTokens = {
@@ -319,10 +338,10 @@ export const chakraSemanticTokens = {
       value: { _light: "{colors.signalWarn.700}", _dark: "{colors.signalWarn.300}" },
     },
     "signal.warn.muted": {
-      value: { _light: "{colors.orange.100}", _dark: "rgba(245, 165, 36, 0.16)" },
+      value: { _light: "{colors.signalWarn.100}", _dark: "rgba(245, 165, 36, 0.16)" },
     },
     "signal.warn.subtle": {
-      value: { _light: "{colors.orange.50}", _dark: "rgba(245, 165, 36, 0.08)" },
+      value: { _light: "{colors.signalWarn.50}", _dark: "rgba(245, 165, 36, 0.08)" },
     },
 
     "signal.info.solid": {
@@ -332,10 +351,10 @@ export const chakraSemanticTokens = {
       value: { _light: "{colors.signalInfo.700}", _dark: "{colors.signalInfo.300}" },
     },
     "signal.info.muted": {
-      value: { _light: "{colors.blue.100}", _dark: "rgba(100, 181, 246, 0.16)" },
+      value: { _light: "{colors.signalInfo.100}", _dark: "rgba(100, 181, 246, 0.16)" },
     },
     "signal.info.subtle": {
-      value: { _light: "{colors.blue.50}", _dark: "rgba(100, 181, 246, 0.08)" },
+      value: { _light: "{colors.signalInfo.50}", _dark: "rgba(100, 181, 246, 0.08)" },
     },
 
     "skeleton.base": {

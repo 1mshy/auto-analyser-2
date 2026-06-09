@@ -62,9 +62,7 @@ impl Config {
                 .parse()
                 .unwrap_or(true);
 
-        let MARKETAUX_API_KEY = env::var("MARKETAUX_API_KEY")
-            .ok()
-            .filter(|s| !s.is_empty());
+        let MARKETAUX_API_KEY = env::var("MARKETAUX_API_KEY").ok().filter(|s| !s.is_empty());
         let marketaux_enabled = MARKETAUX_API_KEY.is_some()
             && env::var("MARKETAUX_ENABLED")
                 .unwrap_or_else(|_| "true".to_string())

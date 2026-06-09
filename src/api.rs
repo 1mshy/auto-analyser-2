@@ -8,7 +8,7 @@ use crate::{
     marketaux::MarketauxClient,
     models::{
         AggregatedNewsItem, BacktestResult, BacktestRun, CreateBacktestInput, NasdaqNewsItem,
-        NewsCardPayload, StockFilter,
+        NewsCardPayload, StockAnalysis, StockFilter, WsMessage,
     },
     nasdaq::NasdaqClient,
     notifications::AlertEngine,
@@ -42,7 +42,7 @@ pub struct MarketSummaryQuery {
 use crate::models::AnalysisProgress;
 use mongodb::bson::oid::ObjectId;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 use tracing::{info, warn};
 
 #[derive(Clone)]
@@ -50,6 +50,9 @@ pub struct AppState {
     pub db: MongoDB,
     pub cache: CacheLayer,
     pub progress: Arc<RwLock<AnalysisProgress>>,
+    /// Per-symbol analyses broadcast as they're saved; each WS connection
+    /// subscribes for live `stock_update` pushes.
+    pub stock_tx: broadcast::Sender<StockAnalysis>,
     pub yahoo_client: YahooFinanceClient,
     pub openrouter_client: OpenRouterClient,
     pub nasdaq_client: NasdaqClient,
@@ -565,24 +568,44 @@ async fn websocket_handler(
 async fn websocket_connection(mut socket: WebSocket, state: AppState) {
     info!("WebSocket client connected");
 
-    // Send initial progress
-    let progress = state.progress.read().await;
-    let msg = serde_json::to_string(&*progress).unwrap();
-    if socket.send(Message::Text(msg)).await.is_err() {
-        return;
-    }
-    drop(progress);
+    let mut stock_rx = state.stock_tx.subscribe();
+    // First tick fires immediately, so the client gets its initial progress
+    // snapshot right away; subsequent ticks act as a 2s keepalive.
+    let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(2));
 
-    // Send updates every 2 seconds
     loop {
-        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-        let progress = state.progress.read().await;
-        let msg = serde_json::to_string(&*progress).unwrap();
-
-        if socket.send(Message::Text(msg)).await.is_err() {
-            info!("WebSocket client disconnected");
-            break;
+        tokio::select! {
+            _ = interval.tick() => {
+                let progress = state.progress.read().await.clone();
+                let msg = serde_json::to_string(&WsMessage::Progress(progress)).unwrap();
+                if socket.send(Message::Text(msg)).await.is_err() {
+                    info!("WebSocket client disconnected");
+                    break;
+                }
+            }
+            result = stock_rx.recv() => match result {
+                Ok(analysis) => {
+                    let msg =
+                        serde_json::to_string(&WsMessage::StockUpdate(Box::new(analysis)))
+                            .unwrap();
+                    if socket.send(Message::Text(msg)).await.is_err() {
+                        info!("WebSocket client disconnected");
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                    warn!(
+                        "WebSocket client lagged behind stock broadcast ({} updates dropped); requesting resync",
+                        skipped
+                    );
+                    let msg = serde_json::to_string(&WsMessage::Resync).unwrap();
+                    if socket.send(Message::Text(msg)).await.is_err() {
+                        info!("WebSocket client disconnected");
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            },
         }
     }
 }

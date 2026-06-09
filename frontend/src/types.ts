@@ -275,6 +275,13 @@ export interface AnalysisProgress {
   completion_percentage?: number;
 }
 
+// WebSocket wire format — mirrors the internally-tagged Rust WsMessage enum in src/models.rs.
+export type WsProgress = { type: 'progress' } & AnalysisProgress;
+// stock_update payloads are LEAN: news/earnings are always absent, technicals (when present) carries only 52w high/low.
+export type WsStockUpdate = { type: 'stock_update' } & StockAnalysis;
+export type WsResync = { type: 'resync' };
+export type WsMessage = WsProgress | WsStockUpdate | WsResync;
+
 export interface HealthStatus {
   status: string;
   database: string;
