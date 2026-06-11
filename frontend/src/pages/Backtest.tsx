@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -8,8 +8,6 @@ import {
   Heading,
   Input,
   SimpleGrid,
-  Spinner,
-  Table,
   Text,
   VStack,
 } from '@chakra-ui/react';
@@ -22,32 +20,40 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { FlaskConical, Play, TrendingUp } from 'lucide-react';
-import { PageHeader, Surface, StatBlock, EmptyState, SignalBadge } from '../components/ui/primitives';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle, FlaskConical, Play, TrendingUp } from 'lucide-react';
+import {
+  DataTable,
+  EmptyState,
+  ErrorState,
+  Num,
+  PageHeader,
+  SectionLabel,
+  SignalBadge,
+  Skeleton,
+  SkeletonRow,
+  SkeletonStat,
+  StatBlock,
+  Surface,
+} from '../components/ui/primitives';
+import type { DataTableColumn } from '../components/ui/primitives';
 import { ConditionBuilder } from '../components/alerts/ConditionBuilder';
 import { toaster } from '../components/ui/toaster';
 import { api } from '../api';
+import { queryKeys, useBacktestRun, useBacktests } from '../queries';
+import { fmtMoney, fmtPct, shortDate } from '../format';
+import { axisProps, gridProps, seriesColor, tooltipStyles } from '../theme/chartTheme';
 import {
   BacktestResult,
   BacktestRun,
-  BacktestSummary,
   ConditionGroup,
+  CreateBacktestInput,
   EXIT_REASON_LABELS,
   Strategy,
   Trade,
   defaultStrategy,
   extractObjectId,
 } from '../types';
-
-// --- small formatting helpers ----------------------------------------------
-
-const fmtMoney = (n: number) =>
-  `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-const fmtPct = (n: number) => `${n.toFixed(2)}%`;
-const optPct = (n?: number | null) => (n === null || n === undefined ? '—' : fmtPct(n));
-const optNum = (n?: number | null, d = 2) =>
-  n === null || n === undefined ? '—' : n.toFixed(d);
-const shortDate = (iso: string) => (iso ? iso.slice(0, 10) : '');
 
 // A labeled numeric input. `value` is the string state so the field can be
 // cleared; empty maps to "unset" for the optional risk knobs.
@@ -59,11 +65,9 @@ const NumberField: React.FC<{
   step?: string;
 }> = ({ label, value, onChange, placeholder, step }) => (
   <VStack align="stretch" gap={1}>
-    <Text fontSize="xs" color="fg.muted" textTransform="uppercase" letterSpacing="wide">
-      {label}
-    </Text>
+    <SectionLabel>{label}</SectionLabel>
     <Input
-      size="sm"
+      size={{ base: 'md', md: 'sm' }}
       type="number"
       step={step}
       bg="bg.surface"
@@ -91,31 +95,54 @@ export const Backtest: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Run state.
-  const [running, setRunning] = useState(false);
-  const [run, setRun] = useState<BacktestRun | null>(null);
+  // Which stored run is open and which symbol within it is selected.
+  const [openRunId, setOpenRunId] = useState('');
   const [selected, setSelected] = useState('');
-  const [recent, setRecent] = useState<BacktestSummary[]>([]);
 
-  const loadRecent = useCallback(async () => {
-    try {
-      const list = await api.backtest.list();
-      setRecent(Array.isArray(list) ? list : []);
-    } catch {
-      /* listing is best-effort */
-    }
-  }, []);
+  const queryClient = useQueryClient();
+  const recentQuery = useBacktests();
+  const recent = recentQuery.data ?? [];
+  const runQuery = useBacktestRun(openRunId, openRunId !== '');
+
+  const runMutation = useMutation<BacktestRun, Error, CreateBacktestInput>({
+    mutationFn: (input: CreateBacktestInput) => api.backtest.run(input),
+    onSuccess: (result: BacktestRun) => {
+      const id = extractObjectId(result._id);
+      if (id) {
+        queryClient.setQueryData(queryKeys.backtestRun(id), result);
+      }
+      setOpenRunId(id || '');
+      queryClient.invalidateQueries({ queryKey: queryKeys.backtests });
+    },
+    onError: (e: Error) => {
+      toaster.create({ title: 'Backtest failed', description: e.message, type: 'error' });
+    },
+  });
+
+  // A fresh run is seeded into the query cache under its id; until an id
+  // exists (or when none came back) fall back to the mutation payload.
+  const run: BacktestRun | null = openRunId
+    ? runQuery.data ?? null
+    : runMutation.data ?? null;
 
   useEffect(() => {
-    loadRecent();
-  }, [loadRecent]);
+    if (!run) return;
+    setSelected((prev) =>
+      run.results.some((r) => r.symbol === prev) ? prev : run.results[0]?.symbol || '',
+    );
+  }, [run]);
+
+  const selectedResult = useMemo(
+    () => run?.results.find((r) => r.symbol === selected) || null,
+    [run, selected],
+  );
 
   const num = (s: string, fallback: number) => {
     const v = parseFloat(s);
     return Number.isFinite(v) ? v : fallback;
   };
 
-  const handleRun = async () => {
+  const handleRun = () => {
     const symbols = symbolsText
       .split(',')
       .map((s) => s.trim().toUpperCase())
@@ -137,39 +164,15 @@ export const Backtest: React.FC = () => {
       slippage_bps: num(slippage, 0),
     };
 
-    setRunning(true);
-    try {
-      const result = await api.backtest.run({
-        symbols,
-        strategy,
-        start_date: startDate ? new Date(startDate).toISOString() : null,
-        end_date: endDate ? new Date(`${endDate}T23:59:59`).toISOString() : null,
-      });
-      setRun(result);
-      setSelected(result.results[0]?.symbol || '');
-      loadRecent();
-    } catch (e: any) {
-      toaster.create({ title: 'Backtest failed', description: e.message, type: 'error' });
-    } finally {
-      setRunning(false);
-    }
+    runMutation.mutate({
+      symbols,
+      strategy,
+      start_date: startDate ? new Date(startDate).toISOString() : null,
+      end_date: endDate ? new Date(`${endDate}T23:59:59`).toISOString() : null,
+    });
   };
 
-  const openRun = async (id?: string) => {
-    if (!id) return;
-    try {
-      const r = await api.backtest.get(id);
-      setRun(r);
-      setSelected(r.results[0]?.symbol || '');
-    } catch (e: any) {
-      toaster.create({ title: 'Failed to load run', description: e.message, type: 'error' });
-    }
-  };
-
-  const selectedResult = useMemo(
-    () => run?.results.find((r) => r.symbol === selected) || null,
-    [run, selected],
-  );
+  const resultsLoading = runMutation.isPending || (openRunId !== '' && runQuery.isLoading);
 
   return (
     <Container maxW="page" py={{ base: 5, md: 8 }}>
@@ -182,14 +185,12 @@ export const Backtest: React.FC = () => {
 
       <Flex gap={4} align="stretch" direction={{ base: 'column', xl: 'row' }}>
         {/* ----- Builder ----- */}
-        <Surface variant="raised" p={4} flex={{ base: '1', xl: '0 0 460px' }}>
+        <Surface variant="raised" p={4} flex={{ base: '1', xl: '0 0 460px' }} minW={0}>
           <VStack align="stretch" gap={4}>
             <VStack align="stretch" gap={1}>
-              <Text fontSize="xs" color="fg.muted" textTransform="uppercase" letterSpacing="wide">
-                Symbols (comma-separated)
-              </Text>
+              <SectionLabel>Symbols (comma-separated)</SectionLabel>
               <Input
-                size="sm"
+                size={{ base: 'md', md: 'sm' }}
                 bg="bg.surface"
                 borderColor="border.subtle"
                 color="fg.default"
@@ -225,11 +226,9 @@ export const Backtest: React.FC = () => {
 
             <SimpleGrid columns={2} gap={3}>
               <VStack align="stretch" gap={1}>
-                <Text fontSize="xs" color="fg.muted" textTransform="uppercase" letterSpacing="wide">
-                  Start date
-                </Text>
+                <SectionLabel>Start date</SectionLabel>
                 <Input
-                  size="sm"
+                  size={{ base: 'md', md: 'sm' }}
                   type="date"
                   bg="bg.surface"
                   borderColor="border.subtle"
@@ -239,11 +238,9 @@ export const Backtest: React.FC = () => {
                 />
               </VStack>
               <VStack align="stretch" gap={1}>
-                <Text fontSize="xs" color="fg.muted" textTransform="uppercase" letterSpacing="wide">
-                  End date
-                </Text>
+                <SectionLabel>End date</SectionLabel>
                 <Input
-                  size="sm"
+                  size={{ base: 'md', md: 'sm' }}
                   type="date"
                   bg="bg.surface"
                   borderColor="border.subtle"
@@ -255,65 +252,92 @@ export const Backtest: React.FC = () => {
             </SimpleGrid>
 
             <Button
-              colorPalette="accent"
+              bg="accent.solid"
+              color="white"
+              _hover={{ bg: 'accent.emphasis' }}
+              minH="11"
               onClick={handleRun}
-              loading={running}
+              loading={runMutation.isPending}
               loadingText="Running…"
             >
               <Play size={16} /> Run backtest
             </Button>
 
-            {recent.length > 0 && (
-              <Box>
-                <Text fontSize="xs" color="fg.muted" textTransform="uppercase" letterSpacing="wide" mb={2}>
-                  Recent runs
+            <Box>
+              <SectionLabel mb={2}>Recent runs</SectionLabel>
+              {recentQuery.isLoading ? (
+                <VStack align="stretch" gap={2}>
+                  {[0, 1, 2].map((i) => (
+                    <SkeletonRow key={i} cols={2} />
+                  ))}
+                </VStack>
+              ) : recentQuery.isError ? (
+                <ErrorState
+                  title="Couldn't load recent runs"
+                  description={recentQuery.error?.message}
+                  onRetry={() => recentQuery.refetch()}
+                  py={4}
+                />
+              ) : recent.length === 0 ? (
+                <Text fontSize="sm" color="fg.subtle">
+                  No saved runs yet.
                 </Text>
+              ) : (
                 <VStack align="stretch" gap={1}>
                   {recent.slice(0, 8).map((s, i) => {
-                    const id = extractObjectId(s._id as any);
+                    const id = extractObjectId(s._id);
                     return (
-                    <HStack
-                      key={id || i}
-                      justify="space-between"
-                      bg="bg.inset"
-                      borderWidth="1px"
-                      borderColor="border.subtle"
-                      borderRadius="md"
-                      px={3}
-                      py={2}
-                      cursor="pointer"
-                      _hover={{ bg: 'bg.muted' }}
-                      onClick={() => openRun(id)}
-                    >
-                      <VStack align="start" gap={0}>
-                        <Text fontSize="sm" color="fg.default" truncate maxW="220px">
-                          {s.label}
-                        </Text>
-                        <Text fontSize="xs" color="fg.subtle">
-                          {shortDate(s.ran_at)} · {s.trade_count} trades
-                        </Text>
-                      </VStack>
-                      <SignalBadge tone={s.total_return_pct >= 0 ? 'up' : 'down'} size="sm">
-                        {fmtPct(s.total_return_pct)}
-                      </SignalBadge>
-                    </HStack>
+                      <HStack
+                        key={id || i}
+                        justify="space-between"
+                        bg="bg.inset"
+                        borderWidth="1px"
+                        borderColor="border.subtle"
+                        borderRadius="md"
+                        px={3}
+                        py={2}
+                        minH="11"
+                        cursor="pointer"
+                        _hover={{ bg: 'bg.muted' }}
+                        onClick={() => id && setOpenRunId(id)}
+                      >
+                        <VStack align="start" gap={0} minW={0}>
+                          <Text fontSize="sm" color="fg.default" truncate maxW="220px">
+                            {s.label}
+                          </Text>
+                          <Text fontSize="xs" color="fg.subtle">
+                            {shortDate(s.ran_at)} · {s.trade_count} trades
+                          </Text>
+                        </VStack>
+                        <SignalBadge tone={s.total_return_pct >= 0 ? 'up' : 'down'} size="sm">
+                          {fmtPct(s.total_return_pct)}
+                        </SignalBadge>
+                      </HStack>
                     );
                   })}
                 </VStack>
-              </Box>
-            )}
+              )}
+            </Box>
           </VStack>
         </Surface>
 
         {/* ----- Results ----- */}
         <Box flex="1" minW={0}>
-          {running ? (
-            <Surface variant="raised" p={10}>
-              <VStack gap={3}>
-                <Spinner color="accent.solid" />
-                <Text color="fg.muted">Fetching history and simulating…</Text>
-              </VStack>
-            </Surface>
+          {resultsLoading ? (
+            <VStack align="stretch" gap={3}>
+              {runMutation.isPending && (
+                <Text fontSize="sm" color="fg.muted">
+                  Fetching history and simulating…
+                </Text>
+              )}
+              <ResultsSkeleton />
+            </VStack>
+          ) : openRunId !== '' && runQuery.isError && !runQuery.data ? (
+            <ErrorState
+              title="Failed to load run"
+              description={runQuery.error?.message}
+              onRetry={() => runQuery.refetch()}
+            />
           ) : run ? (
             <ResultsPanel
               run={run}
@@ -336,6 +360,31 @@ export const Backtest: React.FC = () => {
 
 // --- Results --------------------------------------------------------------
 
+const ResultsSkeleton: React.FC = () => (
+  <VStack align="stretch" gap={4}>
+    <Surface variant="raised" p={4}>
+      <Skeleton h="4" w="40%" mb={4} />
+      <SimpleGrid columns={{ base: 2, md: 4 }} gap={3}>
+        {[0, 1, 2, 3].map((i) => (
+          <SkeletonStat key={i} />
+        ))}
+      </SimpleGrid>
+    </Surface>
+    <Surface variant="raised" p={4}>
+      <Skeleton h="4" w="30%" mb={3} />
+      <Skeleton h="280px" w="100%" />
+    </Surface>
+    <Surface variant="raised" p={4}>
+      <Skeleton h="4" w="25%" mb={3} />
+      <VStack align="stretch" gap={2}>
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <SkeletonRow key={i} cols={6} />
+        ))}
+      </VStack>
+    </Surface>
+  </VStack>
+);
+
 const ResultsPanel: React.FC<{
   run: BacktestRun;
   selected: string;
@@ -357,7 +406,7 @@ const ResultsPanel: React.FC<{
         </HStack>
         <SimpleGrid columns={{ base: 2, md: 4 }} gap={3}>
           <StatBlock label="Avg total return" value={s.total_return_pct} valueSuffix="%" valueIntent="auto" valueDecimals={2} bare />
-          <StatBlock label="Trades" value={s.trade_count} bare />
+          <StatBlock label="Trades" value={s.trade_count} valueDecimals={0} bare />
           <StatBlock label="Avg win rate" value={s.win_rate_pct} valueSuffix="%" valueDecimals={1} bare />
           <StatBlock label="Worst drawdown" value={s.max_drawdown_pct} valueSuffix="%" valueDecimals={2} bare />
         </SimpleGrid>
@@ -366,18 +415,24 @@ const ResultsPanel: React.FC<{
       {/* Symbol selector */}
       {run.results.length > 1 && (
         <HStack gap={2} flexWrap="wrap">
-          {run.results.map((r) => (
-            <Button
-              key={r.symbol}
-              size="xs"
-              variant={r.symbol === selected ? 'subtle' : 'ghost'}
-              colorPalette={r.symbol === selected ? 'accent' : 'gray'}
-              onClick={() => onSelect(r.symbol)}
-            >
-              {r.symbol}
-              {r.error ? ' ⚠' : ''}
-            </Button>
-          ))}
+          {run.results.map((r) => {
+            const isSelected = r.symbol === selected;
+            return (
+              <Button
+                key={r.symbol}
+                size="xs"
+                minH={{ base: '11', md: '8' }}
+                variant={isSelected ? 'subtle' : 'ghost'}
+                bg={isSelected ? 'accent.muted' : undefined}
+                color={isSelected ? 'accent.fg' : 'fg.muted'}
+                _hover={{ bg: isSelected ? 'accent.muted' : 'bg.muted' }}
+                onClick={() => onSelect(r.symbol)}
+              >
+                {r.symbol}
+                {r.error ? <AlertTriangle size={12} /> : null}
+              </Button>
+            );
+          })}
         </HStack>
       )}
 
@@ -389,7 +444,7 @@ const ResultsPanel: React.FC<{
 const SymbolResult: React.FC<{ result: BacktestResult }> = ({ result }) => {
   if (result.error) {
     return (
-      <EmptyState
+      <ErrorState
         title={`${result.symbol}: could not simulate`}
         description={result.error}
       />
@@ -401,12 +456,12 @@ const SymbolResult: React.FC<{ result: BacktestResult }> = ({ result }) => {
     <VStack align="stretch" gap={4}>
       <SimpleGrid columns={{ base: 2, md: 4 }} gap={3}>
         <StatBlock label="Total return" value={m.total_return_pct} valueSuffix="%" valueIntent="auto" valueDecimals={2} />
-        <StatBlock label="CAGR" value={optPct(m.cagr_pct)} />
-        <StatBlock label="Final equity" value={fmtMoney(result.final_equity)} />
+        <StatBlock label="CAGR" value={m.cagr_pct} valueSuffix="%" valueDecimals={2} />
+        <StatBlock label="Final equity" value={result.final_equity} valuePrefix="$" valueDecimals={0} />
         <StatBlock label="Max drawdown" value={m.max_drawdown_pct} valueSuffix="%" valueDecimals={2} />
         <StatBlock label="Win rate" value={m.win_rate_pct} valueSuffix="%" valueDecimals={1} />
-        <StatBlock label="Profit factor" value={optNum(m.profit_factor)} />
-        <StatBlock label="Sharpe (ann.)" value={optNum(m.sharpe_ratio)} />
+        <StatBlock label="Profit factor" value={m.profit_factor} valueDecimals={2} />
+        <StatBlock label="Sharpe (ann.)" value={m.sharpe_ratio} valueDecimals={2} />
         <StatBlock label="Exposure" value={m.exposure_pct} valueSuffix="%" valueDecimals={1} />
       </SimpleGrid>
 
@@ -423,17 +478,34 @@ const SymbolResult: React.FC<{ result: BacktestResult }> = ({ result }) => {
             Trades ({result.trades.length})
           </Text>
         </Box>
-        <TradeTable trades={result.trades} />
+        {result.trades.length === 0 ? (
+          <Text px={4} pb={4} fontSize="sm" color="fg.subtle">
+            This strategy generated no trades.
+          </Text>
+        ) : (
+          <Box px={{ base: 3, md: 0 }} pb={{ base: 3, md: 0 }}>
+            <TradeTable trades={result.trades} />
+          </Box>
+        )}
       </Surface>
     </VStack>
   );
 };
 
-const EquityChart: React.FC<{ result: BacktestResult }> = ({ result }) => {
-  const data = useMemo(
-    () => result.equity_curve.map((p) => ({ date: shortDate(p.date), equity: p.equity })),
-    [result],
-  );
+// Above this many points the line chart pays for pixels it can't show;
+// stride-sample while always keeping the first and last point.
+const MAX_CHART_POINTS = 1500;
+
+const EquityChart = React.memo(function EquityChart({ result }: { result: BacktestResult }) {
+  const data = useMemo(() => {
+    const points = result.equity_curve;
+    let sampled = points;
+    if (points.length > MAX_CHART_POINTS) {
+      const stride = Math.ceil(points.length / MAX_CHART_POINTS);
+      sampled = points.filter((_, i) => i % stride === 0 || i === points.length - 1);
+    }
+    return sampled.map((p) => ({ date: shortDate(p.date), equity: p.equity }));
+  }, [result]);
   if (data.length === 0) {
     return (
       <Text color="fg.muted" fontSize="sm">
@@ -445,23 +517,22 @@ const EquityChart: React.FC<{ result: BacktestResult }> = ({ result }) => {
     <Box h="280px" w="100%">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--chakra-colors-border-subtle)" />
-          <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={40} stroke="var(--chakra-colors-fg-subtle)" />
+          <CartesianGrid {...gridProps} />
+          <XAxis dataKey="date" {...axisProps} minTickGap={40} />
           <YAxis
-            tick={{ fontSize: 11 }}
+            {...axisProps}
             width={64}
             domain={['auto', 'auto']}
-            stroke="var(--chakra-colors-fg-subtle)"
-            tickFormatter={(v: number) => `$${Math.round(v).toLocaleString()}`}
+            tickFormatter={(v: number) => fmtMoney(v, 0)}
           />
           <Tooltip
-            formatter={(v: number) => [fmtMoney(v), 'Equity']}
-            contentStyle={{ fontSize: 12 }}
+            {...tooltipStyles}
+            formatter={(v: number) => [fmtMoney(v, 0), 'Equity']}
           />
           <Line
             type="monotone"
             dataKey="equity"
-            stroke="var(--chakra-colors-accent-solid)"
+            stroke={seriesColor(0)}
             strokeWidth={2}
             dot={false}
           />
@@ -469,120 +540,109 @@ const EquityChart: React.FC<{ result: BacktestResult }> = ({ result }) => {
       </ResponsiveContainer>
     </Box>
   );
-};
+});
 
-type SortKey = 'entry_date' | 'return_pct' | 'bars_held' | 'pnl';
-
-const TradeTable: React.FC<{ trades: Trade[] }> = ({ trades }) => {
-  const [sortKey, setSortKey] = useState<SortKey>('entry_date');
-  const [asc, setAsc] = useState(true);
-
-  const sorted = useMemo(() => {
-    const copy = [...trades];
-    copy.sort((a, b) => {
-      let cmp = 0;
-      if (sortKey === 'entry_date') cmp = a.entry_date.localeCompare(b.entry_date);
-      else cmp = (a[sortKey] as number) - (b[sortKey] as number);
-      return asc ? cmp : -cmp;
-    });
-    return copy;
-  }, [trades, sortKey, asc]);
-
-  if (trades.length === 0) {
-    return (
-      <Box px={4} pb={4}>
-        <Text color="fg.muted" fontSize="sm">
-          No trades were taken with this strategy.
+const tradeColumns: DataTableColumn<Trade>[] = [
+  {
+    key: 'entry',
+    header: 'Entry',
+    sortable: true,
+    sortValue: (t: Trade) => t.entry_date,
+    cell: (t: Trade) => (
+      <Box>
+        <Text fontSize="xs" color="fg.default">
+          {shortDate(t.entry_date)}
         </Text>
+        <Num value={t.entry_price} prefix="$" fontSize="xs" color="fg.subtle" />
       </Box>
-    );
-  }
+    ),
+  },
+  {
+    key: 'exit',
+    header: 'Exit',
+    cell: (t: Trade) => (
+      <Box>
+        <Text fontSize="xs" color="fg.default">
+          {shortDate(t.exit_date)}
+        </Text>
+        <Num value={t.exit_price} prefix="$" fontSize="xs" color="fg.subtle" />
+      </Box>
+    ),
+  },
+  {
+    key: 'return_pct',
+    header: 'Return',
+    numeric: true,
+    sortable: true,
+    sortValue: (t: Trade) => t.return_pct,
+    cell: (t: Trade) => <Num value={t.return_pct} intent="auto" suffix="%" fontSize="sm" />,
+  },
+  {
+    key: 'pnl',
+    header: 'P&L',
+    numeric: true,
+    sortable: true,
+    sortValue: (t: Trade) => t.pnl,
+    cell: (t: Trade) => <Num value={t.pnl} intent="auto" prefix="$" decimals={0} fontSize="sm" />,
+  },
+  {
+    key: 'bars_held',
+    header: 'Bars',
+    numeric: true,
+    sortable: true,
+    sortValue: (t: Trade) => t.bars_held,
+    cell: (t: Trade) => (
+      <Num value={t.bars_held} decimals={0} fontSize="sm" color="fg.default" />
+    ),
+  },
+  {
+    key: 'exit_reason',
+    header: 'Reason',
+    cell: (t: Trade) => (
+      <SignalBadge tone="neutral" size="xs">
+        {EXIT_REASON_LABELS[t.exit_reason]}
+      </SignalBadge>
+    ),
+  },
+];
 
-  const toggle = (k: SortKey) => {
-    if (k === sortKey) setAsc((v) => !v);
-    else {
-      setSortKey(k);
-      setAsc(true);
-    }
-  };
+const tradeKey = (t: Trade) =>
+  `${t.entry_date}|${t.exit_date}|${t.exit_reason}|${t.pnl}`;
 
-  const Header: React.FC<{ k?: SortKey; label: string; align?: 'start' | 'end' }> = ({
-    k,
-    label,
-    align = 'start',
-  }) => (
-    <Table.ColumnHeader
-      color="fg.muted"
-      fontSize="xs"
-      textTransform="uppercase"
-      textAlign={align === 'end' ? 'right' : 'left'}
-      cursor={k ? 'pointer' : 'default'}
-      onClick={k ? () => toggle(k) : undefined}
-      userSelect="none"
-    >
-      {label}
-      {k && sortKey === k ? (asc ? ' ▲' : ' ▼') : ''}
-    </Table.ColumnHeader>
-  );
-
-  return (
-    <Box overflowX="auto" maxH="420px" overflowY="auto">
-      <Table.Root size="sm">
-        <Table.Header bg="bg.inset" position="sticky" top={0} zIndex={1}>
-          <Table.Row>
-            <Header k="entry_date" label="Entry" />
-            <Header label="Exit" />
-            <Header k="return_pct" label="Return" align="end" />
-            <Header k="pnl" label="P&L" align="end" />
-            <Header k="bars_held" label="Bars" align="end" />
-            <Header label="Reason" />
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
-          {sorted.map((t, i) => (
-            <Table.Row key={i}>
-              <Table.Cell>
-                <Text fontSize="xs" color="fg.default">
-                  {shortDate(t.entry_date)}
-                </Text>
-                <Text fontSize="xs" color="fg.subtle">
-                  ${t.entry_price.toFixed(2)}
-                </Text>
-              </Table.Cell>
-              <Table.Cell>
-                <Text fontSize="xs" color="fg.default">
-                  {shortDate(t.exit_date)}
-                </Text>
-                <Text fontSize="xs" color="fg.subtle">
-                  ${t.exit_price.toFixed(2)}
-                </Text>
-              </Table.Cell>
-              <Table.Cell textAlign="right">
-                <Text fontSize="sm" color={t.return_pct >= 0 ? 'signal.up.fg' : 'signal.down.fg'}>
-                  {fmtPct(t.return_pct)}
-                </Text>
-              </Table.Cell>
-              <Table.Cell textAlign="right">
-                <Text fontSize="sm" color={t.pnl >= 0 ? 'signal.up.fg' : 'signal.down.fg'}>
-                  {fmtMoney(t.pnl)}
-                </Text>
-              </Table.Cell>
-              <Table.Cell textAlign="right">
-                <Text fontSize="sm" color="fg.default">
-                  {t.bars_held}
-                </Text>
-              </Table.Cell>
-              <Table.Cell>
-                <SignalBadge tone="neutral" size="xs">
-                  {EXIT_REASON_LABELS[t.exit_reason]}
-                </SignalBadge>
-              </Table.Cell>
-            </Table.Row>
-          ))}
-        </Table.Body>
-      </Table.Root>
-    </Box>
-  );
-};
+const TradeTable: React.FC<{ trades: Trade[] }> = ({ trades }) => (
+  <DataTable<Trade>
+    columns={tradeColumns}
+    rows={trades}
+    rowKey={tradeKey}
+    defaultSort={{ key: 'entry', desc: false }}
+    maxH="420px"
+    size="sm"
+    renderCard={(t: Trade) => (
+      <Surface variant="inset" p={3}>
+        <HStack justify="space-between" mb={2} gap={2}>
+          <Text fontSize="xs" color="fg.muted">
+            {shortDate(t.entry_date)} → {shortDate(t.exit_date)}
+          </Text>
+          <SignalBadge tone="neutral" size="xs">
+            {EXIT_REASON_LABELS[t.exit_reason]}
+          </SignalBadge>
+        </HStack>
+        <HStack justify="space-between" align="end">
+          <VStack align="start" gap={0}>
+            <SectionLabel>P&L</SectionLabel>
+            <HStack gap={2}>
+              <Num value={t.pnl} intent="auto" prefix="$" decimals={0} fontSize="sm" fontWeight="semibold" />
+              <Num value={t.return_pct} intent="auto" suffix="%" fontSize="xs" />
+            </HStack>
+          </VStack>
+          <VStack align="end" gap={0}>
+            <SectionLabel>Held</SectionLabel>
+            <Num value={t.bars_held} decimals={0} suffix=" bars" fontSize="sm" color="fg.default" />
+          </VStack>
+        </HStack>
+      </Surface>
+    )}
+  />
+);
 
 export default Backtest;

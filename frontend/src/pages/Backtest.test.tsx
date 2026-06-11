@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Backtest } from './Backtest';
 import { api } from '../api';
 import type { BacktestRun } from '../types';
@@ -7,8 +8,8 @@ import type { BacktestRun } from '../types';
 // CRA's Jest (v27) resolver can't follow Chakra v3 → @ark-ui/react package
 // `exports` subpaths, so importing the real @chakra-ui/react throws at load.
 // Mock it with DOM passthroughs: this still mounts the *real* Backtest
-// component (state, handlers, api wiring, ConditionBuilder logic) — only the
-// visual primitives are stubbed.
+// component (state, handlers, query/mutation wiring, ConditionBuilder logic,
+// DataTable) — only the visual primitives are stubbed.
 jest.mock('@chakra-ui/react', () => {
   const ReactLib = require('react');
   const KEEP = new Set([
@@ -18,7 +19,7 @@ jest.mock('@chakra-ui/react', () => {
   ]);
   const hostFor = (name: string) => {
     const base = String(name).split('.').pop();
-    if (base === 'Button' || base === 'IconButton') return 'button';
+    if (base === 'Button' || base === 'IconButton' || base === 'button') return 'button';
     if (base === 'Input') return 'input';
     if (base === 'Textarea') return 'textarea';
     if (base === 'Field') return 'select';
@@ -165,24 +166,41 @@ const fakeRun: BacktestRun = {
   ],
 };
 
+const renderPage = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <Backtest />
+    </QueryClientProvider>,
+  );
+};
+
 beforeEach(() => {
   // CRA's Jest resets mocks between tests, so (re)establish resolved values.
   (api.backtest.list as jest.Mock).mockResolvedValue([]);
   (api.backtest.run as jest.Mock).mockResolvedValue(fakeRun);
+  // A successful run seeds the per-id query cache and the run query may
+  // background-refetch; serve the same payload.
+  (api.backtest.get as jest.Mock).mockResolvedValue(fakeRun);
 });
 
 test('renders the builder form', async () => {
-  render(<Backtest />);
+  renderPage();
   expect(screen.getByText('Backtest')).toBeInTheDocument();
   expect(screen.getByText('Entry conditions')).toBeInTheDocument();
   expect(screen.getByText('Exit conditions')).toBeInTheDocument();
-  // Listing past runs is best-effort and fired on mount.
+  // Recent runs come through the useBacktests query on mount.
   await waitFor(() => expect(api.backtest.list as jest.Mock).toHaveBeenCalled());
+  expect(await screen.findByText('No saved runs yet.')).toBeInTheDocument();
 });
 
 test('submits a backtest and renders results without crashing', async () => {
-  (api.backtest.run as jest.Mock).mockResolvedValue(fakeRun);
-  render(<Backtest />);
+  renderPage();
 
   const symbols = screen.getByPlaceholderText('AAPL, MSFT, NVDA');
   fireEvent.change(symbols, { target: { value: 'AAPL' } });
@@ -190,6 +208,25 @@ test('submits a backtest and renders results without crashing', async () => {
   fireEvent.click(screen.getByRole('button', { name: /run backtest/i }));
 
   await waitFor(() => expect(api.backtest.run as jest.Mock).toHaveBeenCalled());
-  expect(await screen.findByText(/Equity curve/i)).toBeInTheDocument();
+  expect(await screen.findByText('Equity curve — AAPL')).toBeInTheDocument();
   expect(await screen.findByText('Final equity')).toBeInTheDocument();
+
+  // Trade log renders through the DataTable primitive: sortable column
+  // headers are real buttons, rows carry the formatted trade values.
+  expect(screen.getByRole('button', { name: 'Entry' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'P&L' })).toBeInTheDocument();
+  expect(screen.getByText('Exit signal')).toBeInTheDocument();
+  expect(screen.getByText('$1,250')).toBeInTheDocument();
+});
+
+test('a run failure surfaces a toast-path error without rendering results', async () => {
+  (api.backtest.run as jest.Mock).mockRejectedValue(new Error('yahoo unavailable'));
+  renderPage();
+
+  fireEvent.click(screen.getByRole('button', { name: /run backtest/i }));
+
+  await waitFor(() => expect(api.backtest.run as jest.Mock).toHaveBeenCalled());
+  // The empty state stays put; no results panel appears.
+  expect(await screen.findByText('No backtest yet')).toBeInTheDocument();
+  expect(screen.queryByText('Final equity')).not.toBeInTheDocument();
 });

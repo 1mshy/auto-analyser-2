@@ -1,4 +1,4 @@
-import React, { createElement } from 'react';
+import React from 'react';
 import {
   Box,
   Text,
@@ -6,7 +6,7 @@ import {
   VStack,
   SimpleGrid,
 } from '@chakra-ui/react';
-import { IoCheckmarkCircle, IoWarning, IoTime } from 'react-icons/io5';
+import { CircleCheck, Clock, TriangleAlert } from 'lucide-react';
 import { AnalysisProgress } from '../types';
 import { ProgressRoot, ProgressBar as ChakraProgressBar } from './ui/progress';
 import { Surface, Num, SignalBadge } from './ui/primitives';
@@ -31,17 +31,21 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
           <Text fontSize="lg" fontWeight="semibold" color="fg.default">
             Analysis Progress
           </Text>
-          <SignalBadge tone={percentage === 100 ? 'up' : 'accent'} fontSize="sm" px={2.5} py={1} className="num" data-num="">
-            {typeof percentage === 'number' && !isNaN(percentage) ? percentage.toFixed(1) : '0.0'}%
+          <SignalBadge tone={percentage === 100 ? 'up' : 'accent'} fontSize="sm" px={2.5} py={1}>
+            <Num as="span" value={percentage} decimals={1} suffix="%" color="inherit" fontSize="sm" fallback="0.0%" />
           </SignalBadge>
         </HStack>
 
         <ProgressRoot
           value={percentage}
           size="lg"
-          colorPalette={percentage === 100 ? 'green' : 'blue'}
           striped
           animated={percentage < 100}
+          css={{
+            '& .chakra-progress__range': {
+              bg: percentage === 100 ? 'signal.up.solid' : 'accent.solid',
+            },
+          }}
         >
           <ChakraProgressBar borderRadius="sm" />
         </ProgressRoot>
@@ -49,7 +53,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
         <SimpleGrid columns={{ base: 2, md: 4 }} gap={4}>
           <Box>
             <HStack gap={1.5} mb={1} color="fg.muted">
-              {createElement(IoTime as any, { style: { width: '12px', height: '12px' } })}
+              <Clock size={12} />
               <Text fontSize="xs" textTransform="uppercase" letterSpacing="wider">Total Stocks</Text>
             </HStack>
             <Num value={progress.total_stocks} decimals={0} fontSize="2xl" fontWeight="semibold" />
@@ -57,7 +61,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
 
           <Box>
             <HStack gap={1.5} mb={1} color="signal.up.fg">
-              {createElement(IoCheckmarkCircle as any, { style: { width: '12px', height: '12px' } })}
+              <CircleCheck size={12} />
               <Text fontSize="xs" textTransform="uppercase" letterSpacing="wider" color="fg.muted">Analyzed</Text>
             </HStack>
             <Num value={progress.analyzed} decimals={0} intent="up" fontSize="2xl" fontWeight="semibold" />
@@ -65,7 +69,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
 
           <Box>
             <HStack gap={1.5} mb={1} color={progress.errors > 0 ? 'signal.down.fg' : 'fg.muted'}>
-              {createElement(IoWarning as any, { style: { width: '12px', height: '12px' } })}
+              <TriangleAlert size={12} />
               <Text fontSize="xs" textTransform="uppercase" letterSpacing="wider" color="fg.muted">Errors</Text>
             </HStack>
             <Num
@@ -79,9 +83,14 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
 
           <Box>
             <Text fontSize="xs" color="fg.muted" mb={1} textTransform="uppercase" letterSpacing="wider">Cycle Time</Text>
-            <Text className="num" data-num="" fontSize="2xl" fontWeight="semibold" color="accent.fg">
-              {cycleMinutes}:{cycleSeconds.toString().padStart(2, '0')}
-            </Text>
+            <Num
+              value={cycleMinutes > 0 ? cycleTime / 60000 : cycleSeconds}
+              decimals={cycleMinutes > 0 ? 1 : 0}
+              suffix={cycleMinutes > 0 ? 'm' : 's'}
+              fontSize="2xl"
+              fontWeight="semibold"
+              color="accent.fg"
+            />
           </Box>
         </SimpleGrid>
 
@@ -113,7 +122,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
             borderColor="border.subtle"
           >
             <HStack gap={2} color="signal.up.fg">
-              {createElement(IoCheckmarkCircle as any, { style: { width: '18px', height: '18px' } })}
+              <CircleCheck size={18} />
               <Text fontSize="sm" fontWeight="medium">
                 Analysis cycle complete! Next cycle will begin shortly.
               </Text>

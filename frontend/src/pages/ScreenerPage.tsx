@@ -1,21 +1,21 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Box,
   Container,
   Text,
   Flex,
-  Spinner,
   HStack,
   VStack,
   Button,
   SimpleGrid,
   Input,
 } from '@chakra-ui/react';
-import { Search, ChevronLeft, ChevronRight, Save, Trash2 } from 'lucide-react';
-import { api, FilterResponse } from '../api';
-import { StockAnalysis, StockFilter, MARKET_CAP_TIERS, getMarketCapTier, getMarketCapTierColor } from '../types';
-import { Surface, Num, SignalBadge, PageHeader, EmptyState } from '../components/ui/primitives';
+import { Search, ChevronLeft, ChevronRight, Save, Trash2, ArrowDown, ArrowUp } from 'lucide-react';
+import { StockFilter, MARKET_CAP_TIERS, getMarketCapTier, getMarketCapTierColor } from '../types';
+import { Surface, Num, SignalBadge, PageHeader, EmptyState, ErrorState, SkeletonRow } from '../components/ui/primitives';
+import { useFilterStocks } from '../queries';
+import { fmtMarketCap } from '../format';
 
 interface ScreenerPreset {
   id: string;
@@ -68,11 +68,7 @@ const FilterInput: React.FC<{
 FilterInput.displayName = 'FilterInput';
 
 export const ScreenerPage: React.FC = () => {
-  const [stocks, setStocks] = useState<StockAnalysis[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
   const [presets, setPresets] = useState<ScreenerPreset[]>(loadPresets);
   const [presetName, setPresetName] = useState('');
 
@@ -104,25 +100,26 @@ export const ScreenerPage: React.FC = () => {
     page_size: 50,
   }), [minRsi, maxRsi, minStochK, maxStochK, minBandwidth, maxBandwidth, minMarketCap, onlyOversold, onlyOverbought, sortBy, sortOrder, page]);
 
-  const runScreener = useCallback(async (overridePage?: number) => {
-    try {
-      setLoading(true);
-      const filter = buildFilter(overridePage);
-      const result: FilterResponse = await api.filterStocks(filter);
-      setStocks(result.stocks);
-      setTotal(result.pagination.total);
-      setTotalPages(result.pagination.total_pages);
-    } catch (err) {
-      console.error('Screener error:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [buildFilter]);
+  // Filters are applied on demand: the query only re-runs when the committed
+  // filter changes (Run Screener click or page change), not on every keystroke.
+  const [committedFilter, setCommittedFilter] = useState<StockFilter>(() => ({
+    sort_by: 'market_cap',
+    sort_order: 'desc',
+    page: 1,
+    page_size: 50,
+  }));
 
-  useEffect(() => {
-    runScreener();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  const screenerQuery = useFilterStocks(committedFilter);
+  const stocks = screenerQuery.data?.stocks ?? [];
+  const total = screenerQuery.data?.pagination.total ?? 0;
+  const totalPages = screenerQuery.data?.pagination.total_pages ?? 0;
+  const loading = screenerQuery.isLoading || screenerQuery.isFetching;
+
+  const runScreener = useCallback((overridePage?: number) => {
+    const nextPage = overridePage ?? 1;
+    setPage(nextPage);
+    setCommittedFilter(buildFilter(nextPage));
+  }, [buildFilter]);
 
   const handleSavePreset = () => {
     if (!presetName.trim()) return;
@@ -186,8 +183,15 @@ export const ScreenerPage: React.FC = () => {
                 <Button
                   key={tier.label}
                   size="xs"
-                  variant={minMarketCap === tier.value ? 'solid' : 'outline'}
-                  colorPalette={minMarketCap === tier.value ? 'blue' : 'gray'}
+                  variant="outline"
+                  minH={{ base: '11', md: '6' }}
+                  bg={minMarketCap === tier.value ? 'accent.muted' : 'transparent'}
+                  color={minMarketCap === tier.value ? 'accent.fg' : 'fg.muted'}
+                  borderColor={minMarketCap === tier.value ? 'accent.solid' : 'border.default'}
+                  _hover={{
+                    bg: minMarketCap === tier.value ? 'accent.muted' : 'bg.muted',
+                    color: minMarketCap === tier.value ? 'accent.fg' : 'fg.default',
+                  }}
                   onClick={() => setMinMarketCap(tier.value)}
                 >
                   {tier.label}
@@ -200,16 +204,30 @@ export const ScreenerPage: React.FC = () => {
             <HStack gap={2} wrap="wrap">
               <Button
                 size="xs"
-                variant={onlyOversold ? 'solid' : 'outline'}
-                colorPalette={onlyOversold ? 'green' : 'gray'}
+                variant="outline"
+                minH={{ base: '11', md: '6' }}
+                bg={onlyOversold ? 'signal.up.muted' : 'transparent'}
+                color={onlyOversold ? 'signal.up.fg' : 'fg.muted'}
+                borderColor={onlyOversold ? 'signal.up.solid' : 'border.default'}
+                _hover={{
+                  bg: onlyOversold ? 'signal.up.muted' : 'bg.muted',
+                  color: onlyOversold ? 'signal.up.fg' : 'fg.default',
+                }}
                 onClick={() => { setOnlyOversold(!onlyOversold); setOnlyOverbought(false); }}
               >
                 Oversold Only
               </Button>
               <Button
                 size="xs"
-                variant={onlyOverbought ? 'solid' : 'outline'}
-                colorPalette={onlyOverbought ? 'red' : 'gray'}
+                variant="outline"
+                minH={{ base: '11', md: '6' }}
+                bg={onlyOverbought ? 'signal.down.muted' : 'transparent'}
+                color={onlyOverbought ? 'signal.down.fg' : 'fg.muted'}
+                borderColor={onlyOverbought ? 'signal.down.solid' : 'border.default'}
+                _hover={{
+                  bg: onlyOverbought ? 'signal.down.muted' : 'bg.muted',
+                  color: onlyOverbought ? 'signal.down.fg' : 'fg.default',
+                }}
                 onClick={() => { setOnlyOverbought(!onlyOverbought); setOnlyOversold(false); }}
               >
                 Overbought Only
@@ -222,21 +240,37 @@ export const ScreenerPage: React.FC = () => {
                 <Button
                   key={field}
                   size="xs"
-                  variant={sortBy === field ? 'solid' : 'outline'}
-                  colorPalette={sortBy === field ? 'blue' : 'gray'}
+                  variant="outline"
+                  minH={{ base: '11', md: '6' }}
+                  bg={sortBy === field ? 'accent.muted' : 'transparent'}
+                  color={sortBy === field ? 'accent.fg' : 'fg.muted'}
+                  borderColor={sortBy === field ? 'accent.solid' : 'border.default'}
+                  _hover={{
+                    bg: sortBy === field ? 'accent.muted' : 'bg.muted',
+                    color: sortBy === field ? 'accent.fg' : 'fg.default',
+                  }}
                   onClick={() => {
                     if (sortBy === field) setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
                     else { setSortBy(field); setSortOrder('desc'); }
                   }}
                 >
-                  {field.replace(/_/g, ' ')}{sortBy === field ? (sortOrder === 'desc' ? ' ↓' : ' ↑') : ''}
+                  {field.replace(/_/g, ' ')}
+                  {sortBy === field && (sortOrder === 'desc' ? <ArrowDown size={12} /> : <ArrowUp size={12} />)}
                 </Button>
               ))}
             </HStack>
           </Flex>
 
           <Flex justify="space-between" wrap="wrap" gap={3} align="center">
-            <Button colorPalette="blue" onClick={() => { setPage(1); runScreener(1); }}>
+            <Button
+              bg="accent.solid"
+              color="white"
+              _hover={{ bg: 'accent.emphasis' }}
+              minH="11"
+              onClick={() => runScreener(1)}
+              loading={loading}
+              loadingText="Screening…"
+            >
               <Search size={16} /> Run Screener
             </Button>
 
@@ -252,7 +286,16 @@ export const ScreenerPage: React.FC = () => {
                 _placeholder={{ color: 'fg.subtle' }}
                 w="150px"
               />
-              <Button size="sm" variant="outline" colorPalette="gray" onClick={handleSavePreset} disabled={!presetName.trim()}>
+              <Button
+                size="sm"
+                variant="outline"
+                minH={{ base: '11', md: '8' }}
+                borderColor="border.default"
+                color="fg.muted"
+                _hover={{ bg: 'bg.muted', color: 'fg.default' }}
+                onClick={handleSavePreset}
+                disabled={!presetName.trim()}
+              >
                 <Save size={14} /> Save
               </Button>
             </HStack>
@@ -289,9 +332,19 @@ export const ScreenerPage: React.FC = () => {
       </Surface>
 
       {loading ? (
-        <Flex justify="center" py={12}>
-          <Spinner size="xl" color="accent.solid" />
-        </Flex>
+        <Surface p={0} variant="raised">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <Box key={i} px={4} py={2} borderBottomWidth={i < 9 ? '1px' : '0'} borderColor="border.subtle">
+              <SkeletonRow cols={6} />
+            </Box>
+          ))}
+        </Surface>
+      ) : screenerQuery.isError ? (
+        <ErrorState
+          title="Screener request failed"
+          description="The stock filter request failed. Check that the backend is reachable, then retry."
+          onRetry={() => screenerQuery.refetch()}
+        />
       ) : stocks.length === 0 ? (
         <EmptyState
           icon={<Search size={44} />}
@@ -356,7 +409,7 @@ export const ScreenerPage: React.FC = () => {
                       className="num"
                       data-num=""
                     >
-                      {stock.market_cap ? `$${(stock.market_cap / 1e9).toFixed(1)}B` : '-'}
+                      {fmtMarketCap(stock.market_cap)}
                     </SignalBadge>
                   </Box>
                   <Text flex={1} textAlign="right" color="fg.subtle" fontSize="sm">{stock.sector || '-'}</Text>
@@ -369,13 +422,31 @@ export const ScreenerPage: React.FC = () => {
 
       {totalPages > 1 && (
         <Flex justify="center" mt={6} gap={2}>
-          <Button size="sm" variant="outline" colorPalette="gray" onClick={() => setPage(p => p - 1)} disabled={page <= 1}>
+          <Button
+            size="sm"
+            variant="outline"
+            minH={{ base: '11', md: '8' }}
+            borderColor="border.default"
+            color="fg.muted"
+            _hover={{ bg: 'bg.muted', color: 'fg.default' }}
+            onClick={() => runScreener(page - 1)}
+            disabled={page <= 1 || loading}
+          >
             <ChevronLeft size={16} /> Prev
           </Button>
           <Flex align="center" px={4}>
             <Text color="fg.muted" fontSize="sm">Page {page} of {totalPages}</Text>
           </Flex>
-          <Button size="sm" variant="outline" colorPalette="gray" onClick={() => setPage(p => p + 1)} disabled={page >= totalPages}>
+          <Button
+            size="sm"
+            variant="outline"
+            minH={{ base: '11', md: '8' }}
+            borderColor="border.default"
+            color="fg.muted"
+            _hover={{ bg: 'bg.muted', color: 'fg.default' }}
+            onClick={() => runScreener(page + 1)}
+            disabled={page >= totalPages || loading}
+          >
             Next <ChevronRight size={16} />
           </Button>
         </Flex>

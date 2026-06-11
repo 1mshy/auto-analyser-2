@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import {
   Box,
@@ -7,27 +7,21 @@ import {
   Text,
   SimpleGrid,
   Flex,
-  Badge,
-  Spinner,
   HStack,
   VStack,
 } from '@chakra-ui/react';
 import { TrendingUp, TrendingDown, Target, DollarSign, Sparkles } from 'lucide-react';
-import { api } from '../api';
 import MarkdownContent from '../components/MarkdownContent';
-import { StockAnalysis, getMarketCapTier, getMarketCapTierColor, AIAnalysisResponse } from '../types';
+import { StockAnalysis } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
-import { Surface, Num, SignalBadge, PageHeader, StatBlock, ErrorState, Skeleton, SkeletonText } from '../components/ui/primitives';
-import { useMarketSummary, useAIStatus } from '../queries';
+import { Surface, Num, SignalBadge, TierBadge, PageHeader, StatBlock, ErrorState, Skeleton, SkeletonText } from '../components/ui/primitives';
+import { useMarketSummary, useAIStatus, useAIAnalysis } from '../queries';
 
 const CompactStockRow: React.FC<{
   stock: StockAnalysis;
   showChange?: boolean;
   showRSI?: boolean;
 }> = ({ stock, showChange = true, showRSI = false }) => {
-  const tier = getMarketCapTier(stock.market_cap);
-  const tierColor = getMarketCapTierColor(tier);
-
   return (
     <Link to={`/stocks/${encodeURIComponent(stock.symbol)}`} style={{ width: '100%' }}>
       <Flex
@@ -41,7 +35,7 @@ const CompactStockRow: React.FC<{
         cursor="pointer"
       >
         <HStack gap={3}>
-          <Badge colorPalette={tierColor} size="sm" variant="subtle">{tier.toUpperCase()}</Badge>
+          <TierBadge marketCap={stock.market_cap} size="sm" variant="subtle" />
           <VStack align="start" gap={0}>
             <Text fontWeight="semibold" color="fg.default" letterSpacing="tight">{stock.symbol}</Text>
             <Num value={stock.price} prefix="$" fontSize="xs" color="fg.muted" />
@@ -56,7 +50,7 @@ const CompactStockRow: React.FC<{
               className="num"
               data-num=""
             >
-              RSI: {stock.rsi.toFixed(1)}
+              RSI: <Num as="span" value={stock.rsi} decimals={1} color="inherit" fontSize="inherit" />
             </SignalBadge>
           )}
           {showChange && stock.price_change_percent != null && typeof stock.price_change_percent === 'number' && (
@@ -76,25 +70,20 @@ const CompactStockRow: React.FC<{
 
 const AIAnalysisCard: React.FC<{
   stock: StockAnalysis;
-  analysis: AIAnalysisResponse | null;
-  isLoading: boolean;
-}> = ({ stock, analysis, isLoading }) => {
-  const tier = getMarketCapTier(stock.market_cap);
-  const tierColor = getMarketCapTierColor(tier);
+}> = ({ stock }) => {
+  const { data: analysis, isLoading, isError } = useAIAnalysis(stock.symbol);
 
   return (
     <Surface p={4}>
       <Flex justify="space-between" align="center" mb={3}>
         <HStack>
-          <Badge colorPalette={tierColor} variant="subtle">{tier.toUpperCase()}</Badge>
+          <TierBadge marketCap={stock.market_cap} variant="subtle" />
           <Heading size="sm" color="fg.default" letterSpacing="tight">{stock.symbol}</Heading>
         </HStack>
         <Num value={stock.price} prefix="$" color="fg.muted" fontSize="sm" />
       </Flex>
       {isLoading ? (
-        <Flex justify="center" py={4}>
-          <Spinner color="accent.solid" />
-        </Flex>
+        <SkeletonText lines={4} />
       ) : analysis?.success ? (
         <Box>
           <Box maxH="9rem" overflow="hidden">
@@ -106,7 +95,7 @@ const AIAnalysisCard: React.FC<{
         </Box>
       ) : (
         <Text color="fg.subtle" fontSize="sm">
-          {analysis?.error || 'AI analysis not available'}
+          {isError ? 'Failed to load' : analysis?.error || 'AI analysis not available'}
         </Text>
       )}
     </Surface>
@@ -149,30 +138,6 @@ export const Dashboard: React.FC = () => {
   } = useMarketSummary(settings);
   const { data: aiStatus } = useAIStatus();
   const aiEnabled = aiStatus?.enabled ?? false;
-  const [aiAnalyses, setAiAnalyses] = useState<Record<string, AIAnalysisResponse>>({});
-  const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({});
-
-  const fetchAIAnalysis = useCallback(async (symbol: string) => {
-    if (aiAnalyses[symbol] || aiLoading[symbol]) return;
-
-    setAiLoading(prev => ({ ...prev, [symbol]: true }));
-    try {
-      const analysis = await api.getAIAnalysis(symbol);
-      setAiAnalyses(prev => ({ ...prev, [symbol]: analysis }));
-    } catch (err) {
-      setAiAnalyses(prev => ({ ...prev, [symbol]: { success: false, error: 'Failed to load' } }));
-    } finally {
-      setAiLoading(prev => ({ ...prev, [symbol]: false }));
-    }
-  }, [aiAnalyses, aiLoading]);
-
-  useEffect(() => {
-    if (aiEnabled && summary?.most_oversold) {
-      summary.most_oversold.slice(0, 3).forEach(stock => {
-        fetchAIAnalysis(stock.symbol);
-      });
-    }
-  }, [aiEnabled, summary?.most_oversold, fetchAIAnalysis]);
 
   if (isLoading) {
     return (
@@ -300,12 +265,7 @@ export const Dashboard: React.FC = () => {
           </HStack>
           <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} gap={4}>
             {summary.most_oversold.slice(0, 3).map(stock => (
-              <AIAnalysisCard
-                key={stock.symbol}
-                stock={stock}
-                analysis={aiAnalyses[stock.symbol] || null}
-                isLoading={aiLoading[stock.symbol] || false}
-              />
+              <AIAnalysisCard key={stock.symbol} stock={stock} />
             ))}
           </SimpleGrid>
         </Box>
