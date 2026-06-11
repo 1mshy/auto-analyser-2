@@ -9,12 +9,14 @@
 pub mod analysis;
 pub mod api;
 pub mod async_fetcher;
+pub mod backtest;
 pub mod cache;
 pub mod config;
 pub mod db;
 pub mod indexes;
 pub mod indicators;
 pub mod marketaux;
+pub mod metrics;
 pub mod models;
 pub mod nasdaq;
 pub mod notifications;

@@ -6,7 +6,10 @@ use crate::{
     },
     indicators::TechnicalIndicators,
     marketaux::MarketauxClient,
-    models::{AggregatedNewsItem, NasdaqNewsItem, NewsCardPayload, StockFilter},
+    models::{
+        AggregatedNewsItem, BacktestResult, BacktestRun, CreateBacktestInput, NasdaqNewsItem,
+        NewsCardPayload, StockAnalysis, StockFilter, WsMessage,
+    },
     nasdaq::NasdaqClient,
     notifications::AlertEngine,
     openrouter::{OpenRouterClient, StreamEvent},
@@ -37,8 +40,9 @@ pub struct MarketSummaryQuery {
     pub max_price_change_percent: Option<f64>,
 }
 use crate::models::AnalysisProgress;
+use mongodb::bson::oid::ObjectId;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast, RwLock};
 use tracing::{info, warn};
 
 #[derive(Clone)]
@@ -46,6 +50,9 @@ pub struct AppState {
     pub db: MongoDB,
     pub cache: CacheLayer,
     pub progress: Arc<RwLock<AnalysisProgress>>,
+    /// Per-symbol analyses broadcast as they're saved; each WS connection
+    /// subscribes for live `stock_update` pushes.
+    pub stock_tx: broadcast::Sender<StockAnalysis>,
     pub yahoo_client: YahooFinanceClient,
     pub openrouter_client: OpenRouterClient,
     pub nasdaq_client: NasdaqClient,
@@ -91,11 +98,16 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/stocks/:symbol/insiders", get(get_insider_trades))
         .route("/api/stocks/:symbol/earnings", get(get_stock_earnings))
         .route("/api/analytics/correlation", get(get_correlation_matrix))
+        // Backtesting / strategy performance
+        .route("/api/backtest", post(run_backtest))
+        .route("/api/backtests", get(list_backtests))
+        .route("/api/backtest/:id", get(get_backtest))
         // Index/Fund heatmap endpoints
         .route("/api/market-indexes", get(get_market_indexes))
         .route("/api/indexes", get(get_indexes))
         .route("/api/indexes/:index_id", get(get_index_detail))
         .route("/api/indexes/:index_id/heatmap", get(get_index_heatmap))
+        .route("/metrics", get(crate::metrics::metrics_handler))
         .route("/ws", get(websocket_handler));
 
     crate::notifications::api::mount(router).with_state(state)
@@ -556,24 +568,44 @@ async fn websocket_handler(
 async fn websocket_connection(mut socket: WebSocket, state: AppState) {
     info!("WebSocket client connected");
 
-    // Send initial progress
-    let progress = state.progress.read().await;
-    let msg = serde_json::to_string(&*progress).unwrap();
-    if socket.send(Message::Text(msg)).await.is_err() {
-        return;
-    }
-    drop(progress);
+    let mut stock_rx = state.stock_tx.subscribe();
+    // First tick fires immediately, so the client gets its initial progress
+    // snapshot right away; subsequent ticks act as a 2s keepalive.
+    let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(2));
 
-    // Send updates every 2 seconds
     loop {
-        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-        let progress = state.progress.read().await;
-        let msg = serde_json::to_string(&*progress).unwrap();
-
-        if socket.send(Message::Text(msg)).await.is_err() {
-            info!("WebSocket client disconnected");
-            break;
+        tokio::select! {
+            _ = interval.tick() => {
+                let progress = state.progress.read().await.clone();
+                let msg = serde_json::to_string(&WsMessage::Progress(progress)).unwrap();
+                if socket.send(Message::Text(msg)).await.is_err() {
+                    info!("WebSocket client disconnected");
+                    break;
+                }
+            }
+            result = stock_rx.recv() => match result {
+                Ok(analysis) => {
+                    let msg =
+                        serde_json::to_string(&WsMessage::StockUpdate(Box::new(analysis)))
+                            .unwrap();
+                    if socket.send(Message::Text(msg)).await.is_err() {
+                        info!("WebSocket client disconnected");
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                    warn!(
+                        "WebSocket client lagged behind stock broadcast ({} updates dropped); requesting resync",
+                        skipped
+                    );
+                    let msg = serde_json::to_string(&WsMessage::Resync).unwrap();
+                    if socket.send(Message::Text(msg)).await.is_err() {
+                        info!("WebSocket client disconnected");
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            },
         }
     }
 }
@@ -1562,6 +1594,206 @@ async fn remove_daily_news_symbol(
             "success": false,
             "error": e.to_string(),
         })),
+    }
+}
+
+// ============================================================================
+// Backtesting endpoints
+// ============================================================================
+
+/// Default Yahoo lookback (~2 years) when the request gives neither an explicit
+/// `lookback_days` nor a `start_date`.
+const BACKTEST_DEFAULT_LOOKBACK_DAYS: i64 = 730;
+/// Extra calendar days fetched before the requested window so indicators
+/// (SMA-50, MACD, …) are warm by the time entries are allowed at `start_date`.
+const BACKTEST_WARMUP_BUFFER_DAYS: i64 = 120;
+const BACKTEST_MIN_LOOKBACK_DAYS: i64 = 30;
+const BACKTEST_MAX_LOOKBACK_DAYS: i64 = 3650;
+/// Cap on symbols per run to bound the number of Yahoo fetches.
+const BACKTEST_MAX_SYMBOLS: usize = 25;
+
+/// Effective starting capital, falling back to the engine default when the
+/// client supplies a non-positive value (mirrors `backtest::simulate_from`).
+fn effective_initial_capital(strategy: &crate::models::Strategy) -> f64 {
+    if strategy.initial_capital.is_finite() && strategy.initial_capital > 0.0 {
+        strategy.initial_capital
+    } else {
+        10_000.0
+    }
+}
+
+/// `POST /api/backtest` — run a strategy over one or more symbols (and/or a
+/// watchlist), persist the run, and return it. History is fetched via the
+/// existing Yahoo client; the simulation itself is network-free.
+async fn run_backtest(
+    State(state): State<AppState>,
+    Json(input): Json<CreateBacktestInput>,
+) -> impl IntoResponse {
+    // Resolve the symbol universe: explicit list ∪ watchlist members.
+    let mut symbols: Vec<String> = input
+        .symbols
+        .iter()
+        .map(|s| crate::symbols::normalize_symbol_key(s))
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if let Some(wl_id) = input.watchlist_id.as_ref() {
+        match ObjectId::parse_str(wl_id) {
+            Ok(oid) => {
+                if let Ok(Some(wl)) = state.alert_engine.repo().get_watchlist(&oid).await {
+                    for s in wl.symbols {
+                        let n = crate::symbols::normalize_symbol_key(&s);
+                        if !n.is_empty() {
+                            symbols.push(n);
+                        }
+                    }
+                }
+            }
+            Err(_) => {
+                return Json(json!({
+                    "success": false,
+                    "error": format!("invalid watchlist id '{}'", wl_id)
+                }));
+            }
+        }
+    }
+
+    // Dedupe preserving order, then cap.
+    let mut seen = std::collections::HashSet::new();
+    symbols.retain(|s| seen.insert(s.clone()));
+    symbols.truncate(BACKTEST_MAX_SYMBOLS);
+
+    if symbols.is_empty() {
+        return Json(json!({
+            "success": false,
+            "error": "no symbols provided (give `symbols` and/or a `watchlist_id`)"
+        }));
+    }
+
+    // Derive the Yahoo lookback so the requested window has warmup ahead of it.
+    let now = Utc::now();
+    let span_days = input
+        .start_date
+        .map(|s| now.signed_duration_since(s).num_days().max(0))
+        .unwrap_or(BACKTEST_DEFAULT_LOOKBACK_DAYS);
+    let days = input
+        .lookback_days
+        .unwrap_or(span_days + BACKTEST_WARMUP_BUFFER_DAYS)
+        .clamp(BACKTEST_MIN_LOOKBACK_DAYS, BACKTEST_MAX_LOOKBACK_DAYS);
+
+    let initial_capital = effective_initial_capital(&input.strategy);
+    let start_date = input.start_date;
+    let end_date = input.end_date;
+    let yahoo = state.yahoo_client.clone();
+
+    // Fetch + simulate per symbol with bounded concurrency; preserve request order.
+    let indexed: Vec<(usize, String)> = symbols.iter().cloned().enumerate().collect();
+    let mut computed = stream::iter(indexed)
+        .map(|(idx, symbol)| {
+            let yahoo = yahoo.clone();
+            let strategy = input.strategy.clone();
+            async move {
+                let result = match yahoo.get_historical_prices(&symbol, days).await {
+                    Ok(mut prices) => {
+                        // Upper bound: drop bars after end_date (warmup bars before
+                        // start_date are kept so indicators are warm).
+                        if let Some(end) = end_date {
+                            prices.retain(|p| p.date <= end);
+                        }
+                        match start_date {
+                            // No lower bound → simulate the whole fetched series.
+                            None => crate::backtest::simulate(&symbol, &prices, &strategy),
+                            // Allow entries only from the first in-window bar; the
+                            // earlier bars still warm the indicators.
+                            Some(start) => {
+                                let start_index = prices
+                                    .iter()
+                                    .position(|p| p.date >= start)
+                                    .unwrap_or(prices.len());
+                                crate::backtest::simulate_from(
+                                    &symbol,
+                                    &prices,
+                                    &strategy,
+                                    start_index,
+                                )
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Backtest history fetch failed for {}: {}", symbol, e);
+                        crate::backtest::error_result(&symbol, initial_capital, e.to_string())
+                    }
+                };
+                (idx, result)
+            }
+        })
+        .buffer_unordered(5)
+        .collect::<Vec<_>>()
+        .await;
+    computed.sort_by_key(|(idx, _)| *idx);
+    let results: Vec<BacktestResult> = computed.into_iter().map(|(_, r)| r).collect();
+
+    let label = input
+        .label
+        .clone()
+        .filter(|l| !l.trim().is_empty())
+        .unwrap_or_else(|| {
+            let head: Vec<&str> = symbols.iter().take(5).map(|s| s.as_str()).collect();
+            let mut l = head.join(", ");
+            if symbols.len() > 5 {
+                l.push_str(&format!(" +{}", symbols.len() - 5));
+            }
+            l
+        });
+
+    let ran_at = Utc::now();
+    let summary = crate::backtest::summarize(&label, &symbols, ran_at, &results);
+    let run = BacktestRun {
+        id: None,
+        label,
+        strategy: input.strategy,
+        symbols,
+        results,
+        summary,
+        ran_at,
+    };
+
+    match state.db.save_backtest(run).await {
+        Ok(saved) => Json(json!({ "success": true, "run": saved })),
+        Err(e) => Json(json!({ "success": false, "error": e.to_string() })),
+    }
+}
+
+/// `GET /api/backtests` — list run summaries, most recent first.
+async fn list_backtests(State(state): State<AppState>) -> impl IntoResponse {
+    match state.db.list_backtest_summaries(100).await {
+        Ok(summaries) => Json(json!({
+            "success": true,
+            "count": summaries.len(),
+            "backtests": summaries
+        })),
+        Err(e) => Json(json!({ "success": false, "error": e.to_string() })),
+    }
+}
+
+/// `GET /api/backtest/:id` — fetch a full run (per-symbol trades + equity curves).
+async fn get_backtest(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    let oid = match ObjectId::parse_str(&id) {
+        Ok(o) => o,
+        Err(_) => {
+            return Json(json!({
+                "success": false,
+                "error": format!("invalid backtest id '{}'", id)
+            }));
+        }
+    };
+    match state.db.get_backtest_by_id(&oid).await {
+        Ok(Some(run)) => Json(json!({ "success": true, "run": run })),
+        Ok(None) => Json(json!({
+            "success": false,
+            "error": format!("backtest '{}' not found", id)
+        })),
+        Err(e) => Json(json!({ "success": false, "error": e.to_string() })),
     }
 }
 

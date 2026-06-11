@@ -1,12 +1,12 @@
 use crate::models::{
-    AggregatedNewsItem, DailyNewsSymbol, MarketSummary, NasdaqNewsItem, NewsSummary,
-    SectorPerformance, Stock, StockAnalysis, StockFilter,
+    AggregatedNewsItem, BacktestRun, BacktestSummary, DailyNewsSymbol, MarketSummary,
+    NasdaqNewsItem, NewsSummary, SectorPerformance, Stock, StockAnalysis, StockFilter,
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use futures::stream::StreamExt;
 use mongodb::{
-    bson::{doc, to_bson, Bson, Document, Regex},
+    bson::{doc, oid::ObjectId, to_bson, Bson, Document, Regex},
     options::{ClientOptions, FindOptions, ServerApi, ServerApiVersion},
     Client, Collection, Database,
 };
@@ -244,6 +244,20 @@ impl MongoDB {
             .await
         {
             tracing::warn!("Failed to create daily_news_symbols index: {}", e);
+        }
+
+        // Backtest runs are append-only and listed most-recent-first; index
+        // `ran_at` descending. Best-effort, like the others.
+        let backtests: Collection<BacktestRun> = database.collection("backtests");
+        if let Err(e) = backtests
+            .create_index(
+                mongodb::IndexModel::builder()
+                    .keys(doc! { "ran_at": -1 })
+                    .build(),
+            )
+            .await
+        {
+            tracing::warn!("Failed to create backtests index: {}", e);
         }
 
         Ok(())
@@ -754,6 +768,54 @@ impl MongoDB {
             .await?;
         Ok(res.deleted_count > 0)
     }
+
+    // ----------------------------------------------------------------------
+    // Backtests (append-only run records — NOT keyed on symbol)
+    // ----------------------------------------------------------------------
+
+    fn backtests(&self) -> Collection<BacktestRun> {
+        self.database.collection("backtests")
+    }
+
+    /// Persist a backtest run. Append-only: each call inserts a new immutable
+    /// document (no upsert). We generate the `_id` up front and mirror it onto
+    /// the embedded summary so the list endpoint can return summaries that
+    /// round-trip to the detail endpoint. Returns the run with its id set.
+    pub async fn save_backtest(&self, mut run: BacktestRun) -> Result<BacktestRun> {
+        let oid = ObjectId::new();
+        run.id = Some(oid);
+        run.summary.id = Some(oid);
+        self.backtests().insert_one(&run).await?;
+        Ok(run)
+    }
+
+    /// Fetch a full backtest run (results + equity curves) by id.
+    pub async fn get_backtest_by_id(&self, id: &ObjectId) -> Result<Option<BacktestRun>> {
+        Ok(self.backtests().find_one(doc! { "_id": *id }).await?)
+    }
+
+    /// List run summaries, most recent first. Projects away the heavy embedded
+    /// `results` (per-symbol trade logs + equity curves) via `$replaceRoot` on
+    /// the precomputed `summary` subdocument, so the list stays lightweight.
+    pub async fn list_backtest_summaries(&self, limit: i64) -> Result<Vec<BacktestSummary>> {
+        let pipeline = vec![
+            doc! { "$sort": { "ran_at": -1 } },
+            doc! { "$limit": limit.max(1) },
+            doc! { "$replaceRoot": { "newRoot": "$summary" } },
+        ];
+        let mut cursor = self.backtests().aggregate(pipeline).await?;
+        let mut out = Vec::new();
+        while let Some(doc) = cursor.next().await {
+            match doc {
+                Ok(doc) => match mongodb::bson::from_document::<BacktestSummary>(doc) {
+                    Ok(summary) => out.push(summary),
+                    Err(e) => tracing::warn!("skipping malformed backtest summary: {}", e),
+                },
+                Err(e) => tracing::warn!("backtest summary cursor error: {}", e),
+            }
+        }
+        Ok(out)
+    }
 }
 
 #[cfg(test)]
@@ -959,5 +1021,105 @@ mod tests {
         assert_eq!(pct.get("$ne"), Some(&Bson::Null));
         assert_eq!(pct.get_f64("$lt").unwrap(), 0.0);
         assert_eq!(pct.get_f64("$gte").unwrap(), -25.0);
+    }
+
+    // ---- Backtest persistence contracts -------------------------------------
+    //
+    // These lock the serialization behaviour the live Mongo path depends on,
+    // without needing a database:
+    //  * `list_backtest_summaries` runs `$replaceRoot: "$summary"` and then
+    //    `from_document::<BacktestSummary>` — so the embedded summary must
+    //    survive BSON round-trip (including its renamed `_id` ObjectId and the
+    //    `ran_at` datetime).
+    //  * The HTTP layer returns `_id` via serde_json (axum `Json`), which must
+    //    serialize `ObjectId` as a plain string for the frontend `string` type.
+
+    fn sample_run() -> crate::models::BacktestRun {
+        use crate::models::*;
+        use crate::notifications::models::{Condition, ConditionGroup};
+        let ran_at = Utc::now();
+        let summary = BacktestSummary {
+            id: None,
+            label: "AAPL".into(),
+            symbols: vec!["AAPL".into()],
+            ran_at,
+            symbol_count: 1,
+            total_return_pct: 12.5,
+            trade_count: 3,
+            win_rate_pct: 66.6,
+            max_drawdown_pct: 8.0,
+            sharpe_ratio: Some(1.1),
+        };
+        let strategy = Strategy {
+            entry: ConditionGroup::Leaf {
+                condition: Condition::RsiBelow { value: 30.0 },
+            },
+            exit: ConditionGroup::Leaf {
+                condition: Condition::RsiAbove { value: 70.0 },
+            },
+            stop_loss_pct: Some(8.0),
+            take_profit_pct: None,
+            max_holding_bars: None,
+            position_size_pct: 1.0,
+            initial_capital: 10_000.0,
+            commission_bps: 5.0,
+            slippage_bps: 5.0,
+        };
+        BacktestRun {
+            id: None,
+            label: "AAPL".into(),
+            strategy,
+            symbols: vec!["AAPL".into()],
+            results: Vec::new(),
+            summary,
+            ran_at,
+        }
+    }
+
+    #[test]
+    fn backtest_summary_survives_replace_root_round_trip() {
+        let mut run = sample_run();
+        // `save_backtest` mirrors the generated _id onto the embedded summary.
+        let oid = ObjectId::new();
+        run.id = Some(oid);
+        run.summary.id = Some(oid);
+
+        // Equivalent to what `$replaceRoot: { newRoot: "$summary" }` returns:
+        // the serialized `summary` sub-document.
+        let run_doc = mongodb::bson::to_document(&run).unwrap();
+        let summary_doc = run_doc.get_document("summary").unwrap().clone();
+
+        let summary: crate::models::BacktestSummary =
+            mongodb::bson::from_document(summary_doc).unwrap();
+        assert_eq!(
+            summary.id,
+            Some(oid),
+            "renamed _id ObjectId must round-trip"
+        );
+        assert_eq!(summary.label, "AAPL");
+        assert_eq!(summary.trade_count, 3);
+        assert_eq!(summary.symbol_count, 1);
+        assert_eq!(summary.sharpe_ratio, Some(1.1));
+        // ran_at is a BSON datetime; equality holds to millisecond precision.
+        assert_eq!(
+            summary.ran_at.timestamp_millis(),
+            run.summary.ran_at.timestamp_millis()
+        );
+    }
+
+    #[test]
+    fn backtest_id_serializes_as_bson_extjson_oid() {
+        let mut run = sample_run();
+        let oid = ObjectId::new();
+        run.id = Some(oid);
+        run.summary.id = Some(oid);
+
+        // axum's `Json` uses serde_json, under which bson `ObjectId` serializes
+        // as MongoDB extended-JSON `{ "$oid": "<hex>" }` — the same shape every
+        // other `_id` in this app's API uses (e.g. GET /api/watchlists). The
+        // frontend recovers the hex via `extractObjectId` in types.ts.
+        let v = serde_json::to_value(&run).unwrap();
+        assert_eq!(v["_id"]["$oid"].as_str().unwrap(), oid.to_hex());
+        assert_eq!(v["summary"]["_id"]["$oid"].as_str().unwrap(), oid.to_hex());
     }
 }

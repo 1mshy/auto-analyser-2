@@ -17,6 +17,7 @@ import {
   PieChart,
   Search,
   Bell,
+  FlaskConical,
 } from 'lucide-react';
 import { SignalBadge } from './ui/primitives';
 
@@ -35,6 +36,7 @@ export const MOBILE_NAV_ITEMS: MobileDrawerNavItem[] = [
   { to: '/news', label: 'News', icon: <Newspaper size={18} /> },
   { to: '/sectors', label: 'Sectors', icon: <PieChart size={18} /> },
   { to: '/screener', label: 'Screener', icon: <Search size={18} /> },
+  { to: '/backtest', label: 'Backtest', icon: <FlaskConical size={18} /> },
   { to: '/alerts', label: 'Alerts', icon: <Bell size={18} /> },
 ];
 

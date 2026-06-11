@@ -1,4 +1,12 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   Box,
@@ -6,8 +14,6 @@ import {
   Text,
   SimpleGrid,
   Flex,
-  Badge,
-  Spinner,
   HStack,
   VStack,
   Button,
@@ -15,23 +21,100 @@ import {
   Table,
   IconButton,
 } from '@chakra-ui/react';
-import { Grid, List, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import { api, FilterResponse } from '../api';
-import { StockAnalysis, StockFilter, PaginationInfo, getMarketCapTier, getMarketCapTierColor, getMarketCapTierLabel } from '../types';
+import {
+  Grid,
+  List,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  SearchX,
+  ArrowUp,
+  ArrowDown,
+} from 'lucide-react';
+import { StockAnalysis, StockFilter, PaginationInfo } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
-import { Surface, Num, SignalBadge, PageHeader } from '../components/ui/primitives';
+import { useProgress } from '../contexts/ProgressContext';
+import { useIsMobile } from '../theme/responsive';
+import {
+  Surface,
+  Num,
+  SignalBadge,
+  PageHeader,
+  ErrorState,
+  EmptyState,
+  SkeletonRow,
+  TierBadge,
+  AgeBadge,
+  FreshnessChip,
+} from '../components/ui/primitives';
+import { useFilterStocks } from '../queries';
 
-const StockTableRow: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
-  const tier = getMarketCapTier(stock.market_cap);
-  const tierColor = getMarketCapTierColor(tier);
-  const rsiTone = stock.rsi && stock.rsi < 30 ? 'up' : stock.rsi && stock.rsi > 70 ? 'down' : 'neutral';
+// How long the changed-value highlight stays on before easing back out. The
+// CSS transition itself uses the registered `slow` duration token; the global
+// reduced-motion rule in index.css disables it for users who opt out.
+const FLASH_HOLD_MS = 600;
+
+/**
+ * Compares the previous render's price/RSI against the current one (rows keep
+ * their `symbol` key but swap object identity when a WS merge lands) and
+ * returns a `signal.*.muted` background token while the flash is active.
+ */
+function useChangeFlash(stock: StockAnalysis): string | undefined {
+  const prevRef = useRef<{ price: number; rsi?: number | null }>({
+    price: stock.price,
+    rsi: stock.rsi,
+  });
+  const [direction, setDirection] = useState<'up' | 'down' | null>(null);
+
+  useEffect(() => {
+    const prev = prevRef.current;
+    prevRef.current = { price: stock.price, rsi: stock.rsi };
+
+    const priceMoved = stock.price !== prev.price;
+    const rsiMoved =
+      stock.rsi != null && prev.rsi != null && stock.rsi !== prev.rsi;
+    if (!priceMoved && !rsiMoved) return;
+
+    setDirection(
+      priceMoved
+        ? stock.price > prev.price
+          ? 'up'
+          : 'down'
+        : stock.rsi! > prev.rsi!
+        ? 'up'
+        : 'down'
+    );
+    const t = setTimeout(() => setDirection(null), FLASH_HOLD_MS);
+    return () => clearTimeout(t);
+  }, [stock.price, stock.rsi]);
+
+  if (!direction) return undefined;
+  return direction === 'up' ? 'signal.up.muted' : 'signal.down.muted';
+}
+
+const StockTableRow = React.memo(function StockTableRow({
+  stock,
+}: {
+  stock: StockAnalysis;
+}) {
+  const flashBg = useChangeFlash(stock);
+  const rsiTone =
+    stock.rsi && stock.rsi < 30 ? 'up' : stock.rsi && stock.rsi > 70 ? 'down' : 'neutral';
 
   return (
-    <Table.Row _hover={{ bg: 'bg.muted' }} borderBottomWidth="1px" borderColor="border.subtle">
+    <Table.Row
+      {...(flashBg ? { bg: flashBg } : undefined)}
+      transitionProperty="background-color"
+      transitionDuration="slow"
+      transitionTimingFunction="ease-out"
+      _hover={{ bg: 'bg.muted' }}
+      borderBottomWidth="1px"
+      borderColor="border.subtle"
+    >
       <Table.Cell>
         <Link to={`/stocks/${encodeURIComponent(stock.symbol)}`}>
           <HStack>
-            <Badge colorPalette={tierColor} size="sm" variant="subtle">{tier.charAt(0).toUpperCase()}</Badge>
+            <TierBadge marketCap={stock.market_cap} size="sm" />
             <Text fontWeight="semibold" color="accent.fg" _hover={{ textDecoration: 'underline' }}>
               {stock.symbol}
             </Text>
@@ -51,8 +134,8 @@ const StockTableRow: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
         />
       </Table.Cell>
       <Table.Cell textAlign="right">
-        <SignalBadge tone={rsiTone} className="num" data-num="">
-          {stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'}
+        <SignalBadge tone={rsiTone}>
+          <Num as="span" value={stock.rsi} decimals={1} color="inherit" fontSize="inherit" />
         </SignalBadge>
       </Table.Cell>
       <Table.Cell textAlign="right">
@@ -80,18 +163,27 @@ const StockTableRow: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
       </Table.Cell>
     </Table.Row>
   );
-};
+});
 
-const StockCardCompact: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
-  const tier = getMarketCapTier(stock.market_cap);
-  const tierColor = getMarketCapTierColor(tier);
+const StockCardCompact = React.memo(function StockCardCompact({
+  stock,
+}: {
+  stock: StockAnalysis;
+}) {
+  const flashBg = useChangeFlash(stock);
 
   return (
     <Link to={`/stocks/${encodeURIComponent(stock.symbol)}`}>
-      <Surface interactive p={4}>
+      <Surface
+        interactive
+        p={4}
+        transitionDuration="slow"
+        transitionTimingFunction="ease-out"
+        {...(flashBg ? { bg: flashBg } : undefined)}
+      >
         <Flex justify="space-between" align="start" mb={2}>
           <VStack align="start" gap={0}>
-            <Badge colorPalette={tierColor} size="sm" variant="subtle">{getMarketCapTierLabel(tier)}</Badge>
+            <TierBadge marketCap={stock.market_cap} size="sm" />
             <Text fontWeight="semibold" fontSize="lg" color="fg.default" letterSpacing="tight">{stock.symbol}</Text>
           </VStack>
           <VStack align="end" gap={0}>
@@ -111,10 +203,9 @@ const StockCardCompact: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
           <HStack gap={2}>
             <SignalBadge
               tone={stock.rsi != null && stock.rsi < 30 ? 'up' : stock.rsi != null && stock.rsi > 70 ? 'down' : 'neutral'}
-              className="num"
-              data-num=""
             >
-              RSI: {stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'}
+              RSI:{' '}
+              <Num as="span" value={stock.rsi} decimals={1} color="inherit" fontSize="inherit" />
             </SignalBadge>
             {stock.macd && (
               <SignalBadge tone={stock.macd.histogram > 0 ? 'info' : 'warn'}>
@@ -127,7 +218,7 @@ const StockCardCompact: React.FC<{ stock: StockAnalysis }> = ({ stock }) => {
       </Surface>
     </Link>
   );
-};
+});
 
 const Pagination: React.FC<{
   pagination: PaginationInfo;
@@ -136,7 +227,7 @@ const Pagination: React.FC<{
   const { page, total_pages, total } = pagination;
 
   return (
-    <Flex justify="space-between" align="center" mt={4}>
+    <Flex justify="space-between" align="center" wrap="wrap" gap={3} mt={4}>
       <Text color="fg.muted" fontSize="sm">
         Showing page {page} of {total_pages} ({total.toLocaleString()} total)
       </Text>
@@ -145,6 +236,8 @@ const Pagination: React.FC<{
           aria-label="Previous page"
           variant="outline"
           size="sm"
+          minH={{ base: '44px', md: 'auto' }}
+          minW={{ base: '44px', md: 'auto' }}
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1}
         >
@@ -166,8 +259,8 @@ const Pagination: React.FC<{
               <Button
                 key={pageNum}
                 size="sm"
+                minH={{ base: '44px', md: 'auto' }}
                 variant={page === pageNum ? 'solid' : 'outline'}
-                colorPalette={page === pageNum ? 'blue' : 'gray'}
                 onClick={() => onPageChange(pageNum)}
               >
                 {pageNum}
@@ -179,6 +272,8 @@ const Pagination: React.FC<{
           aria-label="Next page"
           variant="outline"
           size="sm"
+          minH={{ base: '44px', md: 'auto' }}
+          minW={{ base: '44px', md: 'auto' }}
           onClick={() => onPageChange(page + 1)}
           disabled={page >= total_pages}
         >
@@ -191,25 +286,27 @@ const Pagination: React.FC<{
 
 export const StocksPage: React.FC = () => {
   const { settings } = useSettings();
+  const { progress, isConnected } = useProgress();
+  const isMobile = useIsMobile();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [stocks, setStocks] = useState<StockAnalysis[]>([]);
-  const [pagination, setPagination] = useState<PaginationInfo>({ page: 1, page_size: 50, total: 0, total_pages: 0 });
-  const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 200);
+    const t = setTimeout(() => {
+      startTransition(() => setDebouncedSearch(searchTerm.trim()));
+    }, 200);
     return () => clearTimeout(t);
-  }, [searchTerm]);
+  }, [searchTerm, startTransition]);
 
   // Parse filter from URL params and apply global settings
   const getFilterFromParams = useCallback((): StockFilter => {
     // Get URL-based min market cap or use global settings
     const urlMinMarketCap = searchParams.get('min_market_cap') ? parseFloat(searchParams.get('min_market_cap')!) : undefined;
     const globalMinMarketCap = settings.minMarketCap ?? undefined;
-    
+
     // Use the larger of the two (URL takes precedence if explicitly higher)
     const effectiveMinMarketCap = urlMinMarketCap !== undefined && globalMinMarketCap !== undefined
       ? Math.max(urlMinMarketCap, globalMinMarketCap)
@@ -233,36 +330,23 @@ export const StocksPage: React.FC = () => {
     };
   }, [searchParams, settings, debouncedSearch]);
 
-  const fetchStocks = useCallback(async () => {
-    try {
-      setLoading(true);
-      const filter = getFilterFromParams();
-      const response: FilterResponse = await api.filterStocks(filter);
-      
-      setStocks(response.stocks);
-      setPagination(response.pagination);
-    } catch (err) {
-      console.error('Failed to fetch stocks:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [getFilterFromParams]);
-
-  useEffect(() => {
-    fetchStocks();
-  }, [fetchStocks]);
+  const filter = useMemo(() => getFilterFromParams(), [getFilterFromParams]);
+  const { data, isLoading, isError, isFetching, refetch } = useFilterStocks(filter);
+  const stocks = useMemo(() => data?.stocks ?? [], [data]);
+  const pagination: PaginationInfo =
+    data?.pagination ?? { page: 1, page_size: 50, total: 0, total_pages: 0 };
 
   const handlePageChange = (newPage: number) => {
     const params = new URLSearchParams(searchParams);
     params.set('page', newPage.toString());
-    setSearchParams(params);
+    startTransition(() => setSearchParams(params));
   };
 
   const handleSortChange = (sortBy: string) => {
     const params = new URLSearchParams(searchParams);
     const currentSortBy = params.get('sort_by') || 'market_cap';
     const currentOrder = params.get('sort_order') || 'desc';
-    
+
     if (currentSortBy === sortBy) {
       // Toggle order
       params.set('sort_order', currentOrder === 'desc' ? 'asc' : 'desc');
@@ -271,50 +355,79 @@ export const StocksPage: React.FC = () => {
       params.set('sort_order', 'desc');
     }
     params.set('page', '1');
-    setSearchParams(params);
+    startTransition(() => setSearchParams(params));
   };
 
   const handlePageSizeChange = (size: number) => {
     const params = new URLSearchParams(searchParams);
     params.set('page_size', size.toString());
     params.set('page', '1');
-    setSearchParams(params);
+    startTransition(() => setSearchParams(params));
   };
 
-  // Filter stocks by search term (client-side)
-  // Backend now handles symbol search across the entire universe via
-  // `symbol_search`, so we just render whatever the API returned.
-  const filteredStocks = stocks;
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    startTransition(() => {
+      setDebouncedSearch('');
+      setSearchParams(new URLSearchParams());
+    });
+  };
+
+  // Backend handles symbol search across the entire universe via
+  // `symbol_search`; the deferred value keeps typing/sorting responsive while
+  // the large list re-renders at transition priority.
+  const filteredStocks = useDeferredValue(stocks);
+
+  // Freshness: newest analyzed_at in the current page, falling back to the
+  // engine's last successful cycle.
+  const newestAnalyzedAt = useMemo(() => {
+    let newest: string | null = null;
+    let newestMs = -Infinity;
+    for (const s of stocks) {
+      if (!s.analyzed_at) continue;
+      const ms = Date.parse(s.analyzed_at);
+      if (!Number.isNaN(ms) && ms > newestMs) {
+        newestMs = ms;
+        newest = s.analyzed_at;
+      }
+    }
+    return newest;
+  }, [stocks]);
+  const freshnessTimestamp = newestAnalyzedAt ?? progress?.last_successful_cycle ?? null;
 
   const currentSort = searchParams.get('sort_by') || 'market_cap';
   const currentOrder = searchParams.get('sort_order') || 'desc';
+  const effectiveViewMode = isMobile ? 'card' : viewMode;
+  const sortArrow = currentOrder === 'desc' ? <ArrowDown size={12} /> : <ArrowUp size={12} />;
 
   return (
     <Container maxW="page" py={{ base: 5, md: 8 }}>
       <PageHeader
         eyebrow="Universe"
         title="All Stocks"
-        subtitle={`${pagination.total.toLocaleString()} analyzed stocks · ${filteredStocks.length.toLocaleString()} visible in this view`}
+        subtitle={`${pagination.total.toLocaleString()} analyzed stocks · ${filteredStocks.length.toLocaleString()} visible${(isFetching && !isLoading) || isPending ? ' · updating…' : ' in this view'}`}
         actions={
-          <HStack>
-            <IconButton
-              aria-label="Table view"
-              variant={viewMode === 'table' ? 'solid' : 'outline'}
-              colorPalette={viewMode === 'table' ? 'blue' : 'gray'}
-              size="sm"
-              onClick={() => setViewMode('table')}
-            >
-              <List />
-            </IconButton>
-            <IconButton
-              aria-label="Card view"
-              variant={viewMode === 'card' ? 'solid' : 'outline'}
-              colorPalette={viewMode === 'card' ? 'blue' : 'gray'}
-              size="sm"
-              onClick={() => setViewMode('card')}
-            >
-              <Grid />
-            </IconButton>
+          <HStack wrap="wrap" justify="flex-end">
+            <AgeBadge timestamp={freshnessTimestamp} />
+            <FreshnessChip cached={data?.cached} isLive={isConnected} />
+            <HStack display={{ base: 'none', md: 'flex' }}>
+              <IconButton
+                aria-label="Table view"
+                variant={viewMode === 'table' ? 'solid' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('table')}
+              >
+                <List />
+              </IconButton>
+              <IconButton
+                aria-label="Card view"
+                variant={viewMode === 'card' ? 'solid' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('card')}
+              >
+                <Grid />
+              </IconButton>
+            </HStack>
           </HStack>
         }
       />
@@ -339,6 +452,7 @@ export const StocksPage: React.FC = () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               pl={10}
+              h={{ base: '11', md: '10' }}
               bg="bg.inset"
               borderColor="border.subtle"
               color="fg.default"
@@ -351,27 +465,30 @@ export const StocksPage: React.FC = () => {
         <HStack wrap="wrap">
           <Button
             size="sm"
+            minH={{ base: '44px', md: 'auto' }}
             variant={currentSort === 'market_cap' ? 'solid' : 'outline'}
-            colorPalette={currentSort === 'market_cap' ? 'blue' : 'gray'}
             onClick={() => handleSortChange('market_cap')}
           >
-            Market Cap {currentSort === 'market_cap' ? (currentOrder === 'desc' ? '↓' : '↑') : ''}
+            Market Cap
+            {currentSort === 'market_cap' && sortArrow}
           </Button>
           <Button
             size="sm"
+            minH={{ base: '44px', md: 'auto' }}
             variant={currentSort === 'price_change_percent' ? 'solid' : 'outline'}
-            colorPalette={currentSort === 'price_change_percent' ? 'blue' : 'gray'}
             onClick={() => handleSortChange('price_change_percent')}
           >
-            Change % {currentSort === 'price_change_percent' ? (currentOrder === 'desc' ? '↓' : '↑') : ''}
+            Change %
+            {currentSort === 'price_change_percent' && sortArrow}
           </Button>
           <Button
             size="sm"
+            minH={{ base: '44px', md: 'auto' }}
             variant={currentSort === 'rsi' ? 'solid' : 'outline'}
-            colorPalette={currentSort === 'rsi' ? 'blue' : 'gray'}
             onClick={() => handleSortChange('rsi')}
           >
-            RSI {currentSort === 'rsi' ? (currentOrder === 'desc' ? '↓' : '↑') : ''}
+            RSI
+            {currentSort === 'rsi' && sortArrow}
           </Button>
         </HStack>
 
@@ -382,8 +499,8 @@ export const StocksPage: React.FC = () => {
             <Button
               key={size}
               size="sm"
+              minH={{ base: '44px', md: 'auto' }}
               variant={pagination.page_size === size ? 'solid' : 'outline'}
-              colorPalette={pagination.page_size === size ? 'gray' : 'gray'}
               onClick={() => handlePageSizeChange(size)}
             >
               {size}
@@ -394,11 +511,37 @@ export const StocksPage: React.FC = () => {
       </Surface>
 
       {/* Content */}
-      {loading ? (
-        <Flex justify="center" align="center" minH="50vh">
-          <Spinner size="xl" color="accent.solid" />
-        </Flex>
-      ) : viewMode === 'table' ? (
+      {isLoading ? (
+        <Surface p={4} variant="raised">
+          <VStack gap={3} align="stretch">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <SkeletonRow key={i} cols={7} />
+            ))}
+          </VStack>
+        </Surface>
+      ) : isError ? (
+        <ErrorState
+          title="Couldn’t load stocks"
+          description="The stock list request failed. Check that the backend is reachable, then retry."
+          onRetry={() => refetch()}
+        />
+      ) : filteredStocks.length === 0 ? (
+        <EmptyState
+          icon={<SearchX size={28} />}
+          title="No matching stocks"
+          description="Nothing in the analyzed universe matches the current search and filters."
+          action={
+            <Button
+              size="sm"
+              minH={{ base: '44px', md: 'auto' }}
+              variant="outline"
+              onClick={handleClearFilters}
+            >
+              Clear filters
+            </Button>
+          }
+        />
+      ) : effectiveViewMode === 'table' ? (
         <Surface overflowX="auto" p={0} variant="raised">
           <Table.Root size="sm">
             <Table.Header bg="bg.inset" position="sticky" top={0} zIndex={1}>
@@ -428,7 +571,7 @@ export const StocksPage: React.FC = () => {
       )}
 
       {/* Pagination */}
-      {!loading && pagination.total_pages > 1 && (
+      {!isLoading && pagination.total_pages > 1 && (
         <Pagination pagination={pagination} onPageChange={handlePageChange} />
       )}
     </Container>

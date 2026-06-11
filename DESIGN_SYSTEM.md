@@ -1,5 +1,7 @@
 # Stock Analyzer Design System
 
+> **⚠️ Active plan:** This document defines the design *direction* and is still the source of truth for design principles. The full implementation plan for the redesign + perf + data-freshness overhaul now lives in **[`FRONTEND_OVERHAUL_PLAN.md`](FRONTEND_OVERHAUL_PLAN.md)**, which **extends** this doc (keep-and-complete, not replace). Two stack-line items below are superseded there: the build tool moves **CRA → Vite**, and **`framer-motion` is removed** (0 import sites). Treat `FRONTEND_OVERHAUL_PLAN.md` as the active roadmap.
+
 ## Direction
 
 The redesign direction is dark-first and Koyfin-like: professional, calm, dense enough for market scanning, and visually quiet until a price, signal, or alert needs attention. The app should feel like an investor workspace rather than a generic admin dashboard.

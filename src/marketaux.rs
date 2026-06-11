@@ -212,7 +212,12 @@ mod tests {
 
     #[test]
     fn test_build_news_url_encodes_symbol_and_key() {
-        let url = build_news_url("https://api.marketaux.com/v1/news/all", "key&with=stuff", "BRK.A", 5);
+        let url = build_news_url(
+            "https://api.marketaux.com/v1/news/all",
+            "key&with=stuff",
+            "BRK.A",
+            5,
+        );
         assert!(url.starts_with("https://api.marketaux.com/v1/news/all?"));
         assert!(url.contains("symbols=BRK.A"));
         assert!(url.contains("limit=5"));
@@ -477,14 +482,16 @@ mod tests {
     #[test]
     fn test_parse_news_response_rate_limit_message_variant() {
         // The rate-limit detector matches on message text as well as code.
-        let json = r#"{"error": {"code": "other_code", "message": "You have hit the rate limit."}}"#;
+        let json =
+            r#"{"error": {"code": "other_code", "message": "You have hit the rate limit."}}"#;
         let err = parse_news_response(json, "X").unwrap_err().to_string();
         assert!(err.contains("Rate limited"), "got: {}", err);
     }
 
     #[test]
     fn test_parse_news_response_usage_limit_message_variant() {
-        let json = r#"{"error": {"code": "quota", "message": "Usage limit exceeded for this plan."}}"#;
+        let json =
+            r#"{"error": {"code": "quota", "message": "Usage limit exceeded for this plan."}}"#;
         let err = parse_news_response(json, "X").unwrap_err().to_string();
         assert!(err.contains("Rate limited"), "got: {}", err);
     }

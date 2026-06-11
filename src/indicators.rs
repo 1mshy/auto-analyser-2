@@ -239,6 +239,39 @@ impl TechnicalIndicators {
         Some(cov / denom)
     }
 
+    /// Highest `high` over the last `period` bars (rolling window). `None` when
+    /// fewer than `period` bars are available or `period == 0`. Pure — the
+    /// backtester uses this to build a trailing 52-week high at each bar.
+    pub fn highest_high(prices: &[HistoricalPrice], period: usize) -> Option<f64> {
+        if period == 0 || prices.len() < period {
+            return None;
+        }
+        Some(
+            prices
+                .iter()
+                .rev()
+                .take(period)
+                .map(|p| p.high)
+                .fold(f64::NEG_INFINITY, f64::max),
+        )
+    }
+
+    /// Lowest `low` over the last `period` bars (rolling window). `None` when
+    /// fewer than `period` bars are available or `period == 0`.
+    pub fn lowest_low(prices: &[HistoricalPrice], period: usize) -> Option<f64> {
+        if period == 0 || prices.len() < period {
+            return None;
+        }
+        Some(
+            prices
+                .iter()
+                .rev()
+                .take(period)
+                .map(|p| p.low)
+                .fold(f64::INFINITY, f64::min),
+        )
+    }
+
     /// Determine if stock is oversold (RSI < 30)
     pub fn is_oversold(rsi: Option<f64>) -> bool {
         rsi.map_or(false, |r| r < 30.0)
@@ -711,5 +744,79 @@ mod tests {
             "Close at top → K near 100, got {}",
             stoch.k_line
         );
+    }
+
+    // ---- Rolling extremes (used by the backtester for 52-week range) --------
+
+    fn ohlc(high: f64, low: f64) -> HistoricalPrice {
+        HistoricalPrice {
+            date: Utc::now(),
+            open: (high + low) / 2.0,
+            high,
+            low,
+            close: (high + low) / 2.0,
+            volume: 1000.0,
+        }
+    }
+
+    #[test]
+    fn test_highest_high_and_lowest_low_window() {
+        // Highs: 10, 12, 11, 15, 13 ; Lows: 8, 9, 7, 10, 9
+        let prices = vec![
+            ohlc(10.0, 8.0),
+            ohlc(12.0, 9.0),
+            ohlc(11.0, 7.0),
+            ohlc(15.0, 10.0),
+            ohlc(13.0, 9.0),
+        ];
+        // Last 3 bars: highs 11,15,13 → 15 ; lows 7,10,9 → 7
+        assert_eq!(TechnicalIndicators::highest_high(&prices, 3), Some(15.0));
+        assert_eq!(TechnicalIndicators::lowest_low(&prices, 3), Some(7.0));
+        // Whole series.
+        assert_eq!(TechnicalIndicators::highest_high(&prices, 5), Some(15.0));
+        assert_eq!(TechnicalIndicators::lowest_low(&prices, 5), Some(7.0));
+    }
+
+    #[test]
+    fn test_rolling_extremes_insufficient_and_zero_period() {
+        let prices = vec![ohlc(10.0, 8.0), ohlc(12.0, 9.0)];
+        assert!(TechnicalIndicators::highest_high(&prices, 3).is_none());
+        assert!(TechnicalIndicators::lowest_low(&prices, 3).is_none());
+        assert!(TechnicalIndicators::highest_high(&prices, 0).is_none());
+        assert!(TechnicalIndicators::lowest_low(&prices, 0).is_none());
+    }
+
+    #[test]
+    fn test_rolling_extremes_match_naive_at_each_index() {
+        // Build a varied series and verify the rolling helper equals a
+        // from-scratch max/min over the same trailing slice at every index.
+        let highs = [5.0, 9.0, 3.0, 12.0, 7.0, 1.0, 8.0, 15.0, 6.0, 11.0];
+        let lows = [4.0, 2.0, 1.0, 10.0, 5.0, 0.5, 6.0, 9.0, 3.0, 8.0];
+        let prices: Vec<HistoricalPrice> = highs
+            .iter()
+            .zip(lows.iter())
+            .map(|(&h, &l)| ohlc(h, l))
+            .collect();
+
+        let period = 4;
+        for i in 0..prices.len() {
+            let slice = &prices[..=i];
+            let rolling_high = TechnicalIndicators::highest_high(slice, period);
+            let rolling_low = TechnicalIndicators::lowest_low(slice, period);
+            if slice.len() < period {
+                assert!(rolling_high.is_none() && rolling_low.is_none());
+                continue;
+            }
+            let naive_high = slice[slice.len() - period..]
+                .iter()
+                .map(|p| p.high)
+                .fold(f64::NEG_INFINITY, f64::max);
+            let naive_low = slice[slice.len() - period..]
+                .iter()
+                .map(|p| p.low)
+                .fold(f64::INFINITY, f64::min);
+            assert_eq!(rolling_high, Some(naive_high), "high mismatch at {}", i);
+            assert_eq!(rolling_low, Some(naive_low), "low mismatch at {}", i);
+        }
     }
 }

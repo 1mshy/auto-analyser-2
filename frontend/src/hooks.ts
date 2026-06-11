@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from './api';
-import { AnalysisProgress } from './types';
+import { AnalysisProgress, StockAnalysis, WsMessage } from './types';
 
 /**
  * Hook that triggers a callback shortly after US market open (9:30 ET)
@@ -72,12 +72,21 @@ export const useMarketOpenRefresh = (onRefresh: () => void) => {
   return { getTimeUntilNextMarketOpen };
 };
 
-export const useWebSocket = () => {
+export interface UseWebSocketOptions {
+  onStockUpdate?: (stock: StockAnalysis) => void;
+  onResync?: () => void;
+}
+
+export const useWebSocket = (options?: UseWebSocketOptions) => {
   const [progress, setProgress] = useState<AnalysisProgress | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const closedRef = useRef(false);
+  const onStockUpdateRef = useRef(options?.onStockUpdate);
+  const onResyncRef = useRef(options?.onResync);
+  onStockUpdateRef.current = options?.onStockUpdate;
+  onResyncRef.current = options?.onResync;
 
   const connect = useCallback(() => {
     try {
@@ -92,14 +101,31 @@ export const useWebSocket = () => {
 
       ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
-          if (
-            data &&
-            typeof data === 'object' &&
-            typeof data.total_stocks === 'number' &&
-            typeof data.analyzed === 'number'
-          ) {
-            setProgress(data as AnalysisProgress);
+          const raw: unknown = JSON.parse(event.data);
+          if (!raw || typeof raw !== 'object') return;
+          const msg = raw as {
+            type?: WsMessage['type'];
+            total_stocks?: unknown;
+            analyzed?: unknown;
+          };
+          switch (msg.type) {
+            case 'progress':
+              setProgress(raw as AnalysisProgress);
+              break;
+            case 'stock_update':
+              onStockUpdateRef.current?.(raw as StockAnalysis);
+              break;
+            case 'resync':
+              onResyncRef.current?.();
+              break;
+            default:
+              // Untagged frames come from pre-envelope backend binaries.
+              if (
+                typeof msg.total_stocks === 'number' &&
+                typeof msg.analyzed === 'number'
+              ) {
+                setProgress(raw as AnalysisProgress);
+              }
           }
         } catch (err) {
           console.error('Failed to parse WebSocket message:', err);

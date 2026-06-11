@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, MarketIndexQuote, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus, PositionView, CreatePositionInput, UpdatePositionInput, NewsCardPayload, DailyNewsSymbol } from './types';
+import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, MarketIndexQuote, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus, PositionView, CreatePositionInput, UpdatePositionInput, NewsCardPayload, DailyNewsSymbol, CreateBacktestInput, BacktestRun, BacktestSummary } from './types';
 
 const API_BASE_URL = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
 
@@ -445,6 +445,24 @@ export const api = {
 
   removeDailyNewsSymbol: async (symbol: string): Promise<void> => {
     await axios.delete(`${API_BASE_URL}/api/news/daily-symbols/${symbol}`);
+  },
+
+  // Backtesting / strategy performance
+  backtest: {
+    run: async (input: CreateBacktestInput): Promise<BacktestRun> => {
+      const r = await axios.post(`${API_BASE_URL}/api/backtest`, input);
+      if (r.data.success) return r.data.run as BacktestRun;
+      throw new Error(r.data.error || 'Backtest failed');
+    },
+    list: async (): Promise<BacktestSummary[]> => {
+      const r = await axios.get(`${API_BASE_URL}/api/backtests`);
+      return (r.data.backtests || []) as BacktestSummary[];
+    },
+    get: async (id: string): Promise<BacktestRun> => {
+      const r = await axios.get(`${API_BASE_URL}/api/backtest/${id}`);
+      if (r.data.success) return r.data.run as BacktestRun;
+      throw new Error(r.data.error || 'Backtest not found');
+    },
   },
 };
 

@@ -7,6 +7,8 @@ export interface SurfaceProps extends BoxProps {
   variant?: SurfaceVariant;
   interactive?: boolean;
   accent?: "up" | "down" | "warn" | "info" | "accent";
+  /** Makes the surface itself keyboard-focusable (tabIndex=0 + role="button"); do NOT set on Link-wrapped Surfaces — the link already owns focus. */
+  focusable?: boolean;
 }
 
 /**
@@ -15,7 +17,7 @@ export interface SurfaceProps extends BoxProps {
  */
 export const Surface = React.forwardRef<HTMLDivElement, SurfaceProps>(
   function Surface(
-    { variant = "flat", interactive, accent, children, ...rest },
+    { variant = "flat", interactive, accent, focusable, children, ...rest },
     ref
   ) {
     const bgMap: Record<SurfaceVariant, string> = {
@@ -44,15 +46,27 @@ export const Surface = React.forwardRef<HTMLDivElement, SurfaceProps>(
         boxShadow={variant === "raised" ? "elevation.raised" : undefined}
         borderLeftWidth={accentBorder ? "3px" : undefined}
         borderLeftColor={accentBorder}
-        transition="border-color 120ms ease, background 120ms ease, box-shadow 120ms ease, transform 120ms ease"
+        transitionProperty="border-color, background, box-shadow, transform"
+        transitionDuration="fast"
+        transitionTimingFunction="ease"
         {...(interactive && {
           cursor: "pointer",
-          _hover: {
-            bg: variant === "inset" ? "bg.emphasized" : "bg.muted",
-            borderColor: "border.emphasis",
+          css: {
+            "@media (hover: hover)": {
+              "&:hover": {
+                bg: variant === "inset" ? "bg.emphasized" : "bg.muted",
+                borderColor: "border.emphasis",
+              },
+            },
+          },
+          _focusVisible: {
+            outline: "2px solid",
+            outlineColor: "accent.solid",
+            outlineOffset: "2px",
           },
           _active: { transform: "translateY(1px)" },
         })}
+        {...(focusable && { tabIndex: 0, role: "button" })}
         {...rest}
       >
         {children}

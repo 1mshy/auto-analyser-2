@@ -1,21 +1,27 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Box,
   Container,
   Text,
   Flex,
-  Badge,
-  Spinner,
   HStack,
   VStack,
   SimpleGrid,
   Button,
 } from '@chakra-ui/react';
 import { PieChart, BarChart3, ArrowUpRight } from 'lucide-react';
-import { api } from '../api';
 import { SectorPerformance, MarketIndexQuote } from '../types';
-import { Surface, Num, SignalBadge, PageHeader, EmptyState } from '../components/ui/primitives';
+import { useSectorPerformance, useMarketIndexes } from '../queries';
+import {
+  Surface,
+  Num,
+  SignalBadge,
+  PageHeader,
+  EmptyState,
+  ErrorState,
+  SkeletonCard,
+} from '../components/ui/primitives';
 
 const IndexFundCard: React.FC<{ index: MarketIndexQuote }> = ({ index }) => {
   const cp = index.change_percent;
@@ -99,6 +105,29 @@ const IndexFundCard: React.FC<{ index: MarketIndexQuote }> = ({ index }) => {
   );
 };
 
+const PerformerChip: React.FC<{
+  symbol: string;
+  changePercent: number | null | undefined;
+  tone: 'up' | 'down';
+}> = ({ symbol, changePercent, tone }) => (
+  <Link to={`/stocks/${encodeURIComponent(symbol)}`}>
+    <HStack gap={1.5} minH="6" _hover={{ opacity: 0.8 }}>
+      <SignalBadge tone={tone} size="sm" className="num" data-num="">
+        {symbol}
+      </SignalBadge>
+      <Num
+        value={changePercent}
+        intent="auto"
+        sign="always"
+        suffix="%"
+        decimals={1}
+        fontSize="xs"
+        fontWeight="medium"
+      />
+    </HStack>
+  </Link>
+);
+
 const SectorCard: React.FC<{ sector: SectorPerformance }> = ({ sector }) => {
   const isPositive = sector.avg_change_percent >= 0;
   const accent: 'up' | 'down' = isPositive ? 'up' : 'down';
@@ -111,7 +140,9 @@ const SectorCard: React.FC<{ sector: SectorPerformance }> = ({ sector }) => {
           <Text fontSize="md" fontWeight="semibold" color="fg.default" letterSpacing="tight">
             {sector.sector || 'Unknown'}
           </Text>
-          <Badge colorPalette="gray" size="sm" variant="subtle">{sector.stock_count} stocks</Badge>
+          <SignalBadge tone="neutral" variant="subtle" size="sm">
+            {sector.stock_count} stocks
+          </SignalBadge>
         </Flex>
 
         <SimpleGrid columns={2} gap={4} w="100%">
@@ -141,13 +172,14 @@ const SectorCard: React.FC<{ sector: SectorPerformance }> = ({ sector }) => {
         {sector.top_performers.length > 0 && (
           <Box w="100%">
             <Text color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider" mb={1}>Top Performers</Text>
-            <HStack gap={2} wrap="wrap">
+            <HStack gap={3} wrap="wrap">
               {sector.top_performers.slice(0, 3).map(stock => (
-                <Link key={stock.symbol} to={`/stocks/${encodeURIComponent(stock.symbol)}`}>
-                  <SignalBadge tone="up" size="sm" className="num" data-num="" _hover={{ opacity: 0.8 }}>
-                    {stock.symbol} {stock.price_change_percent != null ? `+${stock.price_change_percent.toFixed(1)}%` : ''}
-                  </SignalBadge>
-                </Link>
+                <PerformerChip
+                  key={stock.symbol}
+                  symbol={stock.symbol}
+                  changePercent={stock.price_change_percent}
+                  tone="up"
+                />
               ))}
             </HStack>
           </Box>
@@ -156,13 +188,14 @@ const SectorCard: React.FC<{ sector: SectorPerformance }> = ({ sector }) => {
         {sector.bottom_performers.length > 0 && (
           <Box w="100%">
             <Text color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wider" mb={1}>Bottom Performers</Text>
-            <HStack gap={2} wrap="wrap">
+            <HStack gap={3} wrap="wrap">
               {sector.bottom_performers.slice(0, 3).map(stock => (
-                <Link key={stock.symbol} to={`/stocks/${encodeURIComponent(stock.symbol)}`}>
-                  <SignalBadge tone="down" size="sm" className="num" data-num="" _hover={{ opacity: 0.8 }}>
-                    {stock.symbol} {stock.price_change_percent != null ? `${stock.price_change_percent.toFixed(1)}%` : ''}
-                  </SignalBadge>
-                </Link>
+                <PerformerChip
+                  key={stock.symbol}
+                  symbol={stock.symbol}
+                  changePercent={stock.price_change_percent}
+                  tone="down"
+                />
               ))}
             </HStack>
           </Box>
@@ -173,41 +206,12 @@ const SectorCard: React.FC<{ sector: SectorPerformance }> = ({ sector }) => {
 };
 
 export const SectorPage: React.FC = () => {
-  const [sectors, setSectors] = useState<SectorPerformance[]>([]);
-  const [indexes, setIndexes] = useState<MarketIndexQuote[]>([]);
-  const [indexesLoading, setIndexesLoading] = useState(true);
-  const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'performance' | 'rsi' | 'count'>('performance');
+  const sectorsQuery = useSectorPerformance();
+  const indexesQuery = useMarketIndexes();
 
-  useEffect(() => {
-    const fetchSectors = async () => {
-      try {
-        setLoading(true);
-        const data = await api.getSectorPerformance();
-        setSectors(data);
-      } catch (err) {
-        console.error('Failed to fetch sector performance:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchSectors();
-  }, []);
-
-  useEffect(() => {
-    const fetchIndexes = async () => {
-      try {
-        setIndexesLoading(true);
-        const data = await api.getMarketIndexes();
-        setIndexes(data);
-      } catch (err) {
-        console.error('Failed to fetch market indexes:', err);
-      } finally {
-        setIndexesLoading(false);
-      }
-    };
-    fetchIndexes();
-  }, []);
+  const sectors = sectorsQuery.data ?? [];
+  const indexes = indexesQuery.data ?? [];
 
   const sortedSectors = [...sectors].sort((a, b) => {
     switch (sortBy) {
@@ -223,17 +227,24 @@ export const SectorPage: React.FC = () => {
       <PageHeader
         eyebrow="Market Breadth"
         title="Sector Performance"
-        subtitle={`${sectors.length} sectors analyzed`}
+        subtitle={sectorsQuery.isLoading ? 'Loading sectors…' : `${sectors.length} sectors analyzed`}
         icon={<PieChart size={22} />}
         actions={
-          <HStack gap={2}>
+          <HStack gap={2} wrap="wrap">
             <Text color="fg.muted" fontSize="sm">Sort:</Text>
             {(['performance', 'rsi', 'count'] as const).map(option => (
               <Button
                 key={option}
                 size="xs"
-                variant={sortBy === option ? 'solid' : 'outline'}
-                colorPalette={sortBy === option ? 'blue' : 'gray'}
+                variant="outline"
+                minH={{ base: '11', md: '6' }}
+                bg={sortBy === option ? 'accent.muted' : 'transparent'}
+                color={sortBy === option ? 'accent.fg' : 'fg.muted'}
+                borderColor={sortBy === option ? 'accent.solid' : 'border.default'}
+                _hover={{
+                  bg: sortBy === option ? 'accent.muted' : 'bg.muted',
+                  color: sortBy === option ? 'accent.fg' : 'fg.default',
+                }}
                 onClick={() => setSortBy(option)}
               >
                 {option === 'performance' ? 'Performance' : option === 'rsi' ? 'RSI' : 'Stock Count'}
@@ -253,12 +264,25 @@ export const SectorPage: React.FC = () => {
             Live values from Yahoo Finance
           </Text>
         </Flex>
-        {indexesLoading ? (
-          <Flex justify="center" py={6}>
-            <Spinner size="md" color="accent.solid" />
-          </Flex>
+        {indexesQuery.isLoading ? (
+          <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} gap={3}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonCard key={i} lines={2} />
+            ))}
+          </SimpleGrid>
+        ) : indexesQuery.isError ? (
+          <ErrorState
+            py={6}
+            title="Couldn't load index funds"
+            description={indexesQuery.error.message}
+            onRetry={() => indexesQuery.refetch()}
+          />
         ) : indexes.length === 0 ? (
-          <Text color="fg.muted" fontSize="sm">No index data available.</Text>
+          <EmptyState
+            icon={<BarChart3 size={32} />}
+            title="No index data available"
+            description="Index fund quotes will appear once fetched from Yahoo Finance."
+          />
         ) : (
           <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} gap={3}>
             {indexes.map(idx => (
@@ -268,10 +292,18 @@ export const SectorPage: React.FC = () => {
         )}
       </Box>
 
-      {loading ? (
-        <Flex justify="center" py={12}>
-          <Spinner size="xl" color="accent.solid" />
-        </Flex>
+      {sectorsQuery.isLoading ? (
+        <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} gap={4}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} lines={4} />
+          ))}
+        </SimpleGrid>
+      ) : sectorsQuery.isError ? (
+        <ErrorState
+          title="Couldn't load sector performance"
+          description={sectorsQuery.error.message}
+          onRetry={() => sectorsQuery.refetch()}
+        />
       ) : sectors.length === 0 ? (
         <EmptyState
           icon={<PieChart size={44} />}

@@ -1,12 +1,14 @@
 mod analysis;
 mod api;
 mod async_fetcher;
+mod backtest;
 mod cache;
 mod config;
 mod db;
 mod indexes;
 mod indicators;
 mod marketaux;
+mod metrics;
 mod models;
 mod nasdaq;
 mod notifications;
@@ -101,6 +103,10 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("📰 Marketaux news client disabled (set MARKETAUX_API_KEY to enable)");
     }
 
+    // Broadcast channel pushing each freshly saved analysis to WS clients.
+    // The receiver half is created per-connection via `subscribe()`.
+    let (stock_tx, _) = tokio::sync::broadcast::channel::<models::StockAnalysis>(512);
+
     // Create analysis engine
     let analysis_engine = AnalysisEngine::new(
         db.clone(),
@@ -127,7 +133,8 @@ async fn main() -> anyhow::Result<()> {
             None
         },
         config.news_summary_min_articles,
-    );
+    )
+    .with_stock_broadcast(stock_tx.clone());
     let progress = analysis_engine.get_progress();
     tracing::info!(
         "Yahoo Finance: concurrency={}, delay={}ms",
@@ -171,6 +178,7 @@ async fn main() -> anyhow::Result<()> {
         db: db.clone(),
         cache: cache.clone(),
         progress,
+        stock_tx,
         yahoo_client,
         openrouter_client,
         nasdaq_client,

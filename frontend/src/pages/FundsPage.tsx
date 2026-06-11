@@ -1,20 +1,20 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
     Box,
     Container,
     Text,
     Flex,
-    Spinner,
     HStack,
     VStack,
     Button,
     SimpleGrid,
 } from '@chakra-ui/react';
 import { TrendingUp, TrendingDown, BarChart3, RefreshCw } from 'lucide-react';
-import { api } from '../api';
-import { IndexInfo, IndexHeatmapData, StockHeatmapItem, HeatmapPeriod, HEATMAP_PERIODS } from '../types';
-import { Surface, Num, SignalBadge, PageHeader, StatBlock, EmptyState } from '../components/ui/primitives';
+import { IndexHeatmapData, StockHeatmapItem, HeatmapPeriod, HEATMAP_PERIODS } from '../types';
+import { Surface, Num, SignalBadge, PageHeader, StatBlock, EmptyState, ErrorState, Skeleton } from '../components/ui/primitives';
+import { useIndexes, useIndexHeatmap } from '../queries';
+import { fmtPct } from '../format';
 
 // ============================================================================
 // Heatmap Component
@@ -63,7 +63,7 @@ const HeatmapCell: React.FC<HeatmapCellProps> = ({ stock, maxMarketCap }) => {
                 transition="all 0.15s"
                 _hover={{ transform: 'scale(1.04)', zIndex: 10, outline: '1px solid', outlineColor: 'fg.default' }}
                 position="relative"
-                title={`${stock.symbol}: ${stock.change_percent >= 0 ? '+' : ''}${stock.change_percent.toFixed(2)}% | Contribution: ${stock.contribution >= 0 ? '+' : ''}${stock.contribution.toFixed(3)}%`}
+                title={`${stock.symbol}: ${fmtPct(stock.change_percent, 2, { sign: true })} | Contribution: ${fmtPct(stock.contribution, 3, { sign: true })}`}
             >
                 <Text
                     fontWeight="semibold"
@@ -178,49 +178,22 @@ const ContributorsList: React.FC<ContributorsListProps> = ({ stocks, type }) => 
 // ============================================================================
 
 export const FundsPage: React.FC = () => {
-    const [indexes, setIndexes] = useState<IndexInfo[]>([]);
     const [selectedIndex, setSelectedIndex] = useState<string>('sp500');
     const [selectedPeriod, setSelectedPeriod] = useState<HeatmapPeriod>('1d');
-    const [heatmapData, setHeatmapData] = useState<IndexHeatmapData | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
 
-    // Fetch available indexes
-    useEffect(() => {
-        const fetchIndexes = async () => {
-            try {
-                const data = await api.getIndexes();
-                setIndexes(data);
-            } catch (err) {
-                console.error('Failed to fetch indexes:', err);
-            }
-        };
-        fetchIndexes();
-    }, []);
+    const { data: indexes = [] } = useIndexes();
+    const heatmapQuery = useIndexHeatmap(selectedIndex, selectedPeriod);
 
-    // Fetch heatmap data when index or period changes
-    const fetchHeatmapData = useCallback(async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const response = await api.getIndexHeatmap(selectedIndex, selectedPeriod);
-            if (response.success && response.heatmap) {
-                setHeatmapData(response.heatmap);
-            } else {
-                setError(response.error || 'Failed to load heatmap data');
-                setHeatmapData(null);
-            }
-        } catch (err) {
-            setError('Failed to fetch heatmap data');
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    }, [selectedIndex, selectedPeriod]);
-
-    useEffect(() => {
-        fetchHeatmapData();
-    }, [fetchHeatmapData]);
+    const heatmapData: IndexHeatmapData | null =
+        heatmapQuery.data?.success && heatmapQuery.data.heatmap
+            ? heatmapQuery.data.heatmap
+            : null;
+    const loading = heatmapQuery.isLoading || heatmapQuery.isFetching;
+    const error = heatmapQuery.isError
+        ? 'Failed to fetch heatmap data'
+        : heatmapQuery.data && !heatmapData
+            ? heatmapQuery.data.error || 'Failed to load heatmap data'
+            : null;
 
     const currentIndex = indexes.find(i => i.id === selectedIndex);
 
@@ -240,8 +213,15 @@ export const FundsPage: React.FC = () => {
                             <Button
                                 key={index.id}
                                 size="sm"
-                                variant={selectedIndex === index.id ? 'solid' : 'outline'}
-                                colorPalette={selectedIndex === index.id ? 'accent' : 'gray'}
+                                variant="outline"
+                                minH={{ base: '11', md: '8' }}
+                                bg={selectedIndex === index.id ? 'accent.muted' : 'transparent'}
+                                color={selectedIndex === index.id ? 'accent.fg' : 'fg.muted'}
+                                borderColor={selectedIndex === index.id ? 'accent.solid' : 'border.default'}
+                                _hover={{
+                                    bg: selectedIndex === index.id ? 'accent.muted' : 'bg.muted',
+                                    color: selectedIndex === index.id ? 'accent.fg' : 'fg.default',
+                                }}
                                 onClick={() => setSelectedIndex(index.id)}
                             >
                                 {index.name}
@@ -255,8 +235,14 @@ export const FundsPage: React.FC = () => {
                             <Button
                                 key={period.value}
                                 size="xs"
-                                variant={selectedPeriod === period.value ? 'subtle' : 'ghost'}
-                                colorPalette={selectedPeriod === period.value ? 'accent' : 'gray'}
+                                variant="ghost"
+                                minH={{ base: '11', md: '6' }}
+                                bg={selectedPeriod === period.value ? 'accent.muted' : 'transparent'}
+                                color={selectedPeriod === period.value ? 'accent.fg' : 'fg.muted'}
+                                _hover={{
+                                    bg: selectedPeriod === period.value ? 'accent.muted' : 'bg.muted',
+                                    color: selectedPeriod === period.value ? 'accent.fg' : 'fg.default',
+                                }}
                                 onClick={() => setSelectedPeriod(period.value)}
                             >
                                 {period.label}
@@ -266,8 +252,11 @@ export const FundsPage: React.FC = () => {
                         <Button
                             size="xs"
                             variant="ghost"
-                            colorPalette="gray"
-                            onClick={fetchHeatmapData}
+                            minH={{ base: '11', md: '6' }}
+                            color="fg.muted"
+                            _hover={{ bg: 'bg.muted', color: 'fg.default' }}
+                            aria-label="Refresh heatmap"
+                            onClick={() => heatmapQuery.refetch()}
                             disabled={loading}
                         >
                             <RefreshCw size={14} />
@@ -316,13 +305,17 @@ export const FundsPage: React.FC = () => {
                     )}
                 </Flex>
                 {loading ? (
-                    <Flex justify="center" py={20}>
-                        <Spinner size="xl" color="accent.solid" />
+                    <Flex flexWrap="wrap" gap={1} justifyContent="center" p={4}>
+                        {Array.from({ length: 24 }).map((_, i) => (
+                            <Skeleton key={i} w="20" h="20" borderRadius="sm" />
+                        ))}
                     </Flex>
                 ) : error ? (
-                    <Box textAlign="center" py={10}>
-                        <Text color="signal.down.fg">{error}</Text>
-                    </Box>
+                    <ErrorState
+                        title="Couldn’t load heatmap"
+                        description={error}
+                        onRetry={() => heatmapQuery.refetch()}
+                    />
                 ) : heatmapData ? (
                     <Heatmap data={heatmapData} />
                 ) : null}

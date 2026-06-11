@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Box,
@@ -7,29 +7,36 @@ import {
   Text,
   SimpleGrid,
   Flex,
-  Badge,
-  Spinner,
   HStack,
   VStack,
   Button,
 } from '@chakra-ui/react';
 import { Target, TrendingUp, Zap, RefreshCw } from 'lucide-react';
-import { api } from '../api';
 import MarkdownContent from '../components/MarkdownContent';
-import { StockAnalysis, StockFilter, AIAnalysisResponse, getMarketCapTier, getMarketCapTierColor, getMarketCapTierLabel } from '../types';
+import { StockAnalysis, StockFilter } from '../types';
 import { useSettings } from '../contexts/SettingsContext';
 import { WatchButton } from '../components/alerts/WatchButton';
-import { Surface, Num, SignalBadge, PageHeader, EmptyState } from '../components/ui/primitives';
+import { Surface, Num, SignalBadge, TierBadge, PageHeader, EmptyState, ErrorState, SkeletonCard, SkeletonText } from '../components/ui/primitives';
+import { useFilterStocks, useAIStatus, useAIAnalysis } from '../queries';
 
 // AI Analysis card with auto-trigger
 const OpportunityCard: React.FC<{
   stock: StockAnalysis;
-  aiAnalysis: AIAnalysisResponse | null;
-  aiLoading: boolean;
-  onRequestAnalysis: () => void;
-}> = ({ stock, aiAnalysis, aiLoading, onRequestAnalysis }) => {
-  const tier = getMarketCapTier(stock.market_cap);
-  const tierColor = getMarketCapTierColor(tier);
+  /** Delay before auto-requesting AI analysis; null disables auto-trigger. */
+  autoAnalyzeDelayMs: number | null;
+}> = ({ stock, autoAnalyzeDelayMs }) => {
+  const [requested, setRequested] = useState(false);
+
+  // Staggered auto-trigger for top-priority stocks (avoids rate limiting).
+  useEffect(() => {
+    if (autoAnalyzeDelayMs == null) return;
+    const timer = setTimeout(() => setRequested(true), autoAnalyzeDelayMs);
+    return () => clearTimeout(timer);
+  }, [autoAnalyzeDelayMs]);
+
+  const aiQuery = useAIAnalysis(stock.symbol, requested);
+  const aiAnalysis = aiQuery.data ?? null;
+  const aiLoading = requested && aiQuery.isLoading;
 
   const getPriorityScore = () => {
     let score = 0;
@@ -54,7 +61,7 @@ const OpportunityCard: React.FC<{
       <Flex justify="space-between" align="start" mb={3}>
         <VStack align="start" gap={1}>
           <HStack>
-            <Badge colorPalette={tierColor} variant="subtle">{getMarketCapTierLabel(tier)}</Badge>
+            <TierBadge marketCap={stock.market_cap} variant="subtle" />
             <SignalBadge tone={priorityTone}>Priority: {priority}</SignalBadge>
           </HStack>
           <HStack>
@@ -85,7 +92,7 @@ const OpportunityCard: React.FC<{
           className="num"
           data-num=""
         >
-          RSI: {stock.rsi != null && typeof stock.rsi === 'number' ? stock.rsi.toFixed(1) : '-'}
+          RSI: <Num as="span" value={typeof stock.rsi === 'number' ? stock.rsi : null} decimals={1} color="inherit" fontSize="inherit" />
         </SignalBadge>
         {stock.macd && (
           <SignalBadge tone={stock.macd.histogram > 0 ? 'info' : 'warn'}>
@@ -106,17 +113,24 @@ const OpportunityCard: React.FC<{
             <Text fontWeight="semibold" color="fg.default" fontSize="sm">AI Analysis</Text>
           </HStack>
           {!aiAnalysis && !aiLoading && (
-            <Button size="xs" onClick={onRequestAnalysis} colorPalette="blue" variant="subtle">
+            <Button
+              size="xs"
+              variant="subtle"
+              bg="accent.muted"
+              color="accent.fg"
+              _hover={{ bg: 'accent.subtle' }}
+              onClick={() => (requested ? aiQuery.refetch() : setRequested(true))}
+            >
               <RefreshCw size={12} /> Analyze
             </Button>
           )}
         </HStack>
 
         {aiLoading ? (
-          <Flex justify="center" py={3}>
-            <Spinner size="sm" color="accent.solid" />
-            <Text ml={2} color="fg.muted" fontSize="sm">Analyzing...</Text>
-          </Flex>
+          <Box py={1}>
+            <SkeletonText lines={2} />
+            <Text mt={2} color="fg.muted" fontSize="sm">Analyzing…</Text>
+          </Box>
         ) : aiAnalysis?.success ? (
           <Box>
             <Box maxH="6rem" overflow="hidden">
@@ -128,6 +142,8 @@ const OpportunityCard: React.FC<{
           </Box>
         ) : aiAnalysis ? (
           <Text color="signal.down.fg" fontSize="sm">{aiAnalysis.error}</Text>
+        ) : aiQuery.isError ? (
+          <Text color="signal.down.fg" fontSize="sm">Failed to load AI analysis</Text>
         ) : (
           <Text color="fg.subtle" fontSize="sm" fontStyle="italic">
             Click "Analyze" to get AI insights
@@ -150,106 +166,68 @@ const OpportunityCard: React.FC<{
 
 export const OpportunitiesPage: React.FC = () => {
   const { settings } = useSettings();
-  const [oversoldStocks, setOversoldStocks] = useState<StockAnalysis[]>([]);
-  const [macdBullish, setMacdBullish] = useState<StockAnalysis[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [aiEnabled, setAiEnabled] = useState(false);
-  const [aiAnalyses, setAiAnalyses] = useState<Record<string, AIAnalysisResponse>>({});
-  const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<'oversold' | 'macd'>('oversold');
 
-  const fetchOpportunities = useCallback(async () => {
-    try {
-      setLoading(true);
+  // Oversold stocks (RSI < 30) with global market cap + price change filters
+  // applied server-side. Previously we over-fetched and filtered client-side,
+  // which polluted the feed with runaway gainers.
+  const oversoldFilter = useMemo<StockFilter>(() => ({
+    max_rsi: 30,
+    min_market_cap: settings.minMarketCap ?? undefined,
+    max_abs_price_change_percent: settings.maxPriceChangePercent ?? undefined,
+    sort_by: 'market_cap',
+    sort_order: 'desc',
+    page: 1,
+    page_size: 50,
+  }), [settings.minMarketCap, settings.maxPriceChangePercent]);
 
-      // Fetch oversold stocks (RSI < 30) with global market cap + price
-      // change filters applied server-side. Previously we over-fetched and
-      // filtered client-side, which polluted the feed with runaway gainers.
-      const oversoldFilter: StockFilter = {
-        max_rsi: 30,
-        min_market_cap: settings.minMarketCap ?? undefined,
-        max_abs_price_change_percent: settings.maxPriceChangePercent ?? undefined,
-        sort_by: 'market_cap',
-        sort_order: 'desc',
-        page: 1,
-        page_size: 50,
-      };
-      const oversoldResponse = await api.filterStocks(oversoldFilter);
-      setOversoldStocks(oversoldResponse.stocks);
+  // All stocks, filtered client-side for MACD bullish setups.
+  const allFilter = useMemo<StockFilter>(() => ({
+    min_market_cap: settings.minMarketCap ?? undefined,
+    max_abs_price_change_percent: settings.maxPriceChangePercent ?? undefined,
+    sort_by: 'market_cap',
+    sort_order: 'desc',
+    page: 1,
+    page_size: 200,
+  }), [settings.minMarketCap, settings.maxPriceChangePercent]);
 
-      // Fetch all stocks and filter for MACD bullish with global market cap filter
-      const allFilter: StockFilter = {
-        min_market_cap: settings.minMarketCap ?? undefined,
-        max_abs_price_change_percent: settings.maxPriceChangePercent ?? undefined,
-        sort_by: 'market_cap',
-        sort_order: 'desc',
-        page: 1,
-        page_size: 200,
-      };
-      const allResponse = await api.filterStocks(allFilter);
-      const bullish = allResponse.stocks.filter(
-        s => s.macd && s.macd.histogram > 0 && s.rsi && s.rsi < 50
-      );
-      setMacdBullish(bullish.slice(0, 50));
+  const oversoldQuery = useFilterStocks(oversoldFilter);
+  const allQuery = useFilterStocks(allFilter);
+  const { data: aiStatus } = useAIStatus();
+  const aiEnabled = aiStatus?.enabled ?? false;
 
-    } catch (err) {
-      console.error('Failed to fetch opportunities:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [settings]);
+  const oversoldStocks = useMemo(
+    () => oversoldQuery.data?.stocks ?? [],
+    [oversoldQuery.data],
+  );
+  const macdBullish = useMemo(
+    () =>
+      (allQuery.data?.stocks ?? [])
+        .filter(s => s.macd && s.macd.histogram > 0 && s.rsi && s.rsi < 50)
+        .slice(0, 50),
+    [allQuery.data],
+  );
 
-  const checkAIStatus = useCallback(async () => {
-    try {
-      const status = await api.getAIStatus();
-      setAiEnabled(status.enabled);
-    } catch (err) {
-      console.error('Failed to check AI status:', err);
-    }
-  }, []);
+  const loading = oversoldQuery.isLoading || allQuery.isLoading;
+  const isError = activeTab === 'oversold' ? oversoldQuery.isError : allQuery.isError;
 
-  const fetchAIAnalysis = useCallback(async (symbol: string) => {
-    if (aiAnalyses[symbol] || aiLoading[symbol]) return;
-
-    setAiLoading(prev => ({ ...prev, [symbol]: true }));
-    try {
-      const analysis = await api.getAIAnalysis(symbol);
-      setAiAnalyses(prev => ({ ...prev, [symbol]: analysis }));
-    } catch (err) {
-      setAiAnalyses(prev => ({ ...prev, [symbol]: { success: false, error: 'Failed to load' } }));
-    } finally {
-      setAiLoading(prev => ({ ...prev, [symbol]: false }));
-    }
-  }, [aiAnalyses, aiLoading]);
-
-  useEffect(() => {
-    fetchOpportunities();
-    checkAIStatus();
-    // Re-fetch when settings change
-  }, [fetchOpportunities, checkAIStatus, settings]);
-
-  // Auto-trigger AI analysis for top priority stocks when AI is enabled
-  useEffect(() => {
-    if (aiEnabled && oversoldStocks.length > 0) {
-      // Sort by priority (market cap + low RSI)
-      const prioritized = [...oversoldStocks].sort((a, b) => {
-        const capA = a.market_cap || 0;
-        const capB = b.market_cap || 0;
-        const rsiA = a.rsi || 50;
-        const rsiB = b.rsi || 50;
-        // Higher market cap and lower RSI = higher priority
-        return (capB - capA) + ((rsiA - rsiB) * 1_000_000_000);
-      });
-
-      // Auto-analyze top 5 priority stocks
-      prioritized.slice(0, 5).forEach((stock, idx) => {
-        if (!aiAnalyses[stock.symbol] && !aiLoading[stock.symbol]) {
-          // Stagger requests to avoid rate limiting
-          setTimeout(() => fetchAIAnalysis(stock.symbol), idx * 2000);
-        }
-      });
-    }
-  }, [aiEnabled, oversoldStocks, aiAnalyses, aiLoading, fetchAIAnalysis]);
+  // Staggered auto-analysis delays for the top-5 priority oversold stocks
+  // (higher market cap + lower RSI = higher priority).
+  const autoAnalyzeDelays = useMemo(() => {
+    const delays = new Map<string, number>();
+    if (!aiEnabled) return delays;
+    const prioritized = [...oversoldStocks].sort((a, b) => {
+      const capA = a.market_cap || 0;
+      const capB = b.market_cap || 0;
+      const rsiA = a.rsi || 50;
+      const rsiB = b.rsi || 50;
+      return (capB - capA) + ((rsiA - rsiB) * 1_000_000_000);
+    });
+    prioritized.slice(0, 5).forEach((stock, idx) => {
+      delays.set(stock.symbol, idx * 2000);
+    });
+    return delays;
+  }, [aiEnabled, oversoldStocks]);
 
   const currentStocks = activeTab === 'oversold' ? oversoldStocks : macdBullish;
 
@@ -267,8 +245,14 @@ export const OpportunitiesPage: React.FC = () => {
       <HStack gap={2} minW="max-content">
         <Button
           size="sm"
-          variant={activeTab === 'oversold' ? 'solid' : 'ghost'}
-          colorPalette={activeTab === 'oversold' ? 'green' : 'gray'}
+          variant="ghost"
+          minH={{ base: '11', md: '8' }}
+          bg={activeTab === 'oversold' ? 'signal.up.muted' : 'transparent'}
+          color={activeTab === 'oversold' ? 'signal.up.fg' : 'fg.muted'}
+          _hover={{
+            bg: activeTab === 'oversold' ? 'signal.up.muted' : 'bg.muted',
+            color: activeTab === 'oversold' ? 'signal.up.fg' : 'fg.default',
+          }}
           onClick={() => setActiveTab('oversold')}
         >
           <Target size={14} />
@@ -277,8 +261,14 @@ export const OpportunitiesPage: React.FC = () => {
         </Button>
         <Button
           size="sm"
-          variant={activeTab === 'macd' ? 'solid' : 'ghost'}
-          colorPalette={activeTab === 'macd' ? 'blue' : 'gray'}
+          variant="ghost"
+          minH={{ base: '11', md: '8' }}
+          bg={activeTab === 'macd' ? 'signal.info.muted' : 'transparent'}
+          color={activeTab === 'macd' ? 'signal.info.fg' : 'fg.muted'}
+          _hover={{
+            bg: activeTab === 'macd' ? 'signal.info.muted' : 'bg.muted',
+            color: activeTab === 'macd' ? 'signal.info.fg' : 'fg.default',
+          }}
           onClick={() => setActiveTab('macd')}
         >
           <TrendingUp size={14} />
@@ -310,9 +300,20 @@ export const OpportunitiesPage: React.FC = () => {
       )}
 
       {loading ? (
-        <Flex justify="center" align="center" minH="50vh">
-          <Spinner size="xl" color="accent.solid" />
-        </Flex>
+        <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} gap={4}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} lines={5} />
+          ))}
+        </SimpleGrid>
+      ) : isError ? (
+        <ErrorState
+          title="Couldn’t load opportunities"
+          description="The stock filter request failed. Check that the backend is reachable, then retry."
+          onRetry={() => {
+            if (oversoldQuery.isError) oversoldQuery.refetch();
+            if (allQuery.isError) allQuery.refetch();
+          }}
+        />
       ) : currentStocks.length === 0 ? (
         <EmptyState
           icon={<Target size={44} />}
@@ -329,9 +330,7 @@ export const OpportunitiesPage: React.FC = () => {
             <OpportunityCard
               key={stock.symbol}
               stock={stock}
-              aiAnalysis={aiAnalyses[stock.symbol] || null}
-              aiLoading={aiLoading[stock.symbol] || false}
-              onRequestAnalysis={() => fetchAIAnalysis(stock.symbol)}
+              autoAnalyzeDelayMs={autoAnalyzeDelays.get(stock.symbol) ?? null}
             />
           ))}
         </SimpleGrid>

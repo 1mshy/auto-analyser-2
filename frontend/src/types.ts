@@ -275,6 +275,13 @@ export interface AnalysisProgress {
   completion_percentage?: number;
 }
 
+// WebSocket wire format — mirrors the internally-tagged Rust WsMessage enum in src/models.rs.
+export type WsProgress = { type: 'progress' } & AnalysisProgress;
+// stock_update payloads are LEAN: news/earnings are always absent, technicals (when present) carries only 52w high/low.
+export type WsStockUpdate = { type: 'stock_update' } & StockAnalysis;
+export type WsResync = { type: 'resync' };
+export type WsMessage = WsProgress | WsStockUpdate | WsResync;
+
 export interface HealthStatus {
   status: string;
   database: string;
@@ -670,5 +677,143 @@ export function defaultCondition(type: ConditionType): Condition {
     case 'sector_equals': return { type, sector: 'Technology' };
     case 'drop_from_high_pct': return { type, value: 20 };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Backtesting / strategy performance (mirrors src/models.rs + src/backtest.rs)
+// ---------------------------------------------------------------------------
+
+export type ExitReason =
+  | 'stop_loss'
+  | 'take_profit'
+  | 'exit_signal'
+  | 'max_holding'
+  | 'end_of_data';
+
+/** Strategy spec — entry/exit reuse the alert `ConditionGroup` rule tree. */
+export interface Strategy {
+  entry: ConditionGroup;
+  exit: ConditionGroup;
+  stop_loss_pct?: number | null;
+  take_profit_pct?: number | null;
+  max_holding_bars?: number | null;
+  position_size_pct: number;
+  initial_capital: number;
+  commission_bps: number;
+  slippage_bps: number;
+}
+
+export interface Trade {
+  entry_date: string;
+  entry_price: number;
+  exit_date: string;
+  exit_price: number;
+  shares: number;
+  return_pct: number;
+  pnl: number;
+  bars_held: number;
+  exit_reason: ExitReason;
+}
+
+export interface EquityPoint {
+  date: string;
+  equity: number;
+}
+
+export interface BacktestMetrics {
+  total_return_pct: number;
+  cagr_pct?: number | null;
+  win_rate_pct: number;
+  avg_win_pct?: number | null;
+  avg_loss_pct?: number | null;
+  profit_factor?: number | null;
+  max_drawdown_pct: number;
+  sharpe_ratio?: number | null;
+  trade_count: number;
+  winning_trades: number;
+  losing_trades: number;
+  exposure_pct: number;
+}
+
+export interface BacktestResult {
+  symbol: string;
+  trades: Trade[];
+  equity_curve: EquityPoint[];
+  metrics: BacktestMetrics;
+  initial_capital: number;
+  final_equity: number;
+  bars: number;
+  start_date?: string | null;
+  end_date?: string | null;
+  error?: string | null;
+}
+
+export interface BacktestSummary {
+  _id?: string;
+  label: string;
+  symbols: string[];
+  ran_at: string;
+  symbol_count: number;
+  total_return_pct: number;
+  trade_count: number;
+  win_rate_pct: number;
+  max_drawdown_pct: number;
+  sharpe_ratio?: number | null;
+}
+
+export interface BacktestRun {
+  _id?: string;
+  label: string;
+  strategy: Strategy;
+  symbols: string[];
+  results: BacktestResult[];
+  summary: BacktestSummary;
+  ran_at: string;
+}
+
+export interface CreateBacktestInput {
+  symbols: string[];
+  watchlist_id?: string | null;
+  strategy: Strategy;
+  label?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  lookback_days?: number | null;
+}
+
+/**
+ * The backend serializes Mongo `_id` as BSON extended-JSON
+ * (`{ "$oid": "<hex>" }`) via serde_json — the same shape every `_id` in this
+ * app's API uses. Normalize either that object or a plain string to the hex id.
+ */
+export function extractObjectId(
+  id: string | { $oid?: string } | null | undefined,
+): string | undefined {
+  if (!id) return undefined;
+  if (typeof id === 'string') return id;
+  return id.$oid;
+}
+
+export const EXIT_REASON_LABELS: Record<ExitReason, string> = {
+  stop_loss: 'Stop loss',
+  take_profit: 'Take profit',
+  exit_signal: 'Exit signal',
+  max_holding: 'Max holding',
+  end_of_data: 'End of data',
+};
+
+/** A sensible starting strategy for the builder UI (buy oversold, sell overbought). */
+export function defaultStrategy(): Strategy {
+  return {
+    entry: { op: 'and', children: [{ op: 'leaf', condition: defaultCondition('rsi_below') }] },
+    exit: { op: 'and', children: [{ op: 'leaf', condition: defaultCondition('rsi_above') }] },
+    stop_loss_pct: null,
+    take_profit_pct: null,
+    max_holding_bars: null,
+    position_size_pct: 1.0,
+    initial_capital: 10000,
+    commission_bps: 0,
+    slippage_bps: 0,
+  };
 }
 

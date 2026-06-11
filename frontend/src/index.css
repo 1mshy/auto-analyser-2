@@ -20,18 +20,11 @@ code, pre, kbd, samp, .num, [data-num] {
   font-feature-settings: 'tnum', 'zero';
 }
 
-/* Consistent scrollbar for dark UI */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+/* Skeleton loading placeholders (consumed by ui/primitives/Skeleton) */
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #262b33;
-  border-radius: 6px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #3a414b;
+@media (prefers-reduced-motion: reduce) {
+  [data-skeleton] { animation: none !important; }
 }
