@@ -30,6 +30,8 @@ type AIStatus = {
   enabled: boolean;
   current_model?: string;
   available_models_count: number;
+  /** OpenAI-compatible endpoint in use — OpenRouter or a self-hosted server. */
+  base_url?: string;
 };
 
 type StockResult = { stock: StockAnalysis | null; cached: boolean };

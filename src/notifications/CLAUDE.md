@@ -6,11 +6,12 @@
 
 - `models.rs` — `ChannelKind`, `ChannelConfig`, rule trees (`AND`/`OR`/`NOT` + leaf conditions), `PendingNotification`, `DeliveryResult`.
 - `repo.rs` — Mongo CRUD for channels / rules / watchlists / history. Creates own indexes at startup (best-effort, non-fatal).
-- `evaluator.rs` — state-aware evaluation: cooldowns committed **after** successful delivery, `require_consecutive` hysteresis, MACD bullish/bearish cross detection (uses previous cycle's histogram), timezone-aware `quiet_hours`.
+- `rules.rs` — pure, side-effect-free condition-tree walker (`evaluate(group, ctx)`).
+- `evaluator.rs` — the stateful layer on top of `rules.rs`: cooldowns committed **after** successful delivery, `require_consecutive` hysteresis, MACD bullish/bearish cross detection (uses previous cycle's histogram), timezone-aware `quiet_hours`.
 - `dispatcher.rs` — fans out to channels. Per-channel errors do not abort the batch. Substitutes `{{symbol}}`, `{{price}}`, `{{rsi}}`, `{{change_pct}}`, `{{matched}}`, `{{52w_low/high}}`, `{{market_cap}}`, `{{sector}}`, `{{rule_name}}`. Unknown placeholders left intact (typos visible).
 - `channels/mod.rs` — `Channel` trait + `build_channel` registration point.
 - `channels/discord.rs` — Discord webhook impl.
-- `api.rs` — `/api/watchlists*`, `/api/alerts/channels*`, `/api/alerts/rules*`, `/api/alerts/history*`, `/api/alerts/status`.
+- `api.rs` — `/api/watchlists*`, `/api/positions*`, `/api/alerts/channels*`, `/api/alerts/rules*` (+`/toggle`, `/test`), `/api/alerts/history*` (+`/unread-count`, `/:id/read`), `/api/alerts/status`.
 
 ## Adding a new channel (e.g. Telegram, Email)
 

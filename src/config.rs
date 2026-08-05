@@ -15,6 +15,11 @@ pub struct Config {
     pub news_cache_ttl_secs: u64,
     pub OPENROUTER_API_KEY_STOCKS: Option<String>,
     pub openrouter_enabled: bool,
+    /// OpenAI-compatible API root used for AI analysis. Defaults to OpenRouter;
+    /// set `AI_BASE_URL` to a self-hosted server (e.g.
+    /// `http://10.150.0.30:1234/v1` for vLLM) to run analysis locally. The model
+    /// is discovered from that endpoint's `/models` list, never hardcoded.
+    pub ai_base_url: String,
     /// Marketaux API key for stock-news fetches. SCREAMING_SNAKE on the field
     /// to mirror the OpenRouter convention.
     pub MARKETAUX_API_KEY: Option<String>,
@@ -55,8 +60,24 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         dotenv::dotenv().ok();
 
-        let OPENROUTER_API_KEY_STOCKS = env::var("OPENROUTER_API_KEY_STOCKS").ok();
-        let openrouter_enabled = OPENROUTER_API_KEY_STOCKS.is_some()
+        // Trailing slashes are stripped so the client can join `/models` and
+        // `/chat/completions` without doubling up.
+        let ai_base_url = env::var("AI_BASE_URL")
+            .ok()
+            .map(|url| url.trim().trim_end_matches('/').to_string())
+            .filter(|url| !url.is_empty())
+            .unwrap_or_else(|| crate::openrouter::OPENROUTER_BASE_URL.to_string());
+
+        let OPENROUTER_API_KEY_STOCKS = env::var("AI_API_KEY")
+            .ok()
+            .or_else(|| env::var("OPENROUTER_API_KEY_STOCKS").ok())
+            .filter(|key| !key.is_empty());
+
+        // OpenRouter is unusable without a key; a self-hosted endpoint is
+        // typically keyless, so the base URL alone is enough to enable AI.
+        let ai_configured = OPENROUTER_API_KEY_STOCKS.is_some()
+            || ai_base_url != crate::openrouter::OPENROUTER_BASE_URL;
+        let openrouter_enabled = ai_configured
             && env::var("OPENROUTER_ENABLED")
                 .unwrap_or_else(|_| "true".to_string())
                 .parse()
@@ -121,6 +142,7 @@ impl Config {
                 .parse()?,
             OPENROUTER_API_KEY_STOCKS,
             openrouter_enabled,
+            ai_base_url,
             MARKETAUX_API_KEY,
             marketaux_enabled,
             news_summary_min_articles: env::var("NEWS_SUMMARY_MIN_ARTICLES")
@@ -153,6 +175,9 @@ impl Config {
             || !self.max_abs_price_change_percent.is_finite()
         {
             bail!("MAX_ABS_PRICE_CHANGE_PCT must be a finite positive number");
+        }
+        if !self.ai_base_url.starts_with("http://") && !self.ai_base_url.starts_with("https://") {
+            bail!("AI_BASE_URL must start with http:// or https://");
         }
         Ok(())
     }

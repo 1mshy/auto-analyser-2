@@ -2,18 +2,27 @@ use crate::models::{AIAnalysisResponse, NewsArticle, NewsSummary, StockAnalysis}
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use once_cell::sync::Lazy;
-use openrouter_rs::{
-    api::chat::{ChatCompletionRequest, Message},
-    types::Role,
-    OpenRouterClient as BaseOpenRouterClient,
-};
 use serde::Deserialize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
-/// API response structures for OpenRouter /api/v1/models endpoint
+/// Default OpenAI-compatible API root. Point `AI_BASE_URL` at a self-hosted
+/// server (vLLM, llama.cpp, LM Studio, ...) to run analysis locally instead.
+pub const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
+
+/// System prompt shared by the blocking and streaming analysis paths.
+const ANALYST_SYSTEM_PROMPT: &str = "You are an expert stock analyst. Provide concise, actionable analysis based on technical indicators. Be objective and mention both opportunities and risks.";
+
+/// True when `base_url` points at OpenRouter rather than a self-hosted endpoint.
+/// Gates the things that are OpenRouter-specific: the `:free` model filter, the
+/// attribution headers, and the mandatory API key.
+fn is_openrouter(base_url: &str) -> bool {
+    base_url.contains("openrouter.ai")
+}
+
+/// API response structures for the OpenAI-compatible `/models` endpoint
 #[derive(Debug, Deserialize)]
 struct ModelsResponse {
     data: Vec<ModelInfo>,
@@ -22,38 +31,76 @@ struct ModelsResponse {
 #[derive(Debug, Deserialize)]
 struct ModelInfo {
     id: String,
-    /// Context length in tokens - higher is better
+    /// Context length in tokens - higher is better. OpenRouter reports this as
+    /// `context_length`, vLLM as `max_model_len`.
     context_length: Option<u64>,
+    max_model_len: Option<u64>,
 }
 
-/// Cached list of free models fetched from OpenRouter API
-static FREE_MODELS_CACHE: Lazy<RwLock<Vec<String>>> = Lazy::new(|| RwLock::new(Vec::new()));
+impl ModelInfo {
+    fn context_window(&self) -> u64 {
+        self.context_length.or(self.max_model_len).unwrap_or(0)
+    }
+}
 
-/// Fallback models in case API fetch fails (ordered by quality)
+/// Minimal shape of an OpenAI-compatible `/chat/completions` response. Only the
+/// fields we actually read are declared, so provider-specific extras are ignored.
+#[derive(Debug, Deserialize)]
+struct ChatCompletionResponse {
+    choices: Vec<ChatChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatChoice {
+    message: ChatMessage,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatMessage {
+    content: Option<String>,
+}
+
+/// `(base URL, model ids)` — the endpoint is part of the key so a reconfigured
+/// endpoint can never be served a stale list.
+type CachedModels = Option<(String, Vec<String>)>;
+
+/// Models discovered from the configured endpoint.
+static MODELS_CACHE: Lazy<RwLock<CachedModels>> = Lazy::new(|| RwLock::new(None));
+
+/// Fallback models in case API fetch fails (ordered by quality). OpenRouter
+/// only — a self-hosted server serves whatever it was launched with, so there
+/// is nothing sensible to guess at.
 const FALLBACK_FREE_MODELS: &[&str] = &[
     "qwen/qwen3-coder:free",
     "google/gemma-2-9b-it:free",
     "meta-llama/llama-3.2-3b-instruct:free",
 ];
 
-/// Fetch free models from OpenRouter API, sorted by context length (largest first)
-async fn fetch_free_models() -> Result<Vec<String>> {
-    info!("Fetching available free models from OpenRouter API...");
+/// Fetch usable models from an OpenAI-compatible `/models` endpoint, sorted by
+/// context length (largest first)
+async fn fetch_models(base_url: &str, api_key: &str) -> Result<Vec<String>> {
+    info!("Fetching available models from {}/models ...", base_url);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build()
-        .map_err(|e| anyhow!("Failed to build OpenRouter HTTP client: {}", e))?;
-    let response = client
-        .get("https://openrouter.ai/api/v1/models")
-        .header("Content-Type", "application/json")
+        .map_err(|e| anyhow!("Failed to build AI HTTP client: {}", e))?;
+
+    let mut request = client
+        .get(format!("{}/models", base_url))
+        .header("Content-Type", "application/json");
+    if !api_key.is_empty() {
+        request = request.header("Authorization", format!("Bearer {}", api_key));
+    }
+
+    let response = request
         .send()
         .await
         .map_err(|e| anyhow!("Failed to fetch models: {}", e))?;
 
     if !response.status().is_success() {
         return Err(anyhow!(
-            "OpenRouter API returned status: {}",
+            "Model list endpoint returned status: {}",
             response.status()
         ));
     }
@@ -63,76 +110,114 @@ async fn fetch_free_models() -> Result<Vec<String>> {
         .await
         .map_err(|e| anyhow!("Failed to parse models response: {}", e))?;
 
-    // Filter for models with :free suffix and sort by context_length (descending)
-    let mut free_models: Vec<(String, u64)> = models_response
+    // Most of OpenRouter's catalogue is paid, so only the `:free` tier is usable
+    // here. A self-hosted endpoint exposes exactly what it loaded — take it all.
+    let only_free = is_openrouter(base_url);
+    let mut models: Vec<(String, u64)> = models_response
         .data
         .into_iter()
-        .filter(|m| m.id.ends_with(":free"))
-        .map(|m| (m.id, m.context_length.unwrap_or(0)))
+        .filter(|m| !only_free || m.id.ends_with(":free"))
+        .map(|m| {
+            let context = m.context_window();
+            (m.id, context)
+        })
         .collect();
 
-    // Sort by context_length descending (bigger models first)
-    free_models.sort_by(|a, b| b.1.cmp(&a.1));
+    // Sort by context length descending (bigger models first)
+    models.sort_by_key(|(_, context)| std::cmp::Reverse(*context));
 
-    let sorted_models: Vec<String> = free_models.into_iter().map(|(id, _)| id).collect();
+    let sorted_models: Vec<String> = models.into_iter().map(|(id, _)| id).collect();
 
     info!(
-        "Found {} free models from OpenRouter API (sorted by context length)",
-        sorted_models.len()
+        "Found {} usable models at {} (sorted by context length)",
+        sorted_models.len(),
+        base_url
     );
 
     Ok(sorted_models)
 }
 
-/// Get the list of free models, fetching from API if not cached
-pub async fn get_free_models() -> Vec<String> {
-    // Check if we already have cached models
+/// Get the model list for `base_url`, fetching from the API if not cached
+pub async fn get_models(base_url: &str, api_key: &str) -> Vec<String> {
+    // Check if we already have cached models for this endpoint
     {
-        let cache = FREE_MODELS_CACHE.read().await;
-        if !cache.is_empty() {
-            return cache.clone();
+        let cache = MODELS_CACHE.read().await;
+        if let Some((cached_url, models)) = cache.as_ref() {
+            if cached_url == base_url && !models.is_empty() {
+                return models.clone();
+            }
         }
     }
 
     // Fetch from API
-    match fetch_free_models().await {
+    match fetch_models(base_url, api_key).await {
         Ok(models) if !models.is_empty() => {
-            let mut cache = FREE_MODELS_CACHE.write().await;
-            *cache = models.clone();
+            let mut cache = MODELS_CACHE.write().await;
+            *cache = Some((base_url.to_string(), models.clone()));
             models
         }
         Ok(_) => {
-            warn!("No free models returned from API, using fallback list");
-            FALLBACK_FREE_MODELS.iter().map(|s| s.to_string()).collect()
+            warn!("No models returned by {}, using fallback list", base_url);
+            fallback_models(base_url)
         }
         Err(e) => {
-            error!("Failed to fetch free models: {}, using fallback list", e);
-            FALLBACK_FREE_MODELS.iter().map(|s| s.to_string()).collect()
+            error!(
+                "Failed to fetch models from {}: {}, using fallback list",
+                base_url, e
+            );
+            fallback_models(base_url)
         }
     }
 }
 
-/// OpenRouter client wrapper with model fallback support
+/// Last-resort model list when discovery fails. Only OpenRouter has one.
+fn fallback_models(base_url: &str) -> Vec<String> {
+    if is_openrouter(base_url) {
+        FALLBACK_FREE_MODELS.iter().map(|s| s.to_string()).collect()
+    } else {
+        Vec::new()
+    }
+}
+
+/// OpenAI-compatible AI client wrapper with model fallback support.
+/// Talks to OpenRouter by default, or to any self-hosted endpoint set via
+/// `AI_BASE_URL` (e.g. a vLLM server).
 #[derive(Clone)]
 pub struct OpenRouterClient {
     api_key: String,
+    base_url: String,
     current_model_index: Arc<AtomicUsize>,
     enabled: bool,
 }
 
 impl OpenRouterClient {
-    pub fn new(api_key: Option<String>, enabled: bool) -> Self {
-        let is_configured = api_key.is_some();
+    /// `base_url` is an OpenAI-compatible API root without a trailing slash
+    /// (e.g. `http://10.150.0.30:1234/v1`); `None` keeps the OpenRouter default.
+    pub fn new(api_key: Option<String>, enabled: bool, base_url: Option<String>) -> Self {
+        let base_url = base_url.unwrap_or_else(|| OPENROUTER_BASE_URL.to_string());
+        // Self-hosted endpoints are usually keyless, so only OpenRouter needs one.
+        let is_configured = api_key.is_some() || !is_openrouter(&base_url);
         OpenRouterClient {
             api_key: api_key.unwrap_or_default(),
+            base_url,
             current_model_index: Arc::new(AtomicUsize::new(0)),
             enabled: enabled && is_configured,
         }
     }
 
-    /// Check if OpenRouter is enabled and configured
+    /// Check if the AI layer is enabled and configured
     pub fn is_enabled(&self) -> bool {
-        self.enabled && !self.api_key.is_empty()
+        self.enabled && (!self.api_key.is_empty() || !is_openrouter(&self.base_url))
+    }
+
+    /// The OpenAI-compatible endpoint this client talks to
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    /// Models available on the configured endpoint (cached after first call)
+    pub async fn models(&self) -> Vec<String> {
+        get_models(&self.base_url, &self.api_key).await
     }
 
     /// Get the current model index
@@ -142,7 +227,7 @@ impl OpenRouterClient {
 
     /// Get the current model name being used
     pub async fn current_model(&self) -> Option<String> {
-        let models = get_free_models().await;
+        let models = self.models().await;
         if models.is_empty() {
             None
         } else {
@@ -159,15 +244,13 @@ impl OpenRouterClient {
     /// Analyze a stock using AI, with automatic model fallback on rate limits
     pub async fn analyze_stock(&self, analysis: &StockAnalysis) -> Result<AIAnalysisResponse> {
         if !self.is_enabled() {
-            return Err(anyhow!(
-                "OpenRouter is not enabled or API key not configured"
-            ));
+            return Err(anyhow!("AI analysis is not enabled or not configured"));
         }
 
-        // Fetch available free models (cached after first call)
-        let free_models = get_free_models().await;
+        // Fetch available models (cached after first call)
+        let free_models = self.models().await;
         if free_models.is_empty() {
-            return Err(anyhow!("No free models available"));
+            return Err(anyhow!("No models available at {}", self.base_url));
         }
 
         let prompt = self.build_analysis_prompt(analysis);
@@ -211,14 +294,14 @@ impl OpenRouterClient {
                         attempts += 1;
                     } else {
                         // Non-recoverable error, return immediately
-                        return Err(anyhow!("OpenRouter API error with {}: {}", model, e));
+                        return Err(anyhow!("AI API error with {}: {}", model, e));
                     }
                 }
             }
         }
 
         Err(anyhow!(
-            "All {} free models are rate limited. Try again later.",
+            "All {} models are rate limited. Try again later.",
             free_models.len()
         ))
     }
@@ -232,17 +315,15 @@ impl OpenRouterClient {
         articles: &[NewsArticle],
     ) -> Result<NewsSummary> {
         if !self.is_enabled() {
-            return Err(anyhow!(
-                "OpenRouter is not enabled or API key not configured"
-            ));
+            return Err(anyhow!("AI analysis is not enabled or not configured"));
         }
         if articles.is_empty() {
             return Err(anyhow!("No articles to summarize for {}", symbol));
         }
 
-        let free_models = get_free_models().await;
+        let free_models = self.models().await;
         if free_models.is_empty() {
-            return Err(anyhow!("No free models available"));
+            return Err(anyhow!("No models available at {}", self.base_url));
         }
 
         let prompt = build_news_prompt(symbol, articles);
@@ -291,18 +372,14 @@ impl OpenRouterClient {
                         );
                         attempts += 1;
                     } else {
-                        return Err(anyhow!(
-                            "OpenRouter news summary error with {}: {}",
-                            model,
-                            e
-                        ));
+                        return Err(anyhow!("AI news summary error with {}: {}", model, e));
                     }
                 }
             }
         }
 
         Err(anyhow!(
-            "All {} free models are rate limited for news summary. Try again later.",
+            "All {} models are rate limited for news summary. Try again later.",
             free_models.len()
         ))
     }
@@ -386,45 +463,15 @@ impl OpenRouterClient {
         prompt
     }
 
-    /// Send request to OpenRouter API
+    /// Send an analysis request to the configured endpoint
     async fn send_request(&self, model: &str, prompt: &str) -> Result<String> {
-        info!("Sending AI analysis request to model: {}", model);
-
-        let client = BaseOpenRouterClient::builder()
-            .api_key(&self.api_key)
-            .http_referer("https://github.com/1mshy/auto-analyser-2")
-            .x_title("Auto Stock Analyser")
-            .build()
-            .map_err(|e| anyhow!("Failed to build OpenRouter client: {}", e))?;
-
-        let request = ChatCompletionRequest::builder()
-            .model(model)
-            .messages(vec![
-                Message::new(
-                    Role::System,
-                    "You are an expert stock analyst. Provide concise, actionable analysis based on technical indicators. Be objective and mention both opportunities and risks.",
-                ),
-                Message::new(Role::User, prompt),
-            ])
-            .max_tokens(1000_u32)
-            .temperature(0.7)
-            .build()
-            .map_err(|e| anyhow!("Failed to build chat request: {}", e))?;
-
-        let response = client
-            .send_chat_completion(&request)
+        self.send_request_with_params(model, ANALYST_SYSTEM_PROMPT, prompt, 1000, 0.7)
             .await
-            .map_err(|e| anyhow!("OpenRouter request failed: {}", e))?;
-
-        // Extract the response text
-        response
-            .choices
-            .first()
-            .and_then(|choice| choice.content().map(|s| s.to_string()))
-            .ok_or_else(|| anyhow!("No response content from OpenRouter"))
     }
 
-    /// Send request to OpenRouter API with custom system message and tuning.
+    /// Send a chat completion with a custom system message and tuning. Speaks
+    /// raw OpenAI-compatible JSON so the same path serves OpenRouter and any
+    /// self-hosted server behind `AI_BASE_URL`.
     async fn send_request_with_params(
         &self,
         model: &str,
@@ -433,41 +480,63 @@ impl OpenRouterClient {
         max_tokens: u32,
         temperature: f64,
     ) -> Result<String> {
-        info!("Sending OpenRouter request to model: {}", model);
+        info!("Sending AI request to model {} at {}", model, self.base_url);
 
-        let client = BaseOpenRouterClient::builder()
-            .api_key(&self.api_key)
-            .http_referer("https://github.com/1mshy/auto-analyser-2")
-            .x_title("Auto Stock Analyser")
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
             .build()
-            .map_err(|e| anyhow!("Failed to build OpenRouter client: {}", e))?;
+            .map_err(|e| anyhow!("Failed to build AI HTTP client: {}", e))?;
 
-        let request = ChatCompletionRequest::builder()
-            .model(model)
-            .messages(vec![
-                Message::new(Role::System, system),
-                Message::new(Role::User, prompt),
-            ])
-            .max_tokens(max_tokens)
-            .temperature(temperature)
-            .build()
-            .map_err(|e| anyhow!("Failed to build chat request: {}", e))?;
+        let body = serde_json::json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": system },
+                { "role": "user", "content": prompt },
+            ],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        });
 
-        let response = client
-            .send_chat_completion(&request)
+        let response = self
+            .authorize(client.post(format!("{}/chat/completions", self.base_url)))
+            .json(&body)
+            .send()
             .await
-            .map_err(|e| anyhow!("OpenRouter request failed: {}", e))?;
+            .map_err(|e| anyhow!("AI request failed: {}", e))?;
 
-        response
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+
+        if !status.is_success() {
+            // Keep the status code in the message — the retry loops above key
+            // off "429"/"rate"/"quota" to rotate onto the next model.
+            return Err(anyhow!("AI API error ({}): {}", status, text));
+        }
+
+        let completion: ChatCompletionResponse = serde_json::from_str(&text)
+            .map_err(|e| anyhow!("Failed to parse AI response: {}", e))?;
+
+        completion
             .choices
-            .first()
-            .and_then(|choice| choice.content().map(|s| s.to_string()))
-            .ok_or_else(|| anyhow!("No response content from OpenRouter"))
+            .into_iter()
+            .find_map(|choice| choice.message.content)
+            .filter(|content| !content.trim().is_empty())
+            .ok_or_else(|| anyhow!("No response content from {}", model))
     }
 
-    /// Get list of available free models (async, fetches from API if not cached)
-    pub async fn available_models() -> Vec<String> {
-        get_free_models().await
+    /// Attach auth plus the attribution headers OpenRouter asks for. A
+    /// self-hosted endpoint gets neither unless an API key is configured.
+    fn authorize(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        let mut request = request.header("Content-Type", "application/json");
+        if !self.api_key.is_empty() {
+            request = request.header("Authorization", format!("Bearer {}", self.api_key));
+        }
+        if is_openrouter(&self.base_url) {
+            request = request
+                .header("HTTP-Referer", "https://github.com/1mshy/auto-analyser-2")
+                .header("X-Title", "Auto Stock Analyser");
+        }
+        request
     }
 
     /// Stream AI analysis response for real-time token display
@@ -479,18 +548,16 @@ impl OpenRouterClient {
         use async_stream::stream;
 
         if !self.is_enabled() {
-            return Err(anyhow!(
-                "OpenRouter is not enabled or API key not configured"
-            ));
+            return Err(anyhow!("AI analysis is not enabled or not configured"));
         }
 
-        let free_models = get_free_models().await;
+        let free_models = self.models().await;
         if free_models.is_empty() {
-            return Err(anyhow!("No free models available"));
+            return Err(anyhow!("No models available at {}", self.base_url));
         }
 
         let prompt = self.build_analysis_prompt(analysis);
-        let api_key = self.api_key.clone();
+        let endpoint = self.clone();
         let symbol = analysis.symbol.clone();
         let current_idx = self.current_model_index();
         let model = free_models[current_idx % free_models.len()].clone();
@@ -502,7 +569,6 @@ impl OpenRouterClient {
                 message: format!("Connecting to AI model: {}", model),
             };
 
-            // Build the streaming request manually since openrouter-rs doesn't support streaming
             let client = reqwest::Client::new();
 
             yield StreamEvent::Status {
@@ -515,7 +581,7 @@ impl OpenRouterClient {
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are an expert stock analyst. Provide concise, actionable analysis based on technical indicators. Be objective and mention both opportunities and risks."
+                        "content": ANALYST_SYSTEM_PROMPT
                     },
                     {
                         "role": "user",
@@ -527,12 +593,8 @@ impl OpenRouterClient {
                 "stream": true
             });
 
-            let response = client
-                .post("https://openrouter.ai/api/v1/chat/completions")
-                .header("Authorization", format!("Bearer {}", api_key))
-                .header("HTTP-Referer", "https://github.com/1mshy/auto-analyser-2")
-                .header("X-Title", "Auto Stock Analyser")
-                .header("Content-Type", "application/json")
+            let response = endpoint
+                .authorize(client.post(format!("{}/chat/completions", endpoint.base_url())))
                 .json(&request_body)
                 .send()
                 .await;
@@ -674,6 +736,8 @@ mod tests {
     use super::*;
     use crate::models::MACDIndicator;
 
+    const VLLM_BASE_URL: &str = "http://10.150.0.30:1234/v1";
+
     #[test]
     fn test_fallback_models_list() {
         // Verify fallback models are properly configured
@@ -683,25 +747,79 @@ mod tests {
 
     #[test]
     fn test_client_disabled_without_api_key() {
-        let client = OpenRouterClient::new(None, true);
+        let client = OpenRouterClient::new(None, true, None);
         assert!(!client.is_enabled());
     }
 
     #[test]
     fn test_client_disabled_when_flag_false() {
-        let client = OpenRouterClient::new(Some("test-key".to_string()), false);
+        let client = OpenRouterClient::new(Some("test-key".to_string()), false, None);
         assert!(!client.is_enabled());
     }
 
     #[test]
     fn test_client_enabled_with_key_and_flag() {
-        let client = OpenRouterClient::new(Some("test-key".to_string()), true);
+        let client = OpenRouterClient::new(Some("test-key".to_string()), true, None);
         assert!(client.is_enabled());
     }
 
     #[test]
+    fn test_self_hosted_endpoint_enabled_without_api_key() {
+        // vLLM and friends are usually keyless — the base URL is enough.
+        let client = OpenRouterClient::new(None, true, Some(VLLM_BASE_URL.to_string()));
+        assert!(client.is_enabled());
+        assert_eq!(client.base_url(), VLLM_BASE_URL);
+    }
+
+    #[test]
+    fn test_self_hosted_endpoint_respects_disable_flag() {
+        let client = OpenRouterClient::new(None, false, Some(VLLM_BASE_URL.to_string()));
+        assert!(!client.is_enabled());
+    }
+
+    #[test]
+    fn test_is_openrouter_detection() {
+        assert!(is_openrouter(OPENROUTER_BASE_URL));
+        assert!(!is_openrouter(VLLM_BASE_URL));
+        assert!(!is_openrouter("http://localhost:8000/v1"));
+    }
+
+    #[test]
+    fn test_fallback_models_only_for_openrouter() {
+        assert!(!fallback_models(OPENROUTER_BASE_URL).is_empty());
+        // A self-hosted server serves what it loaded; guessing ids would only
+        // produce 404s on every request.
+        assert!(fallback_models(VLLM_BASE_URL).is_empty());
+    }
+
+    #[test]
+    fn test_model_info_context_window_prefers_context_length() {
+        let openrouter_model = ModelInfo {
+            id: "x:free".to_string(),
+            context_length: Some(128_000),
+            max_model_len: None,
+        };
+        assert_eq!(openrouter_model.context_window(), 128_000);
+
+        // vLLM reports `max_model_len` instead
+        let vllm_model = ModelInfo {
+            id: "nvidia/Gemma-4-31B-IT-NVFP4".to_string(),
+            context_length: None,
+            max_model_len: Some(32_768),
+        };
+        assert_eq!(vllm_model.context_window(), 32_768);
+
+        let unknown = ModelInfo {
+            id: "mystery".to_string(),
+            context_length: None,
+            max_model_len: None,
+        };
+        assert_eq!(unknown.context_window(), 0);
+    }
+
+    #[test]
     fn test_model_index_cycling() {
-        let client = OpenRouterClient::new(Some("test-key".to_string()), true);
+        let client = OpenRouterClient::new(Some("test-key".to_string()), true, None);
 
         // Initial index should be 0
         assert_eq!(client.current_model_index(), 0);
@@ -719,7 +837,7 @@ mod tests {
 
     #[test]
     fn test_model_index_wraps_around() {
-        let client = OpenRouterClient::new(Some("test-key".to_string()), true);
+        let client = OpenRouterClient::new(Some("test-key".to_string()), true, None);
 
         // Cycle through model indices (modulo operation happens at access time)
         for _ in 0..10 {
@@ -734,7 +852,7 @@ mod tests {
 
     #[test]
     fn test_build_analysis_prompt() {
-        let client = OpenRouterClient::new(Some("test-key".to_string()), true);
+        let client = OpenRouterClient::new(Some("test-key".to_string()), true, None);
 
         let analysis = StockAnalysis {
             id: None,

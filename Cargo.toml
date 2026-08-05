@@ -55,8 +55,8 @@ futures-util = "0.3"
 once_cell = "1.19"
 rand = "0.8"
 
-# OpenRouter AI
-openrouter-rs = "0.4"
+# AI analysis talks raw OpenAI-compatible JSON over reqwest, so it works
+# against OpenRouter and self-hosted servers (vLLM) alike — no SDK needed.
 chrono-tz = "0.10.4"
 
 # Prometheus metrics

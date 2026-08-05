@@ -115,7 +115,7 @@ export const api = {
   },
 
   // Get AI status
-  getAIStatus: async (): Promise<{ enabled: boolean; current_model?: string; available_models_count: number }> => {
+  getAIStatus: async (): Promise<{ enabled: boolean; current_model?: string; available_models_count: number; base_url?: string }> => {
     const response = await axios.get(`${API_BASE_URL}/api/ai/status`);
     return response.data;
   },

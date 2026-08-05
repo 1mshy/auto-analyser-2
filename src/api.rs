@@ -533,28 +533,36 @@ async fn stream_ai_analysis(
 /// Get AI system status
 async fn get_ai_status(State(state): State<AppState>) -> impl IntoResponse {
     let enabled = state.openrouter_client.is_enabled();
+    // Skip discovery when disabled — otherwise every status poll retries an
+    // endpoint we've been told not to use.
+    let available_models = if enabled {
+        state.openrouter_client.models().await
+    } else {
+        Vec::new()
+    };
     let current_model = if enabled {
         state.openrouter_client.current_model().await
     } else {
         None
     };
-    let available_models = crate::openrouter::get_free_models().await;
 
     Json(json!({
         "enabled": enabled,
         "current_model": current_model,
         "available_models_count": available_models.len(),
+        "base_url": state.openrouter_client.base_url(),
     }))
 }
 
 /// Get list of available AI models
-async fn get_ai_models() -> impl IntoResponse {
-    let models = crate::openrouter::get_free_models().await;
+async fn get_ai_models(State(state): State<AppState>) -> impl IntoResponse {
+    let models = state.openrouter_client.models().await;
     let count = models.len();
     Json(json!({
         "models": models,
         "count": count,
-        "description": "Free models available on OpenRouter with automatic fallback on rate limits"
+        "base_url": state.openrouter_client.base_url(),
+        "description": "Models discovered from the configured AI endpoint, with automatic fallback on rate limits"
     }))
 }
 

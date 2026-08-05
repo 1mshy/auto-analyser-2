@@ -63,24 +63,32 @@ async fn main() -> anyhow::Result<()> {
     let yahoo_client = YahooFinanceClient::new();
     tracing::info!("Yahoo Finance client initialized");
 
-    // Initialize OpenRouter client
+    // Initialize AI client (OpenRouter by default, or any OpenAI-compatible
+    // endpoint pointed at by AI_BASE_URL)
     let openrouter_client = OpenRouterClient::new(
         config.OPENROUTER_API_KEY_STOCKS.clone(),
         config.openrouter_enabled,
+        Some(config.ai_base_url.clone()),
     );
     if openrouter_client.is_enabled() {
         tracing::info!(
-            "🤖 OpenRouter AI client enabled; model discovery will run in the background"
+            "🤖 AI client enabled against {}; model discovery will run in the background",
+            openrouter_client.base_url()
         );
-        tokio::spawn(async {
-            let models = openrouter::get_free_models().await;
+        let discovery_client = openrouter_client.clone();
+        tokio::spawn(async move {
+            let models = discovery_client.models().await;
             tracing::info!(
-                "🤖 OpenRouter model discovery found {} free models",
-                models.len()
+                "🤖 Model discovery found {} models at {} (using: {})",
+                models.len(),
+                discovery_client.base_url(),
+                models.first().map(|m| m.as_str()).unwrap_or("none")
             );
         });
     } else {
-        tracing::info!("🤖 OpenRouter AI disabled (set OPENROUTER_API_KEY_STOCKS to enable)");
+        tracing::info!(
+            "🤖 AI disabled (set OPENROUTER_API_KEY_STOCKS, or AI_BASE_URL for a self-hosted endpoint)"
+        );
     }
 
     // Initialize the alert engine up-front so it can both (a) feed the analysis
