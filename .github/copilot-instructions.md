@@ -40,9 +40,9 @@ RUST_LOG=debug cargo run          # With verbose logging
 cargo build --release             # Production build
 
 # Frontend (from frontend/)
-npm start                         # Dev server on port 3001, proxies to backend:3333
-npm run build                     # Production build
-npm test                          # Run tests
+npm run dev                       # Vite dev server on port 3001, proxies /api + /ws to backend:3333
+npm run build                     # Vite production build -> frontend/build/
+npm test                          # Run tests (Vitest)
 
 # Testing
 cargo test                        # Run all Rust tests
@@ -52,9 +52,9 @@ cargo fmt                         # Formatting
 ```
 
 ### Environment Configuration
-Copy `.env.example` to `.env` and modify as needed. **Critical**: Backend runs on port 3000 by default (configurable via `SERVER_PORT`), but frontend proxy expects port 3333 (see `frontend/package.json` proxy setting).
+Copy `.env.example` to `.env` and modify as needed. **Critical**: Backend runs on port 3000 by default (configurable via `SERVER_PORT`), but the frontend dev proxy expects port 3333 (see `server.proxy` in `frontend/vite.config.ts`).
 
-**Port Mismatch**: Set `SERVER_PORT=3333` in `.env` to match frontend proxy, or update `frontend/package.json` proxy to `http://localhost:3000`.
+**Port Mismatch**: Set `SERVER_PORT=3333` in `.env` to match the frontend dev proxy, or update `server.proxy` in `frontend/vite.config.ts` to `http://localhost:3000`.
 
 ### Database Setup
 ```bash
@@ -117,11 +117,11 @@ Two-tier in `cache.rs`:
 
 ## Common Pitfalls
 
-1. **Port conflicts**: Backend defaults to 3000, but tests/docs often reference 3333. Check `.env` and `frontend/package.json` proxy.
+1. **Port conflicts**: Backend defaults to 3000, but tests/docs often reference 3333. Check `.env` and the `server.proxy` block in `frontend/vite.config.ts`.
 2. **MongoDB connection**: Ensure MongoDB is running before starting backend. Connection string format matters (Atlas vs local).
 3. **Yahoo Finance failures**: Some symbols fail (delisted, invalid). This is expected; check logs with `RUST_LOG=debug`.
 4. **Analysis cycle**: First cycle takes ~4 minutes (60 stocks × 4s). WebSocket shows progress; wait before expecting data.
-5. **Frontend proxy**: `npm start` proxies API calls to backend. If backend is on different port, update `package.json`.
+5. **Frontend proxy**: `npm run dev` proxies `/api` and `/ws` to the backend. If the backend is on a different port, update `frontend/vite.config.ts`.
 
 ## Key Files for Common Tasks
 
@@ -129,7 +129,7 @@ Two-tier in `cache.rs`:
 - **Add API endpoint**: Create handler in `api.rs`, add route in `create_router()`
 - **Modify stock list**: Edit `analysis.rs::get_stock_symbols()` fallback array
 - **Change filter options**: Update `StockFilter` in `models.rs`, query logic in `db.rs::get_latest_analyses()`
-- **Frontend UI changes**: Components in `frontend/src/components/`, Chakra UI theme in `frontend/src/index.tsx`
+- **Frontend UI changes**: Components in `frontend/src/components/`, Chakra UI theme in `frontend/src/theme/`
 
 ## Documentation
 - **API Reference**: `API.md` (all endpoints with examples)

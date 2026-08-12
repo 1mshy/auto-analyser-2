@@ -250,13 +250,13 @@ User clicks stock → Modal opens → API call → Backend
 
 ### Environment Variables
 No new environment variables required. Uses existing:
-- `REACT_APP_API_URL`: Optional backend API origin override. Defaults to same-origin relative `/api`.
-- `REACT_APP_WS_URL`: Optional WebSocket origin/URL override. Defaults to same-origin `/ws`.
+- `VITE_API_URL`: Optional backend API origin override. Defaults to same-origin relative `/api`.
+- `VITE_WS_URL`: Optional WebSocket origin/URL override. Defaults to same-origin `/ws`.
 
 ### Backend Port Configuration
 Ensure backend port matches frontend proxy:
 - Backend: Set `SERVER_PORT=3333` in `.env`
-- Frontend: Proxy configured in `package.json` to `http://localhost:3333`
+- Frontend: Dev proxy configured in `frontend/vite.config.ts` (`server.proxy`, covers `/api` and `/ws`) to `http://localhost:3333`
 
 ---
 

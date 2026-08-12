@@ -1,4 +1,4 @@
-import React, { useState, createElement } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Button,
@@ -14,7 +14,7 @@ import {
   Card,
   Separator,
 } from '@chakra-ui/react';
-import { IoSettingsSharp, IoCheckmarkCircle, IoSparkles, IoBusinessSharp, IoGlobeOutline } from 'react-icons/io5';
+import { Settings, CircleCheck, Sparkles, Building2, Globe } from 'lucide-react';
 import { useSettings } from '../contexts/SettingsContext';
 import { MARKET_CAP_TIERS, SETTINGS_PRESETS } from '../types';
 import { toaster } from './ui/toaster';
@@ -93,7 +93,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
           onClick={handleOpen}
           _hover={{ bg: 'bg.muted' }}
         >
-          {createElement(IoSettingsSharp as any, { size: 18 })}
+          <Settings size={18} />
         </IconButton>
         {showBadge && isFiltered && (
           <Badge
@@ -117,7 +117,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
             <Drawer.Header borderBottomWidth="1px" borderColor="border.subtle">
               <Drawer.Title color="fg.default">
                 <HStack gap={2}>
-                  {createElement(IoSettingsSharp as any, { size: 20 })}
+                  <Settings size={20} />
                   <Text fontWeight="semibold">Global Settings</Text>
                 </HStack>
               </Drawer.Title>
@@ -147,7 +147,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                     >
                       <Card.Body p={3} textAlign="center">
                         <Box color="fg.muted" mb={2}>
-                          {createElement(IoGlobeOutline as any, { size: 22 })}
+                          <Globe size={22} />
                         </Box>
                         <Text fontWeight="semibold" color="fg.default" fontSize="sm">Show All</Text>
                         <Text fontSize="xs" color="fg.muted">No filtering</Text>
@@ -166,7 +166,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                     >
                       <Card.Body p={3} textAlign="center">
                         <Box color="signal.up.fg" mb={2}>
-                          {createElement(IoSparkles as any, { size: 22 })}
+                          <Sparkles size={22} />
                         </Box>
                         <Text fontWeight="semibold" color="fg.default" fontSize="sm">Quality</Text>
                         <Text fontSize="xs" color="fg.muted">$1B+ / ±50%</Text>
@@ -185,7 +185,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                     >
                       <Card.Body p={3} textAlign="center">
                         <Box color="accent.fg" mb={2}>
-                          {createElement(IoBusinessSharp as any, { size: 22 })}
+                          <Building2 size={22} />
                         </Box>
                         <Text fontWeight="semibold" color="fg.default" fontSize="sm">Large Cap</Text>
                         <Text fontSize="xs" color="fg.muted">$10B+ / ±30%</Text>
@@ -287,7 +287,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                   <VStack align="start" gap={1.5}>
                     <HStack gap={2}>
                       <Box color={localMinMarketCap ? 'signal.up.fg' : 'fg.subtle'}>
-                        {createElement(IoCheckmarkCircle as any, { size: 16 })}
+                        <CircleCheck size={16} />
                       </Box>
                       <Text fontSize="sm" color={localMinMarketCap ? 'signal.up.fg' : 'fg.muted'}>
                         {localMinMarketCap
@@ -297,7 +297,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                     </HStack>
                     <HStack gap={2}>
                       <Box color={localMaxPriceChange ? 'signal.warn.fg' : 'fg.subtle'}>
-                        {createElement(IoCheckmarkCircle as any, { size: 16 })}
+                        <CircleCheck size={16} />
                       </Box>
                       <Text fontSize="sm" color={localMaxPriceChange ? 'signal.warn.fg' : 'fg.muted'}>
                         {localMaxPriceChange

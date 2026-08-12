@@ -1,17 +1,20 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { vi } from 'vitest';
+import type { Mock } from 'vitest';
 import { Backtest } from './Backtest';
 import { api } from '../api';
 import type { BacktestRun } from '../types';
 
-// CRA's Jest (v27) resolver can't follow Chakra v3 → @ark-ui/react package
-// `exports` subpaths, so importing the real @chakra-ui/react throws at load.
-// Mock it with DOM passthroughs: this still mounts the *real* Backtest
-// component (state, handlers, query/mutation wiring, ConditionBuilder logic,
-// DataTable) — only the visual primitives are stubbed.
-jest.mock('@chakra-ui/react', () => {
-  const ReactLib = require('react');
+// Vite resolves Chakra v3 → @ark-ui/react `exports` subpaths natively, so this
+// mock is no longer needed to *load* @chakra-ui/react. It is kept because the
+// assertions below depend on the DOM passthroughs (Button/IconButton → <button>,
+// Field → <select>) and on not needing a <ChakraProvider>. This still mounts the
+// *real* Backtest component (state, handlers, query/mutation wiring,
+// ConditionBuilder logic, DataTable) — only the visual primitives are stubbed.
+vi.mock('@chakra-ui/react', async () => {
+  const ReactLib = await vi.importActual<typeof import('react')>('react');
   const KEEP = new Set([
     'onClick', 'onChange', 'onInput', 'onBlur', 'value', 'defaultValue',
     'placeholder', 'type', 'step', 'disabled', 'role', 'id', 'name', 'title',
@@ -38,9 +41,17 @@ jest.mock('@chakra-ui/react', () => {
   };
   const cache = new Map<string, any>();
   const handler: ProxyHandler<any> = {
+    // Vitest wraps a factory's return value in its own Proxy that throws
+    // "No <X> export is defined on the mock" whenever `!(prop in target)`.
+    // The target here is an empty object, so `has` must always answer true.
+    has: () => true,
     get(_t, prop: any) {
       if (prop === '__esModule') return true;
       if (typeof prop === 'symbol') return undefined;
+      // With `has` always true the namespace would look thenable, and Vite's
+      // SSR `await import(...)` would call the synthesised component as a
+      // promise callback. Keep it explicitly non-thenable.
+      if (prop === 'then') return undefined;
       if (!cache.has(prop)) {
         if (prop === 'createToaster') {
           cache.set(prop, () => ({ create: () => {}, dismiss: () => {}, remove: () => {} }));
@@ -73,8 +84,12 @@ jest.mock('@chakra-ui/react', () => {
 });
 
 // recharts needs ResizeObserver / real layout that jsdom lacks.
-jest.mock('recharts', () => {
-  const Passthrough = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>;
+// No JSX in the factory: `vi.mock` is hoisted above the auto-injected
+// react/jsx-runtime import, so build the elements with createElement instead.
+vi.mock('recharts', async () => {
+  const { createElement } = await vi.importActual<typeof import('react')>('react');
+  const Passthrough = ({ children }: { children?: React.ReactNode }) =>
+    createElement('div', null, children);
   const Empty = () => null;
   return {
     ResponsiveContainer: Passthrough,
@@ -87,12 +102,12 @@ jest.mock('recharts', () => {
   };
 });
 
-jest.mock('../api', () => ({
+vi.mock('../api', () => ({
   api: {
     backtest: {
-      list: jest.fn().mockResolvedValue([]),
-      run: jest.fn(),
-      get: jest.fn(),
+      list: vi.fn().mockResolvedValue([]),
+      run: vi.fn(),
+      get: vi.fn(),
     },
   },
 }));
@@ -181,12 +196,13 @@ const renderPage = () => {
 };
 
 beforeEach(() => {
-  // CRA's Jest resets mocks between tests, so (re)establish resolved values.
-  (api.backtest.list as jest.Mock).mockResolvedValue([]);
-  (api.backtest.run as jest.Mock).mockResolvedValue(fakeRun);
+  // clearMocks (vite.config.ts) wipes call history between tests, so
+  // (re)establish resolved values here.
+  (api.backtest.list as Mock).mockResolvedValue([]);
+  (api.backtest.run as Mock).mockResolvedValue(fakeRun);
   // A successful run seeds the per-id query cache and the run query may
   // background-refetch; serve the same payload.
-  (api.backtest.get as jest.Mock).mockResolvedValue(fakeRun);
+  (api.backtest.get as Mock).mockResolvedValue(fakeRun);
 });
 
 test('renders the builder form', async () => {
@@ -195,7 +211,7 @@ test('renders the builder form', async () => {
   expect(screen.getByText('Entry conditions')).toBeInTheDocument();
   expect(screen.getByText('Exit conditions')).toBeInTheDocument();
   // Recent runs come through the useBacktests query on mount.
-  await waitFor(() => expect(api.backtest.list as jest.Mock).toHaveBeenCalled());
+  await waitFor(() => expect(api.backtest.list as Mock).toHaveBeenCalled());
   expect(await screen.findByText('No saved runs yet.')).toBeInTheDocument();
 });
 
@@ -207,7 +223,7 @@ test('submits a backtest and renders results without crashing', async () => {
 
   fireEvent.click(screen.getByRole('button', { name: /run backtest/i }));
 
-  await waitFor(() => expect(api.backtest.run as jest.Mock).toHaveBeenCalled());
+  await waitFor(() => expect(api.backtest.run as Mock).toHaveBeenCalled());
   expect(await screen.findByText('Equity curve — AAPL')).toBeInTheDocument();
   expect(await screen.findByText('Final equity')).toBeInTheDocument();
 
@@ -220,12 +236,12 @@ test('submits a backtest and renders results without crashing', async () => {
 });
 
 test('a run failure surfaces a toast-path error without rendering results', async () => {
-  (api.backtest.run as jest.Mock).mockRejectedValue(new Error('yahoo unavailable'));
+  (api.backtest.run as Mock).mockRejectedValue(new Error('yahoo unavailable'));
   renderPage();
 
   fireEvent.click(screen.getByRole('button', { name: /run backtest/i }));
 
-  await waitFor(() => expect(api.backtest.run as jest.Mock).toHaveBeenCalled());
+  await waitFor(() => expect(api.backtest.run as Mock).toHaveBeenCalled());
   // The empty state stays put; no results panel appears.
   expect(await screen.findByText('No backtest yet')).toBeInTheDocument();
   expect(screen.queryByText('Final equity')).not.toBeInTheDocument();

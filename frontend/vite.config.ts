@@ -29,6 +29,16 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      // src/api.ts:150 calls same-origin /health. CRA's catch-all "proxy"
+      // field covered it implicitly; Vite's proxy map must list it.
+      '/health': {
+        target: BACKEND_URL,
+        changeOrigin: true,
+      },
+      '/metrics': {
+        target: BACKEND_URL,
+        changeOrigin: true,
+      },
     },
   },
   build: {

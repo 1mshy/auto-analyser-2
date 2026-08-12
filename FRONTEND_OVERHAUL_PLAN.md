@@ -18,7 +18,7 @@ This plan **EXTENDS and becomes the active doc** over `DESIGN_SYSTEM.md` without
 - Where this plan goes **beyond** DESIGN_SYSTEM.md: the build/perf pillar (CRA→Vite) and the freshness pillar (WS data-push, client data layer), neither of which the original doc scoped.
 
 **Stated, justified supersedes of the DESIGN_SYSTEM.md stack line** (must be reconciled in-doc, not left stale):
-- **Build tool CRA → Vite.** DESIGN_SYSTEM.md line 7 lists "CRA"; B8 updates that line to "Vite."
+- **Build tool CRA → Vite.** DESIGN_SYSTEM.md line 7 listed "CRA"; B8 has updated that line to "Vite."
 - **`framer-motion` removed** (0 import sites; verified **not** a Chakra v3 peer — v3.30.0 peers are only `@emotion/react` / `react` / `react-dom`, so removal is safe). DESIGN_SYSTEM.md line 7 lists framer-motion; B6 strikes it and the frontend `CLAUDE.md` stack line. Motion is re-expressed as registered Chakra CSS-token transitions, which still satisfies the doc's "Purposeful motion" principle.
 
 **Keep / Evolve / Replace verdict per layer:**
@@ -224,16 +224,18 @@ The four tracks overlap; ownership is assigned **once** here to prevent conflict
 | B4 | Route-level code-splitting: React.lazy all 10 routes + Suspense (skeleton fallback) | `App.tsx:5-14,66-77` | M |
 | B5 | Remove `window.location.reload()` at market open (state-driven refetch; later `invalidateQueries`) | `App.tsx:26-32`, `hooks.ts` | S |
 | B6 | Remove `framer-motion` dependency (0 import sites); strike it from DESIGN_SYSTEM.md + frontend CLAUDE.md stack lines | `frontend/package.json`, `DESIGN_SYSTEM.md`, `frontend/CLAUDE.md` | S |
-| B7 | Standardize icons on lucide-react; drop **react-icons AND @chakra-ui/icons** (coordinate with A8) | FilterPanel/ProgressBar/SettingsPanel/StockCard*, `components/ui/{color-mode,toggle-tip}`, all @chakra-ui/icons sites | M |
-| B8 | Migrate build tool CRA→Vite SPA (vite.config: outDir=build, target=es2020, port 3001, proxy /api+/ws ws:true; root index.html; remove react-scripts); update DESIGN_SYSTEM.md + frontend CLAUDE.md stack line to "Vite" | `package.json`, `vite.config.ts` (new), `index.html`, `src/index.tsx`, `public/`, `DESIGN_SYSTEM.md`, `frontend/CLAUDE.md` | M |
-| B9 | Rename env vars `REACT_APP_*`→`VITE_*` (`import.meta.env`); update .env.example/Docker build args | `api.ts:4,156`, `.env*`, docker-compose | S |
-| B10 | Update frontend Dockerfile for Vite (copy root index.html + vite.config; keep `/app/build`) | `frontend/Dockerfile:15,20,26` | S |
-| B11 | Migrate test runner react-scripts test → Vitest (jest.mock→vi.mock in 2 files) | `package.json`, `setupTests.ts`, `Backtest.test.tsx` | S |
-| B12 | Raise compile target es5→es2020 (vite build.target + tsconfig); tighten browserslist | `tsconfig.json:3`, `vite.config.ts`, `package.json` | S |
-| B13 | Bundle analyzer (rollup-plugin-visualizer) + CI gzip budget (initial route <150 KB vs 405 KB baseline) | `vite.config.ts`, CI, `package.json` | S |
+| B7 | **SHIPPED.** Standardize icons on lucide-react; drop **react-icons AND @chakra-ui/icons** (coordinate with A8) | FilterPanel/ProgressBar/SettingsPanel/StockCard*, `components/ui/{color-mode,toggle-tip}`, all @chakra-ui/icons sites | M |
+| B8 | **SHIPPED.** Migrate build tool CRA→Vite SPA (vite.config: outDir=build, target=es2020, port 3001, proxy /api+/ws ws:true; root index.html; remove react-scripts); update DESIGN_SYSTEM.md + frontend CLAUDE.md stack line to "Vite" | `package.json`, `vite.config.ts` (new), `index.html`, `src/index.tsx`, `public/`, `DESIGN_SYSTEM.md`, `frontend/CLAUDE.md` | M |
+| B9 | **SHIPPED.** Rename env vars `REACT_APP_*`→`VITE_*` (`import.meta.env`); `frontend/.env.example` added. Note the compose frontend service declares no build args and no env, so there was nothing to rename there | `api.ts:4,156`, `frontend/.env*` | S |
+| B10 | **SHIPPED.** Update frontend Dockerfile for Vite (copy root index.html + vite.config; keep `/app/build`) | `frontend/Dockerfile:15,20,26` | S |
+| B11 | **SHIPPED.** Migrate test runner react-scripts test → Vitest (jest.mock→vi.mock in 2 files) | `package.json`, `setupTests.ts`, `Backtest.test.tsx` | S |
+| B12 | **SHIPPED.** Raise compile target es5→es2020 (vite build.target + tsconfig); tighten browserslist | `tsconfig.json:3`, `vite.config.ts`, `package.json` | S |
+| B13 | **SHIPPED.** Bundle analyzer (rollup-plugin-visualizer) + CI gzip budget (initial route <150 KB vs 405 KB baseline) | `vite.config.ts`, CI, `package.json` | S |
 | B14 | recharts render-cost: React.memo EquityChart+TradeTable, useMemo equity transform, downsample long series | `pages/Backtest.tsx` | M |
-| B15 | Remove orphaned `build/sw.js` + reassess manifest (no serviceWorker.register in src) | `build/sw.js`, `manifest.json` | S |
+| B15 | **SHIPPED.** Removed the stale CRA `build/` output (its `sw.js` + `index.html` pointed at deleted `/static/js` bundles). Premise correction: `public/sw.js` is **live** — registered from the inline script in `index.html` — so it stays; its `CACHE_VERSION` was bumped so returning users don't get served the CRA app shell. `manifest.json` already uses root-absolute paths and needed no change | `frontend/public/sw.js`, `manifest.json` | S |
 | B16 | Hover/link prefetch for route chunks (+ detail data once data layer lands) | `components/Navigation.tsx`, StockCard/row link sites | M |
+
+**Shipped:** B4 (route code-splitting) and B7-B13 + B15 (icon unification, CRA→Vite, env rename, Dockerfile, Vitest, es2020, bundle analyzer + CI gzip budget, service-worker cleanup) have landed on `feat/vite-migration`.
 
 ### Workstream C — Stock-Info-Up-to-Speed (backend freshness + data layer)
 
@@ -332,10 +334,10 @@ Ordering rationale: front-load the **highest-impact, lowest-risk** changes and t
 **CRA → Vite (B8):**
 - `build.outDir='build'` is **mandatory** — Vite defaults to `dist/`; without it `Dockerfile:26` (copies `/app/build`→nginx) breaks.
 - Vite needs **explicit `/ws` proxy with `ws:true`** — CRA's blanket `package.json` proxy handled WS implicitly; dev WS (`api.getWebSocketUrl→/ws`) breaks otherwise. Prod nginx already upgrades /ws.
-- Env-var rename `REACT_APP_*`→`VITE_*` + `import.meta.env` is a breaking config change — update `.env.example`, docker-compose build args, deploy pipeline.
+- Env-var rename `REACT_APP_*`→`VITE_*` + `import.meta.env` is a breaking config change. *(Shipped, with a new `frontend/.env.example`. The compose frontend service declares no build args or env — prod relies entirely on the same-origin `/api` + `/ws` fallbacks in `api.ts`, which the `import.meta.env` rewrite preserves — so only the untracked local `frontend/.env*` needed renaming. Remember `VITE_*` is inlined at build time, not read at runtime.)*
 - Move `public/index.html`→root `index.html` (drop `%PUBLIC_URL%`, add `<script type="module">`); Vitest mock conversion (`jest.mock`→`vi.mock`) in 2 test files.
-- **Reconcile docs:** update the stack line in `DESIGN_SYSTEM.md` and `frontend/CLAUDE.md` from "CRA" to "Vite" and strike "framer-motion."
-- **Verify:** `make rebuild` produces a working image; `./test_api.sh` passes; dev `npm start` proxies /api + /ws.
+- **Reconcile docs:** *(Shipped.)* the stack lines in `DESIGN_SYSTEM.md`, `frontend/CLAUDE.md`, `CLAUDE.md`, `AGENTS.md` and `.github/copilot-instructions.md` now say "Vite", with framer-motion / react-icons / @chakra-ui/icons struck.
+- **Verify:** `make rebuild` produces a working image; `./test_api.sh` passes; dev `npm run dev` proxies /api + /ws. Note `frontend/Dockerfile` must copy the root `index.html` **and** `vite.config.ts` into the builder or `vite build` cannot resolve its entry.
 
 **WS contract change (C7-C11):**
 - The current message is **bare `AnalysisProgress`**; the new tagged enum wraps it — both ends must ship together. Verify old clients aren't left mid-deploy expecting bare payloads.

@@ -160,7 +160,7 @@ Stage 2: Runtime (debian:bookworm-slim)
 
 ### Frontend Build Process
 ```
-Stage 1: Builder (node:20-alpine)
+Stage 1: Builder (node:22-alpine)
 ├── Copy source code
 ├── npm ci && npm run build
 └── Output: /app/build/*

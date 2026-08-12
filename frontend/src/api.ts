@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, MarketIndexQuote, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus, PositionView, CreatePositionInput, UpdatePositionInput, NewsCardPayload, DailyNewsSymbol, CreateBacktestInput, BacktestRun, BacktestSummary } from './types';
 
-const API_BASE_URL = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 export interface FilterResponse {
   stocks: StockAnalysis[];
@@ -153,7 +153,7 @@ export const api = {
 
   // WebSocket URL
   getWebSocketUrl: (): string => {
-    const configured = process.env.REACT_APP_WS_URL;
+    const configured = import.meta.env.VITE_WS_URL;
     if (configured) {
       if (configured.startsWith('ws://') || configured.startsWith('wss://')) {
         return configured;

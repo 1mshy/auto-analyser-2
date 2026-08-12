@@ -1,12 +1,12 @@
 # Stock Analyzer Design System
 
-> **⚠️ Active plan:** This document defines the design *direction* and is still the source of truth for design principles. The full implementation plan for the redesign + perf + data-freshness overhaul now lives in **[`FRONTEND_OVERHAUL_PLAN.md`](FRONTEND_OVERHAUL_PLAN.md)**, which **extends** this doc (keep-and-complete, not replace). Two stack-line items below are superseded there: the build tool moves **CRA → Vite**, and **`framer-motion` is removed** (0 import sites). Treat `FRONTEND_OVERHAUL_PLAN.md` as the active roadmap.
+> **⚠️ Active plan:** This document defines the design *direction* and is still the source of truth for design principles. The full implementation plan for the redesign + perf + data-freshness overhaul now lives in **[`FRONTEND_OVERHAUL_PLAN.md`](FRONTEND_OVERHAUL_PLAN.md)**, which **extends** this doc (keep-and-complete, not replace). Two stack-line items below have since been superseded and the stack line is now reconciled: the build tool **is Vite** (CRA/react-scripts removed, B7-B13), and **`framer-motion` has been removed** (0 import sites, B6). Treat `FRONTEND_OVERHAUL_PLAN.md` as the active roadmap.
 
 ## Direction
 
 The redesign direction is dark-first and Koyfin-like: professional, calm, dense enough for market scanning, and visually quiet until a price, signal, or alert needs attention. The app should feel like an investor workspace rather than a generic admin dashboard.
 
-The current frontend stack is React 19, TypeScript, CRA, Chakra UI v3, Recharts, TradingView embeds, framer-motion, lucide-react, and next-themes. No Tailwind or shadcn/ui is installed, so the redesign should compose Chakra and the existing primitive layer instead of adding another UI framework.
+The current frontend stack is React 19, TypeScript, Vite 7, Chakra UI v3, Recharts, TradingView embeds, lucide-react, and next-themes. No Tailwind or shadcn/ui is installed, so the redesign should compose Chakra and the existing primitive layer instead of adding another UI framework.
 
 ## Principles
 

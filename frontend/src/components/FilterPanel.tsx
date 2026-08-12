@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createElement } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -11,7 +11,7 @@ import {
   Text,
   IconButton,
 } from '@chakra-ui/react';
-import { IoSettings, IoBookmark, IoTrash } from 'react-icons/io5';
+import { Settings, Bookmark, Trash2 } from 'lucide-react';
 import { Checkbox } from './ui/checkbox';
 import { StockFilter, SavedFilter } from '../types';
 import { toaster } from './ui/toaster';
@@ -148,7 +148,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
         alignItems="center"
         gap={2}
       >
-        {createElement(IoSettings as any)}
+        <Settings size={16} />
         Filters
         {activeFilterCount > 0 && (
           <Badge
@@ -212,7 +212,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                           alignItems="center"
                           gap={2}
                         >
-                          {createElement(IoBookmark as any)}
+                          <Bookmark size={14} />
                           {sf.name}
                         </Button>
                         <IconButton
@@ -222,7 +222,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, activeFilterCo
                           colorPalette="red"
                           onClick={() => handleDeleteFilter(sf.id)}
                         >
-                          {createElement(IoTrash as any)}
+                          <Trash2 size={14} />
                         </IconButton>
                       </HStack>
                     ))}

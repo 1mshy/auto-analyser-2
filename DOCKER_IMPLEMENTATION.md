@@ -15,7 +15,7 @@ Complete Docker Compose setup for the Auto Stock Analyzer application, enabling 
 
 2. **`frontend/Dockerfile`** (Frontend)
    - Multi-stage build: Node.js builder + nginx server
-   - Production-optimized React build
+   - Production-optimized Vite build
    - Efficient static file serving
 
 3. **`frontend/nginx.conf`**
@@ -150,7 +150,7 @@ docker compose up -d mongodb
 cargo run
 
 # Run frontend locally
-cd frontend && npm start
+cd frontend && npm run dev
 ```
 
 ### Production Deployment

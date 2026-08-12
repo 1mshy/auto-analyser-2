@@ -25,9 +25,9 @@ cargo run --example verify_rsi  # examples in examples/
 
 # Frontend (from frontend/)
 npm install
-npm start                       # dev server :3001, proxies API to :3333 (see package.json)
-npm run build
-npm test                        # CRA / react-scripts test runner
+npm run dev                     # Vite dev server :3001, proxies /api + /ws to :3333 (see vite.config.ts)
+npm run build                   # tsc --noEmit && vite build -> frontend/build/
+npm test                        # Vitest (jsdom + @testing-library), single run
 
 # Docker (full stack: Mongo + backend + nginx-served frontend)
 docker compose up -d            # or: make up
@@ -76,17 +76,18 @@ make rebuild                    # full rebuild
 
 ### Frontend (`frontend/src/`)
 
-CRA + React 19 + Chakra UI v3 + TanStack Query v5 + recharts + lucide-react + react-router v7 (framer-motion was removed in the frontend overhaul). Key files:
+Vite 7 + React 19 + Chakra UI v3 + TanStack Query v5 + recharts + lucide-react + react-router v7 (framer-motion, react-icons and @chakra-ui/icons were all removed in the frontend overhaul — lucide-react is the only icon library). Key files:
 
 - `App.tsx` — provider stack `QueryClientProvider → SettingsProvider → ProgressProvider → Router` + routes. **Every page is route-level code-split**: a new page needs a `React.lazy` import (pages are named exports mapped to `default`) and a `<Route>` here.
 - `queries.ts` / `queryClient.ts` — TanStack Query hooks; server state lives here, calling into `api.ts` (axios client). Don't hand-roll `useEffect` fetches.
 - `hooks.ts` — `useWebSocket` (auto-reconnect); `contexts/` — `SettingsContext`, `ProgressContext` (progress arrives over WS via `ProgressProvider`).
 - `types.ts` — mirrors backend `models.rs`; `format.ts` — shared formatting helpers.
 - `pages/` (Dashboard, Stocks, StockDetail, Screener, Alerts, Opportunities, Funds, News, Sector, Backtest), `components/` (incl. `ui/` Chakra primitives, `stock-detail/`, `alerts/`), `theme/`.
+- `index.html` (at the package root — Vite's entry, **not** in `public/`), `vite.config.ts` (build `outDir: "build"`, `target: es2020`, dev proxy, and the inline Vitest block), `tsconfig.json` + `tsconfig.node.json`, `public/` (static passthrough: `sw.js`, `manifest.json`, icons).
 
 ## Conventions and gotchas
 
-- **Port mismatch is the #1 footgun.** Backend code default is `:3000` (`SERVER_PORT`), but `.env.example`, Docker, and frontend proxy use `:3333`. For local dev, keep `SERVER_PORT=3333` in `.env` unless you also change the proxy. Mongo in Docker is exposed on host `:27018` (mapped to container `:27017`) to avoid clashing with a local Mongo.
+- **Port mismatch is the #1 footgun.** Backend code default is `:3000` (`SERVER_PORT`), but `.env.example`, Docker, and the Vite dev proxy use `:3333`. For local dev, keep `SERVER_PORT=3333` in `.env` unless you also change `server.proxy` in `frontend/vite.config.ts`. Mongo in Docker is exposed on host `:27018` (mapped to container `:27017`) to avoid clashing with a local Mongo.
 - **Yahoo rate limits.** Local default is `YAHOO_REQUEST_DELAY_MS=100` + `YAHOO_CONCURRENCY=5`; Docker raises delay to `500`. Older docs reference 4s — that was the old non-concurrent path. If you change these, sanity-check with `cargo run --bin rate_limit_tester`.
 - **NASDAQ + Yahoo both need a desktop User-Agent.** Don't strip it.
 - **Errors don't abort cycles.** `AnalysisEngine` accumulates them in `AnalysisProgress.errors` and continues; `AlertEngine` swallows per-channel failures the same way. Don't add early `?` returns at these boundaries.

@@ -25,9 +25,9 @@ cargo run --example verify_rsi  # examples in examples/
 
 # Frontend (from frontend/)
 npm install
-npm start                       # dev server :3001, proxies API to :3333 (see package.json)
-npm run build
-npm test                        # CRA / react-scripts test runner
+npm run dev                     # Vite dev server :3001, proxies /api + /ws to :3333 (see vite.config.ts)
+npm run build                   # tsc --noEmit && vite build -> frontend/build/
+npm test                        # Vitest (jsdom + @testing-library), single run
 
 # Docker (full stack: Mongo + backend + nginx-served frontend)
 docker compose up -d            # or: make up
@@ -71,11 +71,11 @@ make rebuild                    # full rebuild
 
 ### Frontend (`frontend/src/`)
 
-CRA + React 19 + Chakra UI v3 + framer-motion + recharts + lucide-react. Key files: `App.tsx` (router + WS provider), `api.ts` (axios client), `hooks.ts` (`useWebSocket` auto-reconnect), `types.ts` (mirrors backend `models.rs`), `pages/` (Stocks, StockDetail, Alerts, etc.), `components/`, `theme/`.
+Vite 7 + React 19 + Chakra UI v3 + TanStack Query v5 + recharts + lucide-react + react-router v7 (framer-motion, react-icons and @chakra-ui/icons were all removed in the frontend overhaul). Key files: `index.html` + `vite.config.ts` (package root), `App.tsx` (router + providers, routes are `React.lazy` code-split), `api.ts` (axios client), `hooks.ts` (`useWebSocket` auto-reconnect), `types.ts` (mirrors backend `models.rs`), `pages/` (Stocks, StockDetail, Alerts, etc.), `components/`, `theme/`.
 
 ## Conventions and gotchas
 
-- **Port mismatch is the #1 footgun.** Backend code default is `:3000` (`SERVER_PORT`), but `.env.example`, Docker, and frontend proxy use `:3333`. For local dev, keep `SERVER_PORT=3333` in `.env` unless you also change the proxy. Mongo in Docker is exposed on host `:27018` (mapped to container `:27017`) to avoid clashing with a local Mongo.
+- **Port mismatch is the #1 footgun.** Backend code default is `:3000` (`SERVER_PORT`), but `.env.example`, Docker, and the Vite dev proxy use `:3333`. For local dev, keep `SERVER_PORT=3333` in `.env` unless you also change `server.proxy` in `frontend/vite.config.ts`. Mongo in Docker is exposed on host `:27018` (mapped to container `:27017`) to avoid clashing with a local Mongo.
 - **Yahoo rate limits.** Local default is `YAHOO_REQUEST_DELAY_MS=100` + `YAHOO_CONCURRENCY=5`; Docker raises delay to `500`. Older docs reference 4s — that was the old non-concurrent path. If you change these, sanity-check with `cargo run --bin rate_limit_tester`.
 - **NASDAQ + Yahoo both need a desktop User-Agent.** Don't strip it.
 - **Errors don't abort cycles.** `AnalysisEngine` accumulates them in `AnalysisProgress.errors` and continues; `AlertEngine` swallows per-channel failures the same way. Don't add early `?` returns at these boundaries.

@@ -4,10 +4,13 @@
  *   - Same-origin GETs (JS/CSS/images): cache-first, refill on miss
  *   - /api/*: network-first with cache fallback (short freshness)
  *   - Non-GET (POST/PUT/DELETE) and WebSocket upgrades: never intercept
- * No libraries; CRA copies this file from public/ to build/ unchanged.
+ * No libraries; Vite copies this file from public/ to build/ unchanged.
  */
 
-const CACHE_VERSION = 'aa-v1';
+// Bumped for the CRA -> Vite migration: the aa-v1 shell cached an index.html
+// referencing /static/js/* bundles that no longer exist (Vite emits /assets/*).
+// Returning users must not be served that shell.
+const CACHE_VERSION = 'aa-v2';
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const API_CACHE = `${CACHE_VERSION}-api`;

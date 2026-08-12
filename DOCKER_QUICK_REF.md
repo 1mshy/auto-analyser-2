@@ -117,7 +117,7 @@ docker compose up -d mongodb
 cargo run
 
 # And frontend locally
-cd frontend && npm start
+cd frontend && npm run dev
 ```
 
 ### View database

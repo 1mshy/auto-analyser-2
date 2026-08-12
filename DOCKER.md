@@ -251,7 +251,7 @@ docker compose up -d mongodb
 cargo run
 
 # Run frontend locally with hot reload
-cd frontend && npm start
+cd frontend && npm run dev
 ```
 
 ## Cleaning Up

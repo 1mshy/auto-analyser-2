@@ -44,7 +44,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Matches frontend/Dockerfile's node:22-alpine builder. Vite 7 needs
+          # ^20.19.0 || >=22.12.0.
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
@@ -52,6 +54,46 @@ jobs:
 
       - run: npm run build
 
-      - run: npm test -- --watchAll=false
+      # B13 bundle budget. "Initial" = the entry <script type="module"> plus
+      # every <link rel="modulepreload"> Vite emits for its static import
+      # graph. Route chunks behind React.lazy are deliberately not counted.
+      - name: Bundle size budget (initial JS, gzipped)
+        env:
+          # Hard gate — the job fails above this. It is a ratchet: lower it as
+          # the entry chunk shrinks, never raise it to make a red build green.
+          # At the time of the Vite migration the single entry chunk is ~251 KB
+          # gz (down from the ~405 KB gz pre-code-splitting single bundle).
+          MAX_INITIAL_CHUNK_GZIP_KB: '280'
+          # B13's stated goal. Over target but under the gate = warning only,
+          # so the gap stays visible on every run without blocking merges.
+          TARGET_INITIAL_CHUNK_GZIP_KB: '150'
+        run: |
+          set -euo pipefail
+          limit_bytes=$(( MAX_INITIAL_CHUNK_GZIP_KB * 1024 ))
+          target_bytes=$(( TARGET_INITIAL_CHUNK_GZIP_KB * 1024 ))
+          # `|| true`: grep exits 1 on no match, which set -e/pipefail would
+          # turn into a bare failure before the explanatory error below.
+          chunks=$(grep -oE '/assets/[A-Za-z0-9._-]+\.js' build/index.html | sort -u || true)
+          if [ -z "$chunks" ]; then
+            echo "::error::No initial JS chunks referenced from frontend/build/index.html — did the build output layout change?"
+            exit 1
+          fi
+          status=0
+          for chunk in $chunks; do
+            bytes=$(gzip -9 -c "build${chunk}" | wc -c | tr -d ' ')
+            kb=$(( (bytes + 1023) / 1024 ))
+            printf '%6s KB gz  %s\n' "$kb" "$chunk"
+            if [ "$bytes" -gt "$limit_bytes" ]; then
+              echo "::error::${chunk} is ${kb} KB gzipped, over the ${MAX_INITIAL_CHUNK_GZIP_KB} KB initial-chunk gate"
+              status=1
+            elif [ "$bytes" -gt "$target_bytes" ]; then
+              echo "::warning::${chunk} is ${kb} KB gzipped, over the ${TARGET_INITIAL_CHUNK_GZIP_KB} KB B13 target (gate is ${MAX_INITIAL_CHUNK_GZIP_KB} KB)"
+            fi
+          done
+          exit $status
+
+      # Vitest. `--watchAll` was a jest-only flag; the package script is
+      # `vitest run`, which is already non-watching.
+      - run: npm test
         env:
           CI: 'true'

@@ -114,7 +114,7 @@ End-to-end on branch `feat/backtesting-engine`:
 
 Verified: `cargo build` (0 errors), `cargo clippy` (0 errors, no new warnings —
 `backtest.rs` is lint-clean), `cargo test` (408 passed), `npm run build`
-(compiles), `react-scripts test` (3 passed).
+(compiles), `vitest run` (3 passed).
 
 ## Recommended follow-ups
 
@@ -133,6 +133,10 @@ Verified: `cargo build` (0 errors), `cargo clippy` (0 errors, no new warnings �
 - **Equity-curve size guard.** For very long windows × large watchlists, embed
   a down-sampled curve or store curves in a side collection to stay clear of
   Mongo's 16MB document ceiling.
-- **CRA/Jest + Chakra v3.** The smoke test mocks `@chakra-ui/react` because
-  CRA's Jest 27 resolver can't follow ark-ui `exports` subpaths. A migration to
-  Vitest (or jest 28+) would allow rendering the real components.
+- **Chakra v3 mock in the smoke test.** The test still mocks `@chakra-ui/react`.
+  The original reason (CRA's Jest 27 resolver couldn't follow ark-ui `exports`
+  subpaths) is gone now that the runner is Vitest, which resolves `exports`
+  maps natively. The mock is kept deliberately: the real components need a
+  `<ChakraProvider value={system}>` wrapper that `renderPage()` doesn't supply,
+  and their real DOM output would invalidate the `getByRole('button')` /
+  `getByPlaceholderText` assertions. Dropping it is a follow-up, not a port.
