@@ -2,7 +2,7 @@
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
-> **Before exploring the repo, check `.Codex/INDEX.md` — it's a task→file map that tells you exactly which files to read for common changes.** Scoped notes also live at `src/AGENTS.md`, `src/notifications/AGENTS.md`, and `frontend/AGENTS.md` and load automatically when working in those directories.
+> **Before exploring the repo, check `.claude/INDEX.md` for the existing task-to-file map and `docs/architecture.md` for current frontend ownership.** Scoped implementation notes live at `src/CLAUDE.md`, `src/notifications/CLAUDE.md`, and `frontend/CLAUDE.md`; read the relevant file when working in those directories.
 
 ## Stack
 
@@ -71,7 +71,9 @@ make rebuild                    # full rebuild
 
 ### Frontend (`frontend/src/`)
 
-Vite 7 + React 19 + Chakra UI v3 + TanStack Query v5 + recharts + lucide-react + react-router v7 (framer-motion, react-icons and @chakra-ui/icons were all removed in the frontend overhaul). Key files: `index.html` + `vite.config.ts` (package root), `App.tsx` (router + providers, routes are `React.lazy` code-split), `api.ts` (axios client), `hooks.ts` (`useWebSocket` auto-reconnect), `types.ts` (mirrors backend `models.rs`), `pages/` (Stocks, StockDetail, Alerts, etc.), `components/`, `theme/`.
+Vite 7 + React 19 + Chakra UI v3 + TanStack Query v5 + recharts + lucide-react + react-router v7 (framer-motion, react-icons and @chakra-ui/icons were all removed in the frontend overhaul). Key files: `index.html` + `vite.config.ts` (package root), `App.tsx` (providers), `app/AppShell.tsx` (frame), `app/AppRoutes.tsx` (lazy routes), `app/navigation.ts` (desktop/mobile navigation), `api.ts` (axios client), `hooks.ts` (`useWebSocket` auto-reconnect), `types.ts` (mirrors backend `models.rs`), `pages/` (Stocks, StockDetail, Alerts, etc.), `components/`, `theme/`.
+
+Frontend domain logic now lives under `frontend/src/features/`: `workspace/` owns named dashboard layouts; `dashboard/` owns overview panels; `stocks/` owns URL filters, saved views and results; `charts/` owns history calculations and native graphs. See `docs/architecture.md` and `frontend/README.md` before adding to these features. Portable theme tokens live in `frontend/src/theme/tokens.css`; root `tokens.css` re-exports them.
 
 ## Conventions and gotchas
 

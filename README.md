@@ -2,6 +2,12 @@
 
 A high-performance, production-ready stock market analysis platform combining a **MongoDB database**, **Rust backend** with **React frontend**. Features 24/7 continuous analysis, real-time WebSocket updates, intelligent caching, and persistent data storage with mongodb.
 
+## Research workspace
+
+The frontend now includes configurable dashboard layouts, saved stock views, column and density controls, native price/volume/RSI charts, and grouped desktop/mobile navigation. Preferences are saved in the browser; stock data and watchlists use the existing backend.
+
+Start with the [documentation hub](docs/README.md), [architecture map](docs/architecture.md), or [frontend guide](frontend/README.md). UI choices and supporting sources are recorded in [frontend research](docs/frontend-research.md).
+
 ## ✨ Key Features
 
 ### 🔥 **Performance & Reliability**
@@ -20,8 +26,8 @@ A high-performance, production-ready stock market analysis platform combining a 
 ### 🌐 **Modern Frontend**
 - **Real-time Updates**: WebSocket connections for live data streaming
 - **Error Boundaries**: Graceful error handling and recovery
-- **Responsive Design**: Mobile-first design with Chakra ui and Tailwind CSS
-- **Interactive Charts**: RSI distribution and trend visualization
+- **Responsive Design**: Responsive layouts with Chakra UI
+- **Interactive Charts**: Price history, volume, Wilder RSI, SMA overlays and accessible data tables
 
 ## 🔄 New Continuous Analysis Feature
 
