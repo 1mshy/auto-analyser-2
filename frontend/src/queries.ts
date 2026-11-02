@@ -1,5 +1,5 @@
-import { useQuery, useMutation, keepPreviousData, type UseQueryResult } from '@tanstack/react-query';
-import type { AIResearchInput } from './types';
+import { useQuery, useMutation, useQueryClient, keepPreviousData, type UseQueryResult } from '@tanstack/react-query';
+import type { AIResearchInput, PortfolioResponse, PortfolioRelatedResponse, PortfolioImportOptions, PortfolioImportResult, CreateHoldingInput, UpdateHoldingInput } from './types';
 import { api, FilterResponse } from './api';
 import {
   GlobalSettings,
@@ -51,6 +51,7 @@ type AlertHistoryResponse = {
  *   ['stock', symbol]   -> a stock and all its per-symbol detail data
  *                          (history, news, profile, insiders, earnings, AI)
  *   ['market-summary']  -> every settings variant
+ *   ['portfolio']       -> holdings joined with market data (cycle-invalidated)
  * ['alerts'] is user data, not market data — deliberately NOT cycle-invalidated.
  */
 export const queryKeys = {
@@ -78,6 +79,8 @@ export const queryKeys = {
   channels: ['alerts', 'channels'] as const,
   alertHistory: (limit?: number) => ['alerts', 'history', limit ?? null] as const,
   unreadCount: ['alerts', 'unread'] as const,
+  portfolio: ['portfolio'] as const,
+  portfolioRelated: (limit?: number) => ['portfolio', 'related', limit ?? null] as const,
   backtests: ['backtests'] as const,
   backtestRun: (id: string) => ['backtest', id] as const,
 };
@@ -311,4 +314,67 @@ export function useBacktestRun(
     queryFn: () => api.backtest.get(id),
     enabled: !!id && enabled,
   });
+}
+
+// ---- Portfolio ------------------------------------------------------------
+
+export function usePortfolio(): UseQueryResult<PortfolioResponse, Error> {
+  return useQuery<PortfolioResponse>({
+    queryKey: queryKeys.portfolio,
+    queryFn: api.portfolio.get,
+    staleTime: 30_000,
+  });
+}
+
+export function usePortfolioRelated(
+  limit?: number,
+): UseQueryResult<PortfolioRelatedResponse, Error> {
+  return useQuery<PortfolioRelatedResponse>({
+    queryKey: queryKeys.portfolioRelated(limit),
+    queryFn: () => api.portfolio.related(limit),
+    staleTime: 60_000,
+  });
+}
+
+/** Upload / paste a document. Only an explicit user action triggers the model. */
+export function usePortfolioImport() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      source,
+      options,
+      signal,
+    }: {
+      source: { file?: File; text?: string; filename?: string };
+      options?: PortfolioImportOptions;
+      signal?: AbortSignal;
+    }) => api.portfolio.import(source, options, signal),
+    retry: false,
+    onSuccess: (result: PortfolioImportResult) => {
+      if (!result.dry_run) client.invalidateQueries({ queryKey: queryKeys.portfolio });
+    },
+  });
+}
+
+export function usePortfolioMutations() {
+  const client = useQueryClient();
+  const invalidate = () => client.invalidateQueries({ queryKey: queryKeys.portfolio });
+  const add = useMutation({
+    mutationFn: (input: CreateHoldingInput) => api.portfolio.addHolding(input),
+    onSuccess: invalidate,
+  });
+  const update = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: UpdateHoldingInput }) =>
+      api.portfolio.updateHolding(id, patch),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.portfolio.deleteHolding(id),
+    onSuccess: invalidate,
+  });
+  const clear = useMutation({
+    mutationFn: () => api.portfolio.clear(),
+    onSuccess: invalidate,
+  });
+  return { add, update, remove, clear };
 }

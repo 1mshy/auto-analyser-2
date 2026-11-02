@@ -14,9 +14,16 @@ import {
   useAIAnalysis,
   useAIStatus,
   useNews,
+  usePortfolio,
+  usePortfolioRelated,
   useSectorPerformance,
   useWatchlists,
 } from '../../queries';
+import {
+  PortfolioEmpty,
+  PositionsList,
+  RelatedList,
+} from '../portfolio/PortfolioLists';
 import { Num, SkeletonText } from '../../components/ui/primitives';
 import MarkdownContent from '../../components/MarkdownContent';
 import { fmtPct } from '../../format';
@@ -454,6 +461,47 @@ function AIWidget({ summary }: { summary?: MarketSummary }) {
     />
   );
 }
+function PortfolioPanel() {
+  const query = usePortfolio();
+  if (query.isLoading) return <SkeletonText lines={6} />;
+  if (query.isError && !query.data)
+    return (
+      <PanelMessage retry={() => query.refetch()}>
+        Your portfolio could not be loaded.
+      </PanelMessage>
+    );
+  if (!query.data?.positions.length) return <PortfolioEmpty compact />;
+  return (
+    <>
+      {query.isError && (
+        <Text fontSize="xs" color="signal.warn.fg" mb={2}>
+          Refresh failed · showing the last available data
+        </Text>
+      )}
+      <PositionsList positions={query.data.positions} limit={6} />
+    </>
+  );
+}
+function PortfolioRelatedPanel() {
+  const portfolio = usePortfolio();
+  const query = usePortfolioRelated(8);
+  if (portfolio.isLoading || query.isLoading) return <SkeletonText lines={6} />;
+  if (!portfolio.data?.positions.length) return <PortfolioEmpty compact />;
+  if (query.isError && !query.data)
+    return (
+      <PanelMessage retry={() => query.refetch()}>
+        Related stocks could not be loaded.
+      </PanelMessage>
+    );
+  if (!query.data?.related.length)
+    return (
+      <PanelMessage>
+        Related names appear once your holdings have been analyzed and
+        classified by sector.
+      </PanelMessage>
+    );
+  return <RelatedList related={query.data.related} limit={6} />;
+}
 export function DashboardWidget({
   id,
   summary,
@@ -461,6 +509,8 @@ export function DashboardWidget({
   id: WidgetId;
   summary: UseQueryResult<MarketSummary, Error>;
 }) {
+  if (id === 'portfolio') return <PortfolioPanel />;
+  if (id === 'portfolio_related') return <PortfolioRelatedPanel />;
   if (id === 'sectors') return <Sectors />;
   if (id === 'watchlists') return <Watchlists />;
   if (id === 'news') return <Headlines />;

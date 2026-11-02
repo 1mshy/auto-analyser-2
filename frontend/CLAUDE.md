@@ -9,14 +9,14 @@ Vite 7 + React 19 + TypeScript + Chakra UI v3 + TanStack Query v5 + recharts + l
 ## File map
 
 - `src/App.tsx` — provider stack (`QueryClientProvider → SettingsProvider → ProgressProvider → Router`). `src/app/AppShell.tsx` owns the application frame, `AppRoutes.tsx` owns lazy routes, and `navigation.ts` is shared by desktop and mobile. **Every page is route-level code-split**: a new page needs a `React.lazy` import (pages are named exports mapped to `default`) and a `<Route>` in `AppRoutes.tsx`.
-- `src/features/` — dashboard panels, saved workspace layouts, stock filters/views/results, and historical charts. Keep route pages thin; see `../docs/architecture.md` for ownership and state boundaries.
+- `src/features/` — dashboard panels, saved workspace layouts, stock filters/views/results, historical charts, and `portfolio/` (upload/preview, holdings table, manual add, lists shared with the dashboard). Workspace layouts are persisted at `version: 2`; `parseWorkspace` migrates v1 preset layouts by injecting the portfolio panels once. Keep route pages thin; see `../docs/architecture.md` for ownership and state boundaries.
 - `src/queries.ts` / `src/queryClient.ts` — TanStack Query hooks. Server state lives here.
 - `src/api.ts` — axios client. All HTTP calls go through here (called by the query hooks).
 - `src/hooks.ts` — `useWebSocket` (auto-reconnect) and other hooks.
 - `src/contexts/` — `SettingsContext`, `ProgressContext` (progress arrives over WS via `ProgressProvider`).
 - `src/types.ts` — **mirrors backend `src/models.rs`**. Keep in sync when models change.
 - `src/format.ts` — shared number/date formatting helpers.
-- `src/pages/` — top-level screens (Dashboard, StocksPage, StockDetailPage, ScreenerPage, AlertsPage, OpportunitiesPage, FundsPage, NewsPage, SectorPage, Backtest).
+- `src/pages/` — top-level screens (Dashboard, PortfolioPage, StocksPage, StockDetailPage, ScreenerPage, AlertsPage, OpportunitiesPage, FundsPage, NewsPage, SectorPage, Backtest).
 - `src/components/` — shared UI (FilterPanel, Navigation, NewsCard, MobileDrawer, SettingsPanel, ProgressBar, MarkdownContent).
 - `src/components/alerts/` — alerts-specific (ConditionBuilder).
 - `src/pages/stock-detail/` — StockDetail research tabs.

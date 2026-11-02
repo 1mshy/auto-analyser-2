@@ -22,6 +22,7 @@ Use this map to jump straight to the right files instead of exploring. Paths are
 | Add a new filter to the stocks query | `src/models.rs` (`StockFilter`) → `src/db.rs::get_latest_analyses` → `frontend/src/components/FilterPanel.tsx` |
 | Backtesting engine / endpoints | `src/backtest.rs`, routes in `src/api.rs`, spec in `BACKTESTING.md` |
 | Per-stock news / Marketaux | `src/marketaux.rs`, prefetch in `src/analysis.rs`, UI in `frontend/src/components/NewsCard.tsx` + `frontend/src/pages/NewsPage.tsx` |
+| Portfolio upload / holdings / related stocks on the overview | `src/portfolio.rs` (decode → `parse_document` AI-first / `parse_heuristic` fallback → views), `src/openrouter.rs` (`generate_structured`), `frontend/src/features/portfolio/`, `frontend/src/pages/PortfolioPage.tsx`, dashboard panels in `frontend/src/features/dashboard/DashboardWidgets.tsx` + `features/workspace/model.ts`; verify with `cargo run --example parse_portfolio -- file.csv` |
 | Prometheus metrics | `src/metrics.rs` (dedicated registry + `/metrics` handler + increment sites) |
 | Symbol normalization | `src/symbols.rs` (`normalize_symbol_key`) |
 | Add a backend module | declare in **both** `src/main.rs` (`mod`) and `src/lib.rs` (`pub mod`) |

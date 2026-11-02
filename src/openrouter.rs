@@ -281,6 +281,29 @@ impl OpenRouterClient {
         system: &str,
         prompt: &str,
     ) -> std::result::Result<ResearchCompletion, ResearchGenerationError> {
+        self.generate_completion(system, prompt, 1200, 12_000).await
+    }
+
+    /// One bounded completion for structured extraction (e.g. portfolio
+    /// imports). Same transport rules as research, with a larger output budget
+    /// because the answer is machine-readable JSON rather than prose.
+    pub async fn generate_structured(
+        &self,
+        system: &str,
+        prompt: &str,
+        max_tokens: u32,
+    ) -> std::result::Result<ResearchCompletion, ResearchGenerationError> {
+        self.generate_completion(system, prompt, max_tokens, 60_000)
+            .await
+    }
+
+    async fn generate_completion(
+        &self,
+        system: &str,
+        prompt: &str,
+        max_tokens: u32,
+        max_answer_chars: usize,
+    ) -> std::result::Result<ResearchCompletion, ResearchGenerationError> {
         if !self.is_enabled() {
             return Err(ResearchGenerationError::Disabled);
         }
@@ -299,7 +322,7 @@ impl OpenRouterClient {
                 { "role": "system", "content": system },
                 { "role": "user", "content": prompt }
             ],
-            "max_tokens": 1200,
+            "max_tokens": max_tokens,
             "temperature": 0.2,
             "stream": false
         });
@@ -355,7 +378,7 @@ impl OpenRouterClient {
                 // final answer when a local provider ignores thinking=false.
                 let lower = content.to_ascii_lowercase();
                 !content.is_empty()
-                    && content.chars().count() <= 12_000
+                    && content.chars().count() <= max_answer_chars
                     && !lower.contains("<think")
                     && !lower.contains("</think")
             })

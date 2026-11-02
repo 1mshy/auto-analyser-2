@@ -1,5 +1,13 @@
 export const WORKSPACE_KEY = 'auto-analyser.workspace.v1';
 export const widgetCatalog = {
+  portfolio: {
+    title: 'Your portfolio',
+    description: 'The positions you hold, with live price, day change and RSI.',
+  },
+  portfolio_related: {
+    title: 'Related to your portfolio',
+    description: 'Names in the sectors or size range you own, tilted toward oversold signals.',
+  },
   sectors: {
     title: 'Sector performance',
     description: 'Compare daily returns across analyzed sectors.',
@@ -41,7 +49,7 @@ export interface WorkspaceLayout {
   widgets: Widget[];
 }
 export interface WorkspaceState {
-  version: 1;
+  version: 2;
   activeId: string;
   layouts: WorkspaceLayout[];
 }
@@ -49,6 +57,8 @@ export const presets: Record<string, { name: string; widgets: Widget[] }> = {
   overview: {
     name: 'Market overview',
     widgets: [
+      { id: 'portfolio', width: 6 },
+      { id: 'portfolio_related', width: 6 },
       { id: 'sectors', width: 8 },
       { id: 'movers', width: 4 },
       { id: 'oversold', width: 4 },
@@ -68,6 +78,7 @@ export const presets: Record<string, { name: string; widgets: Widget[] }> = {
   monitor: {
     name: 'Daily monitor',
     widgets: [
+      { id: 'portfolio', width: 8 },
       { id: 'watchlists', width: 4 },
       { id: 'news', width: 8 },
       { id: 'megacap', width: 6 },
@@ -77,7 +88,7 @@ export const presets: Record<string, { name: string; widgets: Widget[] }> = {
 };
 export function defaultWorkspace(): WorkspaceState {
   return {
-    version: 1,
+    version: 2,
     activeId: 'overview',
     layouts: Object.entries(presets).map(([id, preset]) => ({
       id,
@@ -92,8 +103,13 @@ export function parseWorkspace(raw: string | null): WorkspaceState {
   try {
     const data: unknown = JSON.parse(raw ?? 'null');
     if (!data || typeof data !== 'object') return defaultWorkspace();
-    const stored = data as Partial<WorkspaceState>;
-    if (stored.version !== 1 || !Array.isArray(stored.layouts))
+    const stored = data as Omit<Partial<WorkspaceState>, 'version'> & {
+      version?: number;
+    };
+    // Version 1 predates the portfolio panels; they are added to the preset
+    // layouts once (below) so existing users see them without a reset.
+    const legacy = stored.version === 1;
+    if ((stored.version !== 1 && stored.version !== 2) || !Array.isArray(stored.layouts))
       return defaultWorkspace();
     const ids = new Set<string>();
     const layouts = stored.layouts.slice(0, 8).flatMap((layout) => {
@@ -123,6 +139,12 @@ export function parseWorkspace(raw: string | null): WorkspaceState {
           width: [4, 6, 8, 12].includes(widget.width) ? widget.width : 6,
         });
       }
+      if (legacy && presets[layout.id] && !seen.has('portfolio')) {
+        const added = presets[layout.id].widgets.filter(
+          (widget) => widget.id === 'portfolio' || widget.id === 'portfolio_related',
+        );
+        widgets.unshift(...added.map((widget) => ({ ...widget })));
+      }
       return [
         {
           id: layout.id.slice(0, 100),
@@ -133,7 +155,7 @@ export function parseWorkspace(raw: string | null): WorkspaceState {
     });
     if (!layouts.length) return defaultWorkspace();
     return {
-      version: 1,
+      version: 2,
       activeId: layouts.some((layout) => layout.id === stored.activeId)
         ? stored.activeId!
         : layouts[0].id,

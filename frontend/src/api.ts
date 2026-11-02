@@ -1,8 +1,20 @@
 import axios from 'axios';
-import type { AIResearchInput, AIResearchResponse } from './types';
+import type { AIResearchInput, AIResearchResponse, PortfolioResponse, PortfolioRelatedResponse, PortfolioImportOptions, PortfolioImportResult, PortfolioHoldingView, CreateHoldingInput, UpdateHoldingInput } from './types';
 import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, MarketIndexQuote, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus, PositionView, CreatePositionInput, UpdatePositionInput, NewsCardPayload, DailyNewsSymbol, CreateBacktestInput, BacktestRun, BacktestSummary } from './types';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+/** Import failures carry the parser's diagnostics so the UI can show them. */
+export class PortfolioImportError extends Error {
+  warnings: string[];
+  skipped: string[];
+  constructor(message: string, warnings: string[] = [], skipped: string[] = []) {
+    super(message);
+    this.name = 'PortfolioImportError';
+    this.warnings = warnings;
+    this.skipped = skipped;
+  }
+}
 
 export interface FilterResponse {
   stocks: StockAnalysis[];
@@ -483,6 +495,74 @@ export const api = {
       const r = await axios.get(`${API_BASE_URL}/api/backtest/${id}`);
       if (r.data.success) return r.data.run as BacktestRun;
       throw new Error(r.data.error || 'Backtest not found');
+    },
+  },
+
+  // Portfolio holdings (upload + manual edits), see src/portfolio.rs
+  portfolio: {
+    get: async (): Promise<PortfolioResponse> => {
+      const r = await axios.get(`${API_BASE_URL}/api/portfolio`);
+      if (!r.data.success) throw new Error(r.data.error || 'Failed to load portfolio');
+      return {
+        holdings: r.data.holdings || [],
+        positions: r.data.positions || [],
+        summary: r.data.summary,
+      };
+    },
+    related: async (limit?: number): Promise<PortfolioRelatedResponse> => {
+      const params = limit ? `?limit=${limit}` : '';
+      const r = await axios.get(`${API_BASE_URL}/api/portfolio/related${params}`);
+      if (!r.data.success) throw new Error(r.data.error || 'Failed to load related stocks');
+      return { related: r.data.related || [], sectors: r.data.sectors || [] };
+    },
+    /** Multipart upload: a File, or pasted text. `dry_run` previews without saving. */
+    import: async (
+      source: { file?: File; text?: string; filename?: string },
+      options: PortfolioImportOptions = {},
+      signal?: AbortSignal,
+    ): Promise<PortfolioImportResult> => {
+      const form = new FormData();
+      if (source.file) form.append('file', source.file, source.file.name);
+      if (source.text) form.append('text', source.text);
+      if (source.filename) form.append('filename', source.filename);
+      const params = new URLSearchParams();
+      if (options.mode) params.set('mode', options.mode);
+      if (options.parser) params.set('parser', options.parser);
+      if (options.dry_run) params.set('dry_run', 'true');
+      try {
+        const r = await axios.post<PortfolioImportResult & { success: boolean; error?: string }>(
+          `${API_BASE_URL}/api/portfolio/import?${params.toString()}`,
+          form,
+          { signal, timeout: 200_000 },
+        );
+        if (!r.data.success) throw new PortfolioImportError(r.data.error || 'Import failed', r.data.warnings, r.data.skipped);
+        return r.data;
+      } catch (error) {
+        if (axios.isCancel(error) || error instanceof PortfolioImportError) throw error;
+        if (axios.isAxiosError<{ error?: string; warnings?: string[]; skipped?: string[] }>(error)) {
+          const data = error.response?.data;
+          if (error.code === 'ECONNABORTED') throw new PortfolioImportError('The import timed out. Try the built-in parser or a smaller file.');
+          throw new PortfolioImportError(data?.error || 'Could not import the document. Check the server connection and try again.', data?.warnings, data?.skipped);
+        }
+        throw error;
+      }
+    },
+    addHolding: async (input: CreateHoldingInput): Promise<PortfolioHoldingView> => {
+      const r = await axios.post(`${API_BASE_URL}/api/portfolio/holdings`, input);
+      if (!r.data.success) throw new Error(r.data.error || 'Could not add holding');
+      return r.data.holding;
+    },
+    updateHolding: async (id: string, patch: UpdateHoldingInput): Promise<PortfolioHoldingView> => {
+      const r = await axios.patch(`${API_BASE_URL}/api/portfolio/holdings/${id}`, patch);
+      if (!r.data.success) throw new Error(r.data.error || 'Could not update holding');
+      return r.data.holding;
+    },
+    deleteHolding: async (id: string): Promise<void> => {
+      await axios.delete(`${API_BASE_URL}/api/portfolio/holdings/${id}`);
+    },
+    clear: async (): Promise<number> => {
+      const r = await axios.delete(`${API_BASE_URL}/api/portfolio`);
+      return r.data.deleted ?? 0;
     },
   },
 };

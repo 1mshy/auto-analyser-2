@@ -115,6 +115,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/metrics", get(crate::metrics::metrics_handler))
         .route("/ws", get(websocket_handler));
 
+    let router = crate::portfolio::mount(router);
     crate::notifications::api::mount(router).with_state(state)
 }
 

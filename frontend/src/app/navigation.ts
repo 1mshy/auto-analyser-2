@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   ListFilter,
+  Briefcase,
   ScanLine,
   TrendingUp,
   Layers3,
@@ -17,6 +18,7 @@ export const navigation = [
     label: 'Workspace',
     items: [
       { to: '/', label: 'Overview', icon: LayoutDashboard },
+      { to: '/portfolio', label: 'Portfolio', icon: Briefcase },
       { to: '/stocks', label: 'All stocks', icon: ListFilter },
       { to: '/screener', label: 'Screener', icon: ScanLine },
       { to: '/opportunities', label: 'Opportunities', icon: TrendingUp },

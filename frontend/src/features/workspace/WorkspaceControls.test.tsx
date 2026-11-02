@@ -60,7 +60,13 @@ describe('workspace customization', () => {
       screen.getByRole('button', { name: 'Hide Oversold radar' }),
     );
     const stored = JSON.parse(localStorage.getItem(WORKSPACE_KEY)!);
-    expect(stored.layouts[0].widgets[0]).toEqual({ id: 'movers', width: 12 });
+    const ids = stored.layouts[0].widgets.map((item: { id: string }) => item.id);
+    expect(ids.indexOf('movers')).toBe(ids.indexOf('sectors') - 1);
+    expect(
+      stored.layouts[0].widgets.find(
+        (item: { id: string }) => item.id === 'movers',
+      ),
+    ).toEqual({ id: 'movers', width: 12 });
     expect(
       stored.layouts[0].widgets.some(
         (item: { id: string }) => item.id === 'oversold',

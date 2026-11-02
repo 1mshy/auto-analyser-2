@@ -14,6 +14,7 @@ mod models;
 mod nasdaq;
 mod notifications;
 mod openrouter;
+mod portfolio;
 mod symbols;
 mod yahoo;
 

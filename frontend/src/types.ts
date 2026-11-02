@@ -845,3 +845,176 @@ export function defaultStrategy(): Strategy {
     slippage_bps: 0,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Portfolio (mirrors src/portfolio.rs)
+// ---------------------------------------------------------------------------
+
+export type HoldingSource = 'import' | 'manual';
+export type PortfolioParser = 'llm' | 'heuristic';
+export type PortfolioParserPreference = 'auto' | 'llm' | 'heuristic';
+export type PortfolioImportMode = 'replace' | 'merge';
+export type PortfolioValueSource = 'live' | 'import';
+
+/** Slice of `StockAnalysis` joined onto each holding. */
+export interface HoldingMarket {
+  price: number;
+  price_change_percent: number | null;
+  rsi: number | null;
+  sma_20: number | null;
+  sma_50: number | null;
+  sector: string | null;
+  market_cap: number | null;
+  is_oversold: boolean;
+  is_overbought: boolean;
+  analyzed_at: string;
+}
+
+/** One lot: a symbol in one account. Mirrors Rust `PortfolioHolding`. */
+export interface PortfolioHolding {
+  _id?: string | { $oid?: string };
+  symbol: string;
+  raw_symbol: string;
+  description?: string | null;
+  quantity: number;
+  avg_cost?: number | null;
+  currency?: string | null;
+  account?: string | null;
+  market_price?: number | null;
+  market_value?: number | null;
+  is_cdr: boolean;
+  source: HoldingSource;
+  source_file?: string | null;
+  imported_at: string;
+  updated_at: string;
+}
+
+/** Holding + market join + computed values. Mirrors Rust `HoldingView`. */
+export interface PortfolioHoldingView extends PortfolioHolding {
+  market: HoldingMarket | null;
+  cost_basis_total: number | null;
+  current_value: number | null;
+  value_source: PortfolioValueSource | null;
+  unrealized_pnl: number | null;
+  unrealized_pnl_pct: number | null;
+  day_change_value: number | null;
+}
+
+/** All lots of one symbol folded together. */
+export interface PortfolioPosition {
+  symbol: string;
+  description: string | null;
+  quantity: number;
+  lots: number;
+  accounts: string[];
+  currencies: string[];
+  market: HoldingMarket | null;
+  /** Currencies at par — only for weighting, never shown as money. */
+  value_at_par: number;
+  weight_pct: number | null;
+  unrealized_pnl_pct: number | null;
+}
+
+export interface PortfolioCurrencyTotal {
+  currency: string;
+  market_value: number;
+  cost_basis: number;
+  unrealized_pnl: number;
+  day_change: number;
+  holdings: number;
+}
+
+export interface PortfolioSectorWeight {
+  sector: string;
+  symbols: string[];
+  weight_pct: number;
+}
+
+export interface PortfolioSummary {
+  holdings: number;
+  symbols: number;
+  accounts: string[];
+  totals: PortfolioCurrencyTotal[];
+  sectors: PortfolioSectorWeight[];
+  last_imported_at: string | null;
+  source_file: string | null;
+  unanalyzed_symbols: string[];
+}
+
+export interface PortfolioResponse {
+  holdings: PortfolioHoldingView[];
+  positions: PortfolioPosition[];
+  summary: PortfolioSummary;
+}
+
+/** Parser output shown in the import preview. */
+export interface ParsedHolding {
+  symbol: string;
+  raw_symbol: string;
+  description: string | null;
+  quantity: number;
+  avg_cost: number | null;
+  currency: string | null;
+  account: string | null;
+  market_price: number | null;
+  market_value: number | null;
+  is_cdr: boolean;
+}
+
+export interface PortfolioImportOptions {
+  mode?: PortfolioImportMode;
+  parser?: PortfolioParserPreference;
+  dry_run?: boolean;
+}
+
+export interface PortfolioImportResult {
+  dry_run: boolean;
+  mode: PortfolioImportMode;
+  format: string;
+  filename: string;
+  parser: PortfolioParser;
+  model_used: string | null;
+  holdings: ParsedHolding[];
+  count: number;
+  imported: number;
+  warnings: string[];
+  skipped: string[];
+}
+
+export interface RelatedStock {
+  symbol: string;
+  price: number;
+  price_change_percent: number | null;
+  rsi: number | null;
+  sector: string | null;
+  market_cap: number | null;
+  is_oversold: boolean;
+  is_overbought: boolean;
+  reason: string;
+  related_to: string[];
+  score: number;
+}
+
+export interface PortfolioRelatedResponse {
+  related: RelatedStock[];
+  sectors: PortfolioSectorWeight[];
+}
+
+export interface CreateHoldingInput {
+  symbol: string;
+  quantity: number;
+  avg_cost?: number | null;
+  currency?: string | null;
+  account?: string | null;
+  description?: string | null;
+  is_cdr?: boolean;
+}
+
+export interface UpdateHoldingInput {
+  quantity?: number;
+  avg_cost?: number;
+  currency?: string;
+  account?: string;
+  description?: string;
+  is_cdr?: boolean;
+}

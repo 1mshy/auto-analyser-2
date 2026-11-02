@@ -277,6 +277,46 @@ Errors use a non-success HTTP status and `{ "success": false, "error": "..." }`:
 
 `GET /api/ai/status` returns `enabled`, `current_model`, `available_models_count`, and `base_url`. Existing stock-analysis and news-summary routes continue to use the same configured AI client.
 
+## Portfolio
+
+Upload the holdings you own and the dashboard tailors itself to them. Holdings live in the `portfolio_holdings` Mongo collection, one row per lot (a symbol in one account). They are separate from the alert-engine `positions` collection.
+
+```http
+POST /api/portfolio/import?mode=replace|merge&parser=auto|llm|heuristic&dry_run=true|false
+Content-Type: multipart/form-data
+```
+
+Send a `file` field (CSV / TSV / semicolon-separated, Excel `.xlsx`/`.xls`/`.xlsm`, ODS, JSON, HTML table or plain text; max 8 MB) **or** a `text` field with pasted content plus an optional `filename`. PDF is rejected with a clear message. The document is decoded to text, then parsed:
+
+- `parser=auto` (default): the configured AI model (`openrouter.rs`) extracts holdings as JSON; the deterministic parser runs as the backup whenever AI is disabled, busy, times out (180 s), fails, or returns nothing usable. Symbols the model returns must literally appear in the document, which blocks hallucinated tickers. Lots the deterministic parser recognised from column headers but the model dropped are added back with a warning.
+- `parser=heuristic`: deterministic only. Detects the delimiter, maps column headers through alias lists (symbol / ticker, quantity / shares / units, average cost / book value, market price / value, currency, account), reads JSON arrays of objects, and falls back to scanning for ticker-like tokens followed by a number when no header row exists.
+- `parser=llm`: AI only (still falls back on failure, with a warning).
+
+Canadian Depositary Receipts are detected from the description (`CDR`, `C$HDG`), flagged `is_cdr`, keyed by the underlying US symbol and priced in CAD from the file rather than from the live US quote. `mode=replace` (default) wipes every holding first; `mode=merge` replaces only lots that share `(symbol, account)` with the upload. `dry_run=true` returns the parsed preview without saving.
+
+Response: `{ success, dry_run, mode, format, filename, parser: "llm"|"heuristic", model_used, holdings: [ParsedHolding], count, imported, warnings, skipped }`. A document that yields no holdings returns 422 with the same diagnostics.
+
+```http
+GET /api/portfolio
+```
+
+Returns `holdings` (each lot joined with the latest analysis: `market` slice, `current_value`, `value_source: "live"|"import"`, `unrealized_pnl`, `unrealized_pnl_pct`, `day_change_value`), `positions` (lots folded per symbol with weight and lot count) and `summary` (counts, per-currency totals, sector weights, last import, symbols not yet in the analysis universe).
+
+```http
+GET /api/portfolio/related?limit=12&min_market_cap=2000000000
+```
+
+Stocks relevant to what is held, excluding held symbols: same-sector names score by the portfolio's sector weight; when sector data is missing (NASDAQ does not always supply it) names of similar market cap (within roughly 3× of a held position) score by closeness and position weight; then an oversold / low-RSI tilt and market cap as tie-breakers, capped per sector for diversity. Each row carries a human-readable `reason` and the held symbols it relates to.
+
+```http
+POST   /api/portfolio/holdings          { symbol, quantity, avg_cost?, currency?, account?, description?, is_cdr? }
+PATCH  /api/portfolio/holdings/:id      any subset of the fields above
+DELETE /api/portfolio/holdings/:id
+DELETE /api/portfolio                   remove every holding
+```
+
+`cargo run --example parse_portfolio -- holdings.csv` runs a file through the deterministic parser from the command line.
+
 ## Technical Indicators
 
 ### RSI (Relative Strength Index)

@@ -92,6 +92,7 @@ export const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({
     pendingRef.current.clear();
     queryClient.invalidateQueries({ queryKey: ['stocks'] });
     queryClient.invalidateQueries({ queryKey: ['market-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['portfolio'] });
   }, [queryClient]);
 
   const { progress: wsProgress, isConnected } = useWebSocket({
@@ -106,6 +107,7 @@ export const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({
     queryClient.invalidateQueries({ queryKey: ['stocks'] });
     queryClient.invalidateQueries({ queryKey: ['stock'] });
     queryClient.invalidateQueries({ queryKey: ['market-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['portfolio'] });
   }, [queryClient]);
 
   // WebSocket pushes progress; mirror it into state.

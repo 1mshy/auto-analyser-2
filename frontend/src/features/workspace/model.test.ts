@@ -47,6 +47,30 @@ describe('workspace persistence boundary', () => {
       { id: 'blank', name: 'Blank', widgets: [] },
     ]);
   });
+  it('adds the portfolio panels to preset layouts saved before they existed', () => {
+    const legacy = {
+      version: 1,
+      activeId: 'overview',
+      layouts: [
+        { id: 'overview', name: 'Market overview', widgets: [{ id: 'sectors', width: 8 }] },
+        { id: 'custom', name: 'Mine', widgets: [{ id: 'news', width: 12 }] },
+      ],
+    };
+    const restored = parseWorkspace(JSON.stringify(legacy));
+    expect(restored.version).toBe(2);
+    expect(restored.layouts[0].widgets.map((widget) => widget.id)).toEqual([
+      'portfolio',
+      'portfolio_related',
+      'sectors',
+    ]);
+    expect(restored.layouts[1].widgets).toEqual([{ id: 'news', width: 12 }]);
+    // Already migrated data is left alone, even when the panels were removed.
+    const migrated = { ...restored, layouts: [restored.layouts[0]] };
+    migrated.layouts[0].widgets = [{ id: 'sectors', width: 8 }];
+    expect(parseWorkspace(JSON.stringify(migrated)).layouts[0].widgets).toEqual([
+      { id: 'sectors', width: 8 },
+    ]);
+  });
   it('keeps customized panels if the page closes during a blank rename', () => {
     const state = defaultWorkspace();
     state.layouts[0].name = '';
@@ -61,8 +85,12 @@ describe('workspace persistence boundary', () => {
       ...layout,
       widgets: moveWidget(layout.widgets, 'movers', -1),
     }));
-    expect(updated.layouts[0].widgets[0].id).toBe('movers');
-    expect(initial.layouts[0].widgets[0].id).toBe('sectors');
+    const ids = (state: typeof initial) =>
+      state.layouts[0].widgets.map((widget) => widget.id);
+    const moversAt = ids(initial).indexOf('movers');
+    expect(ids(updated)[moversAt - 1]).toBe('movers');
+    expect(ids(updated)[moversAt]).toBe(ids(initial)[moversAt - 1]);
+    expect(ids(initial)[moversAt]).toBe('movers');
     expect(updated.layouts[1]).toBe(initial.layouts[1]);
     expect(defaultWorkspace()).toEqual(initial);
   });

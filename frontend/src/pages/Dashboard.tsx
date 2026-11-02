@@ -29,6 +29,8 @@ const destinations: Record<WidgetId, string> = {
   watchlists: '/alerts?tab=watchlists',
   news: '/news',
   ai: '/research',
+  portfolio: '/portfolio',
+  portfolio_related: '/portfolio#related',
 };
 export function Dashboard() {
   const { settings } = useSettings();
@@ -38,7 +40,7 @@ export function Dashboard() {
     setRefreshing(true);
     try {
       await Promise.all(
-        ['market-summary', 'market-indexes', 'sectors', 'news', 'alerts'].map(
+        ['market-summary', 'market-indexes', 'sectors', 'news', 'alerts', 'portfolio'].map(
           (key) => client.invalidateQueries({ queryKey: [key] }),
         ),
       );

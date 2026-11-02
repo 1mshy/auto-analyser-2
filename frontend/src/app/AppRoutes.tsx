@@ -39,6 +39,9 @@ const ResearchPage = React.lazy(() =>
 const AlertsPage = React.lazy(() =>
   import('../pages/AlertsPage').then((m) => ({ default: m.AlertsPage })),
 );
+const PortfolioPage = React.lazy(() =>
+  import('../pages/PortfolioPage').then((m) => ({ default: m.PortfolioPage })),
+);
 const Backtest = React.lazy(() =>
   import('../pages/Backtest').then((m) => ({ default: m.Backtest })),
 );
@@ -81,6 +84,7 @@ export function AppRoutes() {
         <Route path="/research" element={<ResearchPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/backtest" element={<Backtest />} />
+        <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>
