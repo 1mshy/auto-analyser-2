@@ -262,6 +262,35 @@ export interface AIAnalysisResponse {
   error?: string;
 }
 
+/** User-initiated research; prices and indicators are snapshots supplied to AI. */
+export interface AIResearchInput {
+  symbols: string[];
+  question: string;
+}
+
+export interface AIResearchSource {
+  symbol: string;
+  analyzed_at: string;
+  price: number;
+  price_change_percent: number | null;
+  rsi: number | null;
+  sma_20: number | null;
+  sma_50: number | null;
+  sector: string | null;
+  volume: number | null;
+  market_cap: number | null;
+}
+
+export interface AIResearchResponse {
+  success: true;
+  answer: string;
+  model_used: string;
+  generated_at: string;
+  question: string;
+  sources: AIResearchSource[];
+  missing_symbols: string[];
+}
+
 export interface AnalysisProgress {
   total_stocks: number;
   analyzed: number;
@@ -816,4 +845,3 @@ export function defaultStrategy(): Strategy {
     slippage_bps: 0,
   };
 }
-

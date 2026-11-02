@@ -18,7 +18,7 @@ import {
 } from '@chakra-ui/react';
 import { SignalBadge, PageHeader, EmptyState, Surface } from '../components/ui/primitives';
 import { Bell, Plus, Trash2, Send, RefreshCw, Save, CheckCircle, XCircle } from 'lucide-react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import {
   AlertRule,
@@ -48,7 +48,16 @@ const DOLLAR_SIGN = '$';
 const MESSAGE_TEMPLATE_PLACEHOLDER = `{{symbol}} hit {{rule_name}} at ${DOLLAR_SIGN}{{price}} (RSI {{rsi}}, Δ {{change_pct}}%)`;
 
 export const AlertsPage: React.FC = () => {
-  const [tab, setTab] = useState<TabId>('watchlists');
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const tab: TabId = requestedTab === 'history'
+    ? 'inbox'
+    : TABS.find(item => item.id === requestedTab)?.id ?? 'watchlists';
+  const tabHref = (id: TabId) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', id);
+    return `?${next.toString()}`;
+  };
 
   return (
     <Container maxW="page" py={{ base: 5, md: 8 }}>
@@ -60,16 +69,18 @@ export const AlertsPage: React.FC = () => {
       />
 
       <Surface p={2} mb={4} variant="inset" overflowX="auto">
-      <HStack gap={2} minW="max-content">
+      <HStack as="nav" aria-label="Alerts sections" gap={2} minW="max-content">
         {TABS.map(t => (
           <Button
             key={t.id}
             size="sm"
             variant={tab === t.id ? 'subtle' : 'ghost'}
             colorPalette={tab === t.id ? 'accent' : 'gray'}
-            onClick={() => setTab(t.id)}
+            asChild
           >
-            {t.label}
+            <RouterLink to={tabHref(t.id)} aria-current={tab === t.id ? 'page' : undefined}>
+              {t.label}
+            </RouterLink>
           </Button>
         ))}
       </HStack>
@@ -180,19 +191,27 @@ const WatchlistsTab: React.FC = () => {
               bg={selectedId === w._id ? 'accent.muted' : 'bg.inset'}
               borderWidth="1px"
               borderColor={selectedId === w._id ? 'accent.emphasis' : 'border.subtle'}
-              p={2}
+              p={1}
               borderRadius="md"
-              cursor="pointer"
-              onClick={() => setSelectedId(w._id || null)}
-              _hover={{ bg: selectedId === w._id ? 'accent.muted' : 'bg.muted' }}
             >
-              <Text color="fg.default" fontWeight="medium" flex={1}>{w.name}</Text>
-              <Badge colorPalette="gray">{w.symbols.length}</Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                flex={1}
+                minW={0}
+                justifyContent="space-between"
+                aria-label={`Open ${w.name} watchlist`}
+                aria-pressed={selectedId === w._id}
+                onClick={() => setSelectedId(w._id || null)}
+              >
+                <Text color="fg.default" fontWeight="medium" truncate>{w.name}</Text>
+                <Badge colorPalette="gray">{w.symbols.length}</Badge>
+              </Button>
               <IconButton
                 size="xs"
                 variant="ghost"
                 colorPalette="red"
-                aria-label="delete"
+                aria-label={`Delete ${w.name} watchlist`}
                 onClick={e => { e.stopPropagation(); w._id && handleDelete(w._id); }}
               >
                 <Trash2 size={12} />
@@ -234,7 +253,7 @@ const WatchlistsTab: React.FC = () => {
                     size="xs"
                     variant="ghost"
                     colorPalette="red"
-                    aria-label="remove"
+                    aria-label={`Remove ${sym} from ${selected.name}`}
                     onClick={() => handleRemoveSymbol(sym)}
                   >
                     <Trash2 size={10} />
@@ -1083,4 +1102,3 @@ const InboxTab: React.FC = () => {
     </VStack>
   );
 };
-

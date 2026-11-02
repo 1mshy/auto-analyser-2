@@ -30,7 +30,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
       mb={mb}
       direction={{ base: "column", md: "row" }}
     >
-      <HStack gap={3} align="flex-start">
+      <HStack gap={3} align="flex-start" minW={0}>
         {icon && (
           <Box
             color="accent.fg"
@@ -44,7 +44,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
             {icon}
           </Box>
         )}
-        <VStack align="flex-start" gap={1}>
+        <VStack align="flex-start" gap={2} minW={0}>
           {eyebrow && (
             <Text
               fontSize="xs"
@@ -56,7 +56,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
               {eyebrow}
             </Text>
           )}
-          <Heading size="lg" color="fg.default" fontWeight="semibold" letterSpacing="tight">
+          <Heading as="h1" fontSize="var(--text-display)" lineHeight="1.2" color="fg.default" fontWeight="700" letterSpacing="-.035em" overflowWrap="anywhere">
             {title}
           </Heading>
           {subtitle && (

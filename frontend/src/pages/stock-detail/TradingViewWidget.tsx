@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Box } from '@chakra-ui/react';
+import { useColorMode } from '../../components/ui/color-mode';
 
 const toTradingViewSymbol = (symbol: string): string => {
   const upper = symbol.toUpperCase();
@@ -14,6 +15,8 @@ export interface TradingViewWidgetProps {
 }
 
 export const TradingViewWidget: React.FC<TradingViewWidgetProps> = ({ symbol }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { colorMode } = useColorMode();
   useEffect(() => {
     const script = document.createElement('script');
     script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
@@ -23,7 +26,7 @@ export const TradingViewWidget: React.FC<TradingViewWidgetProps> = ({ symbol }) 
       "symbol": toTradingViewSymbol(symbol),
       "interval": "D",
       "timezone": "Etc/UTC",
-      "theme": "dark",
+      "theme": colorMode === 'light' ? 'light' : 'dark',
       "style": "1",
       "locale": "en",
       "enable_publishing": false,
@@ -34,7 +37,7 @@ export const TradingViewWidget: React.FC<TradingViewWidgetProps> = ({ symbol }) 
       "support_host": "https://www.tradingview.com"
     });
 
-    const container = document.getElementById('tradingview-widget');
+    const container = containerRef.current;
     if (container) {
       container.innerHTML = '';
       const widgetContainer = document.createElement('div');
@@ -46,14 +49,11 @@ export const TradingViewWidget: React.FC<TradingViewWidgetProps> = ({ symbol }) 
     }
 
     return () => {
-      const cleanupContainer = document.getElementById('tradingview-widget');
-      if (cleanupContainer) {
-        cleanupContainer.innerHTML = '';
-      }
+      if (container) container.innerHTML = '';
     };
-  }, [symbol]);
+  }, [symbol, colorMode]);
 
   return (
-    <Box id="tradingview-widget" h="500px" w="100%" bg="bg.inset" borderWidth="1px" borderColor="border.subtle" borderRadius="md" />
+    <Box ref={containerRef} role="region" aria-label={`${symbol} advanced TradingView chart`} h={{ base: '440px', md: '600px' }} w="100%" bg="bg.inset" borderWidth="1px" borderColor="border.subtle" borderRadius="md" />
   );
 };

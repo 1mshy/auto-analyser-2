@@ -79,8 +79,9 @@ export const ConditionBuilder: React.FC<Props> = ({
       borderLeftWidth="3px"
       borderLeftColor={borderColor}
       borderRadius="md"
-      p={3}
-      ml={depth > 0 ? 4 : 0}
+      p={{ base: 2, md: 3 }}
+      minW={0}
+      ml={{ base: 0, md: depth > 0 ? 4 : 0 }}
     >
       <HStack justify="space-between" mb={2}>
         <HStack>
@@ -89,6 +90,7 @@ export const ConditionBuilder: React.FC<Props> = ({
           </Badge>
           <NativeSelect.Root size="xs" w="110px">
             <NativeSelect.Field
+              aria-label="Condition group operator"
               value={value.op}
               bg="bg.surface"
               color="fg.default"
@@ -117,7 +119,7 @@ export const ConditionBuilder: React.FC<Props> = ({
           </NativeSelect.Root>
         </HStack>
         {!isRoot && onDelete && (
-          <Button size="xs" variant="ghost" colorPalette="red" onClick={onDelete}>
+          <Button aria-label="Remove condition group" size="xs" variant="ghost" colorPalette="red" onClick={onDelete}>
             <Trash2 size={12} />
           </Button>
         )}
@@ -151,7 +153,7 @@ export const ConditionBuilder: React.FC<Props> = ({
       </VStack>
 
       {value.op !== 'not' && (
-        <HStack mt={2} gap={2}>
+        <HStack mt={2} gap={2} flexWrap="wrap">
           <Button size="xs" variant="outline" colorPalette="gray" onClick={addLeaf}>
             <Plus size={12} /> Condition
           </Button>
@@ -194,6 +196,7 @@ const LeafRow: React.FC<{
           <Input
             size="sm"
             type="number"
+            aria-label={`${CONDITION_LABELS[type]} value`}
             w="120px"
             bg="bg.surface"
             borderColor="border.subtle"
@@ -210,6 +213,7 @@ const LeafRow: React.FC<{
           <Input
             size="sm"
             type="number"
+            aria-label={`${CONDITION_LABELS[type]} percentage`}
             w="120px"
             bg="bg.surface"
             borderColor="border.subtle"
@@ -225,6 +229,7 @@ const LeafRow: React.FC<{
         return (
           <Input
             size="sm"
+            aria-label="Sector name"
             w="180px"
             bg="bg.surface"
             borderColor="border.subtle"
@@ -239,9 +244,10 @@ const LeafRow: React.FC<{
   };
 
   return (
-    <HStack bg="bg.muted" p={2} borderRadius="md" borderWidth="1px" borderColor="border.subtle">
-      <NativeSelect.Root size="sm" w="260px">
+    <HStack bg="bg.muted" p={2} borderRadius="md" borderWidth="1px" borderColor="border.subtle" flexWrap="wrap" minW={0}>
+      <NativeSelect.Root size="sm" flex="1 1 180px" minW={0} maxW="100%">
         <NativeSelect.Field
+          aria-label="Condition type"
           value={type}
           bg="bg.surface"
           color="fg.default"
@@ -258,7 +264,7 @@ const LeafRow: React.FC<{
       {renderValueInput()}
       <Box flex={1} />
       {onDelete && (
-        <Button size="xs" variant="ghost" colorPalette="red" onClick={onDelete}>
+        <Button aria-label={`Remove ${CONDITION_LABELS[type]} condition`} size="xs" variant="ghost" colorPalette="red" onClick={onDelete}>
           <Trash2 size={12} />
         </Button>
       )}

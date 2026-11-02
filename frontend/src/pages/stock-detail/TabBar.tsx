@@ -1,6 +1,5 @@
 import React, { useRef } from 'react';
-import { Button, HStack } from '@chakra-ui/react';
-import { Surface } from '../../components/ui/primitives';
+import { Box, Button, HStack } from '@chakra-ui/react';
 
 export type StockDetailTabId =
   | 'overview'
@@ -31,11 +30,11 @@ export const TabBar: React.FC<TabBarProps> = ({ tabs, active, onChange }) => {
   const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return;
     e.preventDefault();
     const current = tabs.findIndex(t => t.id === active);
     const next =
-      e.key === 'ArrowRight'
+      e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : e.key === 'ArrowRight'
         ? (current + 1) % tabs.length
         : (current - 1 + tabs.length) % tabs.length;
     onChange(tabs[next].id);
@@ -43,11 +42,11 @@ export const TabBar: React.FC<TabBarProps> = ({ tabs, active, onChange }) => {
   };
 
   return (
-    <Surface p={2} mb={5} overflowX="auto" variant="inset">
+    <Box mb={5} overflowX="auto" borderBottomWidth="1px" borderColor="border.default">
       <HStack
         role="tablist"
         aria-label="Stock detail sections"
-        gap={2}
+        gap={1}
         wrap="nowrap"
         minW="max-content"
         onKeyDown={handleKeyDown}
@@ -61,15 +60,18 @@ export const TabBar: React.FC<TabBarProps> = ({ tabs, active, onChange }) => {
                 buttonRefs.current[i] = el;
               }}
               role="tab"
+              id={`stock-tab-${tab.id}`}
+              aria-controls={`stock-panel-${tab.id}`}
               aria-selected={isActive}
               tabIndex={isActive ? 0 : -1}
               size="sm"
               minH={{ base: 11, md: 8 }}
               variant="ghost"
               color={isActive ? 'accent.fg' : 'fg.muted'}
-              bg={isActive ? 'accent.subtle' : 'transparent'}
-              borderWidth="1px"
-              borderColor={isActive ? 'accent.muted' : 'transparent'}
+              bg="transparent"
+              borderRadius="0"
+              borderBottomWidth="2px"
+              borderColor={isActive ? 'accent.solid' : 'transparent'}
               _hover={{
                 bg: isActive ? 'accent.subtle' : 'bg.muted',
                 color: isActive ? 'accent.fg' : 'fg.default',
@@ -82,6 +84,6 @@ export const TabBar: React.FC<TabBarProps> = ({ tabs, active, onChange }) => {
           );
         })}
       </HStack>
-    </Surface>
+    </Box>
   );
 };

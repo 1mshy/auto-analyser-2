@@ -1,0 +1,47 @@
+/* Hallmark · macrostructure: Workbench · tone: technical · anchor hue: blue
+ * genre: modern-minimal · design-system: design.md · designed-as-app
+ * pre-emit critique: P4 H4 E4 S5 R5 V4 */
+:root {
+  --color-paper: oklch(98% 0.004 255);
+  --color-paper-2: oklch(99.5% 0.002 255);
+  --color-paper-3: oklch(96% 0.006 255);
+  --color-ink: oklch(24% 0.025 255);
+  --color-ink-2: oklch(44% 0.025 255);
+  --color-rule: oklch(89% 0.012 255);
+  --color-accent: oklch(52% 0.17 255);
+  --color-accent-ink: oklch(98% 0.004 255);
+  --color-focus: oklch(58% 0.18 255);
+  --color-positive: oklch(48% 0.11 165);
+  --color-negative: oklch(52% 0.18 20);
+  --color-chart-warn: oklch(53% 0.12 75);
+  --color-chart-info: oklch(49% 0.10 220);
+  --color-chart-alternate: oklch(52% 0.16 300);
+  --font-display: Inter, ui-sans-serif, sans-serif;
+  --font-body: Inter, ui-sans-serif, sans-serif;
+  --font-outlier: 'JetBrains Mono', ui-monospace, monospace;
+  --space-xs: 4px; --space-sm: 8px; --space-md: 12px; --space-lg: 16px;
+  --space-xl: 24px; --space-2xl: 32px; --space-3xl: 48px;
+  --text-xs: .75rem; --text-sm: .875rem; --text-base: 1rem;
+  --text-lg: 1.25rem; --text-xl: 1.75rem; --text-display: clamp(1.5rem, 2vw, 2rem);
+  --ease-out: cubic-bezier(.16,1,.3,1); --ease-in: cubic-bezier(.7,0,.84,0);
+  --ease-in-out: cubic-bezier(.65,0,.35,1);
+  --dur-micro: 120ms; --dur-short: 220ms;
+  --rule-width: 1px; --radius-sm: 4px; --radius-md: 6px; --radius-lg: 8px;
+  --sidebar-width: 216px;
+}
+.dark {
+  --color-paper: oklch(16% 0.018 255);
+  --color-paper-2: oklch(19% 0.02 255);
+  --color-paper-3: oklch(23% 0.022 255);
+  --color-ink: oklch(95% 0.008 255);
+  --color-ink-2: oklch(72% 0.018 255);
+  --color-rule: oklch(30% 0.022 255);
+  --color-accent: oklch(74% 0.135 250);
+  --color-accent-ink: oklch(16% 0.018 255);
+  --color-focus: oklch(78% 0.135 250);
+  --color-positive: oklch(77% 0.14 165);
+  --color-negative: oklch(74% 0.15 20);
+  --color-chart-warn: oklch(80% 0.14 80);
+  --color-chart-info: oklch(78% 0.10 220);
+  --color-chart-alternate: oklch(76% 0.13 300);
+}

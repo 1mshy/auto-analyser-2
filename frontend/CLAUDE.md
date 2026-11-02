@@ -8,7 +8,8 @@ Vite 7 + React 19 + TypeScript + Chakra UI v3 + TanStack Query v5 + recharts + l
 
 ## File map
 
-- `src/App.tsx` — provider stack (`QueryClientProvider → SettingsProvider → ProgressProvider → Router`) + routes. **Every page is route-level code-split**: a new page needs a `React.lazy` import (pages are named exports mapped to `default`) and a `<Route>`.
+- `src/App.tsx` — provider stack (`QueryClientProvider → SettingsProvider → ProgressProvider → Router`). `src/app/AppShell.tsx` owns the application frame, `AppRoutes.tsx` owns lazy routes, and `navigation.ts` is shared by desktop and mobile. **Every page is route-level code-split**: a new page needs a `React.lazy` import (pages are named exports mapped to `default`) and a `<Route>` in `AppRoutes.tsx`.
+- `src/features/` — dashboard panels, saved workspace layouts, stock filters/views/results, and historical charts. Keep route pages thin; see `../docs/architecture.md` for ownership and state boundaries.
 - `src/queries.ts` / `src/queryClient.ts` — TanStack Query hooks. Server state lives here.
 - `src/api.ts` — axios client. All HTTP calls go through here (called by the query hooks).
 - `src/hooks.ts` — `useWebSocket` (auto-reconnect) and other hooks.
@@ -18,13 +19,13 @@ Vite 7 + React 19 + TypeScript + Chakra UI v3 + TanStack Query v5 + recharts + l
 - `src/pages/` — top-level screens (Dashboard, StocksPage, StockDetailPage, ScreenerPage, AlertsPage, OpportunitiesPage, FundsPage, NewsPage, SectorPage, Backtest).
 - `src/components/` — shared UI (FilterPanel, Navigation, NewsCard, MobileDrawer, SettingsPanel, ProgressBar, MarkdownContent).
 - `src/components/alerts/` — alerts-specific (ConditionBuilder).
-- `src/components/stock-detail/` — StockDetail sub-components.
+- `src/pages/stock-detail/` — StockDetail research tabs.
 - `src/components/ui/` — Chakra v3 primitives (Skeleton, etc.).
 - `src/theme/` — tokens.
-- `index.html` — **Vite entry, at the package root** (not `public/`). Holds the `<div id="root">`, the `theme-color` meta and the inline service-worker registration.
+- `index.html` — **Vite entry, at the package root** (not `public/`). Holds the `<div id="root">` and the `theme-color` meta. `src/index.tsx` registers the service worker only in production and removes stale app workers/caches during development.
 - `vite.config.ts` — plugin-react + rollup-plugin-visualizer; `build.outDir: "build"` (Dockerfile/nginx/compose healthcheck depend on it), `build.target: "es2020"`, dev server `:3001` with `/api` + `/ws` proxies, and the inline `test` (Vitest) block.
 - `tsconfig.json` (app, `include: ["src"]`) / `tsconfig.node.json` (`vite.config.ts` only).
-- `public/` — Vite `publicDir`, copied verbatim: `sw.js` (live, registered from `index.html`), `manifest.json`, icons, `robots.txt`.
+- `public/` — Vite `publicDir`, copied verbatim: `sw.js`, `manifest.json`, icons, `robots.txt`. The worker caches the canonical app shell and hashed assets; it bypasses APIs and development/preview pages.
 - `src/vite-env.d.ts` — `/// <reference types="vite/client" />`, types `import.meta.env`.
 
 ## Conventions

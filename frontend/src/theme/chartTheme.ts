@@ -2,9 +2,8 @@
  * Recharts theming adapter for the chart.* semantic tokens.
  *
  * Recharts consumes plain color strings (SVG attributes), not Chakra props,
- * so this module resolves the token values directly from the same constants
- * `design-tokens.ts` feeds into the Chakra theme. Resolved values are the
- * dark-mode set (the app is dark-first).
+ * so this module uses portable CSS tokens and the shared series palette.
+ * Semantic colors resolve at render time in both color modes.
  */
 
 import type { CSSProperties } from "react";
@@ -14,8 +13,8 @@ import { chakraSemanticTokens, designTokens } from "./design-tokens";
 const chartTokens = chakraSemanticTokens.colors;
 
 export const chartColors: { grid: string; axis: string; series: string[] } = {
-  grid: chartTokens["chart.grid"].value._dark,
-  axis: chartTokens["chart.axis"].value._dark,
+  grid: "var(--color-rule)",
+  axis: "var(--color-ink-2)",
   series: [
     chartTokens["chart.series.1"].value,
     chartTokens["chart.series.2"].value,

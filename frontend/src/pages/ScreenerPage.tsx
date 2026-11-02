@@ -1,456 +1,457 @@
-import React, { useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box,
+  Button,
   Container,
-  Text,
   Flex,
   HStack,
-  VStack,
-  Button,
+  NativeSelect,
   SimpleGrid,
-  Input,
+  Text,
+  VStack,
 } from '@chakra-ui/react';
-import { Search, ChevronLeft, ChevronRight, Save, Trash2, ArrowDown, ArrowUp } from 'lucide-react';
-import { StockFilter, MARKET_CAP_TIERS, getMarketCapTier, getMarketCapTierColor } from '../types';
-import { Surface, Num, SignalBadge, PageHeader, EmptyState, ErrorState, SkeletonRow } from '../components/ui/primitives';
+import {
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  Play,
+  Search,
+  SlidersHorizontal,
+} from 'lucide-react';
+import type { StockFilter } from '../types';
+import { MARKET_CAP_TIERS } from '../types';
+import {
+  EmptyState,
+  ErrorState,
+  PageHeader,
+  SkeletonRow,
+  Surface,
+} from '../components/ui/primitives';
+import { Checkbox } from '../components/ui/checkbox';
+import FilterPanel from '../components/FilterPanel';
 import { useFilterStocks } from '../queries';
-import { fmtMarketCap } from '../format';
+import { useIsMobile } from '../theme/responsive';
+import { FilterRange } from '../features/stocks/FilterFields';
+import {
+  activeFilterChips,
+  parseStockFilter,
+  SCREENER_PREFERENCES,
+  stockFilterParams,
+  validateFilter,
+} from '../features/stocks/workspace';
+import { useWorkspacePreferences } from '../features/stocks/useWorkspacePreferences';
+import {
+  ActiveFilters,
+  ShareViewButton,
+  SortControl,
+  WorkspaceControls,
+} from '../features/stocks/WorkspaceControls';
+import {
+  StockCardCompact,
+  StockPagination,
+  StockTable,
+} from '../features/stocks/StockResults';
 
-interface ScreenerPreset {
-  id: string;
-  name: string;
-  filter: StockFilter;
+const STARTERS: { name: string; description: string; filter: StockFilter }[] = [
+  {
+    name: 'Oversold',
+    description: 'RSI below 30',
+    filter: { only_oversold: true, sort_by: 'rsi', sort_order: 'asc' },
+  },
+  {
+    name: 'Overbought',
+    description: 'RSI above 70',
+    filter: { only_overbought: true, sort_by: 'rsi', sort_order: 'desc' },
+  },
+  {
+    name: 'Low stochastic',
+    description: 'Stochastic %K ≤ 20',
+    filter: { max_stochastic_k: 20, sort_by: 'market_cap', sort_order: 'desc' },
+  },
+];
+function criteriaKey(filter: StockFilter) {
+  return stockFilterParams({
+    ...filter,
+    page: undefined,
+    page_size: undefined,
+    sort_by: undefined,
+    sort_order: undefined,
+  }).toString();
 }
 
-const STORAGE_KEY = 'screener_presets';
-
-const loadPresets = (): ScreenerPreset[] => {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch {
-    return [];
-  }
-};
-
-const savePresets = (presets: ScreenerPreset[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
-};
-
-/**
- * Hoisted to module scope (and memoized) so its component identity is stable
- * across ScreenerPage renders. Previously declared inside the component body,
- * which created a brand-new component type every render and remounted each
- * input — losing focus after a single keystroke.
- */
-const FilterInput: React.FC<{
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-}> = React.memo(({ label, value, onChange, placeholder }) => (
-  <Box>
-    <Text color="fg.muted" fontSize="xs" mb={1} textTransform="uppercase" letterSpacing="wider">{label}</Text>
-    <Input
-      size="sm"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      bg="bg.inset"
-      borderColor="border.subtle"
-      color="fg.default"
-      _placeholder={{ color: 'fg.subtle' }}
-      type="number"
-    />
-  </Box>
-));
-FilterInput.displayName = 'FilterInput';
-
-export const ScreenerPage: React.FC = () => {
-  const [page, setPage] = useState(1);
-  const [presets, setPresets] = useState<ScreenerPreset[]>(loadPresets);
-  const [presetName, setPresetName] = useState('');
-
-  const [minRsi, setMinRsi] = useState('');
-  const [maxRsi, setMaxRsi] = useState('');
-  const [minStochK, setMinStochK] = useState('');
-  const [maxStochK, setMaxStochK] = useState('');
-  const [minBandwidth, setMinBandwidth] = useState('');
-  const [maxBandwidth, setMaxBandwidth] = useState('');
-  const [minMarketCap, setMinMarketCap] = useState<number | null>(null);
-  const [onlyOversold, setOnlyOversold] = useState(false);
-  const [onlyOverbought, setOnlyOverbought] = useState(false);
-  const [sortBy, setSortBy] = useState('market_cap');
-  const [sortOrder, setSortOrder] = useState('desc');
-
-  const buildFilter = useCallback((overridePage?: number): StockFilter => ({
-    min_rsi: minRsi ? parseFloat(minRsi) : undefined,
-    max_rsi: maxRsi ? parseFloat(maxRsi) : undefined,
-    min_stochastic_k: minStochK ? parseFloat(minStochK) : undefined,
-    max_stochastic_k: maxStochK ? parseFloat(maxStochK) : undefined,
-    min_bandwidth: minBandwidth ? parseFloat(minBandwidth) : undefined,
-    max_bandwidth: maxBandwidth ? parseFloat(maxBandwidth) : undefined,
-    min_market_cap: minMarketCap || undefined,
-    only_oversold: onlyOversold || undefined,
-    only_overbought: onlyOverbought || undefined,
-    sort_by: sortBy,
-    sort_order: sortOrder,
-    page: overridePage ?? page,
-    page_size: 50,
-  }), [minRsi, maxRsi, minStochK, maxStochK, minBandwidth, maxBandwidth, minMarketCap, onlyOversold, onlyOverbought, sortBy, sortOrder, page]);
-
-  // Filters are applied on demand: the query only re-runs when the committed
-  // filter changes (Run Screener click or page change), not on every keystroke.
-  const [committedFilter, setCommittedFilter] = useState<StockFilter>(() => ({
-    sort_by: 'market_cap',
-    sort_order: 'desc',
-    page: 1,
-    page_size: 50,
-  }));
-
-  const screenerQuery = useFilterStocks(committedFilter);
-  const stocks = screenerQuery.data?.stocks ?? [];
-  const total = screenerQuery.data?.pagination.total ?? 0;
-  const totalPages = screenerQuery.data?.pagination.total_pages ?? 0;
-  const loading = screenerQuery.isLoading || screenerQuery.isFetching;
-
-  const runScreener = useCallback((overridePage?: number) => {
-    const nextPage = overridePage ?? 1;
-    setPage(nextPage);
-    setCommittedFilter(buildFilter(nextPage));
-  }, [buildFilter]);
-
-  const handleSavePreset = () => {
-    if (!presetName.trim()) return;
-    const preset: ScreenerPreset = {
-      id: Date.now().toString(),
-      name: presetName.trim(),
-      filter: buildFilter(),
-    };
-    const updated = [...presets, preset];
-    setPresets(updated);
-    savePresets(updated);
-    setPresetName('');
+export function ScreenerPage() {
+  const [params, setParams] = useSearchParams();
+  const committed = useMemo(() => parseStockFilter(params), [params]);
+  const [draft, setDraft] = useState<StockFilter>(committed);
+  const [conditionsOpen, setConditionsOpen] = useState(false);
+  const workspace = useWorkspacePreferences('screener', SCREENER_PREFERENCES);
+  const isMobile = useIsMobile();
+  const query = useFilterStocks(committed);
+  const stocks = query.data?.stocks ?? [];
+  const pagination = query.data?.pagination ?? {
+    page: committed.page ?? 1,
+    page_size: committed.page_size ?? 50,
+    total: 0,
+    total_pages: 0,
   };
-
-  const handleDeletePreset = (id: string) => {
-    const updated = presets.filter(p => p.id !== id);
-    setPresets(updated);
-    savePresets(updated);
+  const committedKey = criteriaKey(committed);
+  // Page navigation never applies or discards a draft. A new shared URL or saved
+  // view does replace criteria, and those controls should reflect that state.
+  useEffect(() => {
+    setDraft(committed);
+  }, [committedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pending = criteriaKey(draft) !== committedKey;
+  const error = validateFilter(draft);
+  const apply = (next: StockFilter) => {
+    const normalized = { ...next, page: 1, page_size: committed.page_size };
+    setDraft(normalized);
+    setParams(stockFilterParams(normalized));
   };
-
-  const handleLoadPreset = (preset: ScreenerPreset) => {
-    const f = preset.filter;
-    setMinRsi(f.min_rsi?.toString() || '');
-    setMaxRsi(f.max_rsi?.toString() || '');
-    setMinStochK(f.min_stochastic_k?.toString() || '');
-    setMaxStochK(f.max_stochastic_k?.toString() || '');
-    setMinBandwidth(f.min_bandwidth?.toString() || '');
-    setMaxBandwidth(f.max_bandwidth?.toString() || '');
-    setMinMarketCap(f.min_market_cap || null);
-    setOnlyOversold(f.only_oversold || false);
-    setOnlyOverbought(f.only_overbought || false);
-    setSortBy(f.sort_by || 'market_cap');
-    setSortOrder(f.sort_order || 'desc');
-    setPage(1);
+  const sort = (field: string, order?: string) => {
+    const sort_order =
+      order ??
+      (committed.sort_by === field && committed.sort_order === 'desc'
+        ? 'asc'
+        : 'desc');
+    setDraft((previous) => ({ ...previous, sort_by: field, sort_order }));
+    setParams(
+      stockFilterParams({ ...committed, sort_by: field, sort_order, page: 1 }),
+    );
   };
 
   return (
     <Container maxW="page" py={{ base: 5, md: 8 }}>
       <PageHeader
-        eyebrow="Screener"
-        title="Stock Screener"
-        subtitle={total > 0 ? `${total.toLocaleString()} results` : 'Tune indicators and filters to surface matches'}
-        icon={<Search size={22} />}
+        eyebrow="Research lab"
+        title="Stock screener"
+        subtitle="Turn a set of conditions into a focused shortlist."
+        actions={
+          <HStack wrap="wrap" gap={2}>
+            <WorkspaceControls
+              {...workspace}
+              defaults={SCREENER_PREFERENCES}
+              onPreferencesChange={workspace.updatePreferences}
+              onSave={(name) => workspace.saveView(name, committed)}
+              onDelete={workspace.deleteView}
+              onLoad={(view) => {
+                workspace.updatePreferences(view.preferences);
+                apply(view.filter);
+              }}
+            />
+          </HStack>
+        }
       />
 
-      <Surface p={4} mb={5} variant="raised">
-        <VStack gap={4} align="stretch">
-          <SimpleGrid columns={{ base: 2, md: 3, xl: 6 }} gap={3}>
-            <FilterInput label="Min RSI" value={minRsi} onChange={setMinRsi} placeholder="0" />
-            <FilterInput label="Max RSI" value={maxRsi} onChange={setMaxRsi} placeholder="100" />
-            <FilterInput label="Min Stoch %K" value={minStochK} onChange={setMinStochK} placeholder="0" />
-            <FilterInput label="Max Stoch %K" value={maxStochK} onChange={setMaxStochK} placeholder="100" />
-            <FilterInput label="Min Bandwidth" value={minBandwidth} onChange={setMinBandwidth} placeholder="0" />
-            <FilterInput label="Max Bandwidth" value={maxBandwidth} onChange={setMaxBandwidth} placeholder="1" />
-          </SimpleGrid>
-
-          <Box>
-            <Text color="fg.muted" fontSize="xs" mb={2} textTransform="uppercase" letterSpacing="wider">Market Cap</Text>
-            <HStack gap={2} wrap="wrap">
-              {MARKET_CAP_TIERS.map(tier => (
-                <Button
-                  key={tier.label}
-                  size="xs"
-                  variant="outline"
-                  minH={{ base: '11', md: '6' }}
-                  bg={minMarketCap === tier.value ? 'accent.muted' : 'transparent'}
-                  color={minMarketCap === tier.value ? 'accent.fg' : 'fg.muted'}
-                  borderColor={minMarketCap === tier.value ? 'accent.solid' : 'border.default'}
-                  _hover={{
-                    bg: minMarketCap === tier.value ? 'accent.muted' : 'bg.muted',
-                    color: minMarketCap === tier.value ? 'accent.fg' : 'fg.default',
-                  }}
-                  onClick={() => setMinMarketCap(tier.value)}
-                >
-                  {tier.label}
-                </Button>
-              ))}
-            </HStack>
-          </Box>
-
-          <Flex justify="space-between" wrap="wrap" gap={3} align="center">
-            <HStack gap={2} wrap="wrap">
-              <Button
-                size="xs"
-                variant="outline"
-                minH={{ base: '11', md: '6' }}
-                bg={onlyOversold ? 'signal.up.muted' : 'transparent'}
-                color={onlyOversold ? 'signal.up.fg' : 'fg.muted'}
-                borderColor={onlyOversold ? 'signal.up.solid' : 'border.default'}
-                _hover={{
-                  bg: onlyOversold ? 'signal.up.muted' : 'bg.muted',
-                  color: onlyOversold ? 'signal.up.fg' : 'fg.default',
-                }}
-                onClick={() => { setOnlyOversold(!onlyOversold); setOnlyOverbought(false); }}
+      <SimpleGrid columns={3} gap={{ base: 2, md: 3 }} mb={5}>
+        {STARTERS.map((starter) => (
+          <Button
+            key={starter.name}
+            variant="outline"
+            h="auto"
+            minW={0}
+            py={3}
+            px={{ base: 2, md: 4 }}
+            justifyContent="space-between"
+            bg="bg.surface"
+            borderColor="border.subtle"
+            onClick={() =>
+              setDraft({ ...starter.filter, page_size: committed.page_size })
+            }
+          >
+            <Box textAlign="left">
+              <Text fontSize="sm" fontWeight="semibold" whiteSpace="normal">
+                {starter.name}
+              </Text>
+              <Text
+                display={{ base: 'none', md: 'block' }}
+                fontSize="xs"
+                fontWeight="normal"
+                color="fg.muted"
+                mt={1}
               >
-                Oversold Only
+                {starter.description}
+              </Text>
+            </Box>
+            <Box display={{ base: 'none', md: 'block' }}>
+              <ArrowRight size={16} />
+            </Box>
+          </Button>
+        ))}
+      </SimpleGrid>
+
+      <Flex direction={{ base: 'column', xl: 'row' }} align="start" gap={5}>
+        <Surface
+          w={{ base: 'full', xl: '300px' }}
+          flexShrink={0}
+          p={4}
+          variant="raised"
+        >
+          <HStack justify="space-between" mb={4}>
+            <HStack gap={2}>
+              <SlidersHorizontal size={16} />
+              <Text fontWeight="semibold">Conditions</Text>
+            </HStack>
+            <HStack gap={1}>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() =>
+                  setDraft({
+                    sort_by: committed.sort_by,
+                    sort_order: committed.sort_order,
+                  })
+                }
+              >
+                Reset
               </Button>
               <Button
-                size="xs"
+                display={{ base: 'inline-flex', xl: 'none' }}
                 variant="outline"
-                minH={{ base: '11', md: '6' }}
-                bg={onlyOverbought ? 'signal.down.muted' : 'transparent'}
-                color={onlyOverbought ? 'signal.down.fg' : 'fg.muted'}
-                borderColor={onlyOverbought ? 'signal.down.solid' : 'border.default'}
-                _hover={{
-                  bg: onlyOverbought ? 'signal.down.muted' : 'bg.muted',
-                  color: onlyOverbought ? 'signal.down.fg' : 'fg.default',
-                }}
-                onClick={() => { setOnlyOverbought(!onlyOverbought); setOnlyOversold(false); }}
+                size="xs"
+                aria-expanded={conditionsOpen}
+                aria-controls="screener-conditions"
+                onClick={() => setConditionsOpen(!conditionsOpen)}
               >
-                Overbought Only
+                {conditionsOpen ? 'Hide' : 'Edit'}
+                {conditionsOpen ? (
+                  <ChevronUp size={13} />
+                ) : (
+                  <ChevronDown size={13} />
+                )}
               </Button>
             </HStack>
-
-            <HStack gap={2} wrap="wrap">
-              <Text color="fg.muted" fontSize="xs">Sort:</Text>
-              {['market_cap', 'price_change_percent', 'rsi', 'price'].map(field => (
-                <Button
-                  key={field}
-                  size="xs"
-                  variant="outline"
-                  minH={{ base: '11', md: '6' }}
-                  bg={sortBy === field ? 'accent.muted' : 'transparent'}
-                  color={sortBy === field ? 'accent.fg' : 'fg.muted'}
-                  borderColor={sortBy === field ? 'accent.solid' : 'border.default'}
-                  _hover={{
-                    bg: sortBy === field ? 'accent.muted' : 'bg.muted',
-                    color: sortBy === field ? 'accent.fg' : 'fg.default',
-                  }}
-                  onClick={() => {
-                    if (sortBy === field) setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
-                    else { setSortBy(field); setSortOrder('desc'); }
-                  }}
+          </HStack>
+          <VStack
+            id="screener-conditions"
+            display={{ base: conditionsOpen ? 'flex' : 'none', xl: 'flex' }}
+            align="stretch"
+            gap={5}
+          >
+            <FilterRange
+              title="RSI"
+              min="min_rsi"
+              max="max_rsi"
+              limit={100}
+              filter={draft}
+              onChange={setDraft}
+            />
+            <FilterRange
+              title="Stochastic %K"
+              min="min_stochastic_k"
+              max="max_stochastic_k"
+              limit={100}
+              filter={draft}
+              onChange={setDraft}
+            />
+            <FilterRange
+              title="Bollinger bandwidth"
+              min="min_bandwidth"
+              max="max_bandwidth"
+              filter={draft}
+              onChange={setDraft}
+            />
+            <Box>
+              <Text fontWeight="semibold" fontSize="sm" mb={2}>
+                Minimum market cap
+              </Text>
+              <NativeSelect.Root size="sm">
+                <NativeSelect.Field
+                  aria-label="Minimum market cap"
+                  value={draft.min_market_cap ?? ''}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      min_market_cap: event.target.value
+                        ? Number(event.target.value)
+                        : undefined,
+                    })
+                  }
                 >
-                  {field.replace(/_/g, ' ')}
-                  {sortBy === field && (sortOrder === 'desc' ? <ArrowDown size={12} /> : <ArrowUp size={12} />)}
-                </Button>
-              ))}
-            </HStack>
-          </Flex>
-
-          <Flex justify="space-between" wrap="wrap" gap={3} align="center">
+                  {MARKET_CAP_TIERS.map((tier) => (
+                    <option key={tier.label} value={tier.value ?? ''}>
+                      {tier.label}
+                      {tier.value ? ` · ${tier.description}` : ''}
+                    </option>
+                  ))}
+                  {draft.min_market_cap != null &&
+                    !MARKET_CAP_TIERS.some(
+                      (tier) => tier.value === draft.min_market_cap,
+                    ) && (
+                      <option value={draft.min_market_cap}>
+                        Custom · ${draft.min_market_cap.toLocaleString()}
+                      </option>
+                    )}
+                </NativeSelect.Field>
+                <NativeSelect.Indicator />
+              </NativeSelect.Root>
+            </Box>
+            <VStack align="stretch" gap={3}>
+              <Checkbox
+                checked={!!draft.only_oversold}
+                onCheckedChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    only_oversold: !!event.checked || undefined,
+                    only_overbought: undefined,
+                  })
+                }
+              >
+                Oversold only
+              </Checkbox>
+              <Checkbox
+                checked={!!draft.only_overbought}
+                onCheckedChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    only_overbought: !!event.checked || undefined,
+                    only_oversold: undefined,
+                  })
+                }
+              >
+                Overbought only
+              </Checkbox>
+            </VStack>
+            <FilterPanel
+              value={draft}
+              activeFilterCount={activeFilterChips(draft).length}
+              onApplyFilter={(next) =>
+                setDraft({
+                  ...next,
+                  sort_by: committed.sort_by,
+                  sort_order: committed.sort_order,
+                })
+              }
+            />
+            {error && (
+              <Text role="alert" color="signal.down.fg" fontSize="sm">
+                {error}
+              </Text>
+            )}
+          </VStack>
+          <Box
+            borderTopWidth="1px"
+            borderColor="border.subtle"
+            pt={4}
+            mt={{ base: conditionsOpen ? 4 : 0, xl: 4 }}
+          >
             <Button
-              bg="accent.solid"
-              color="white"
-              _hover={{ bg: 'accent.emphasis' }}
-              minH="11"
-              onClick={() => runScreener(1)}
-              loading={loading}
+              w="full"
+              onClick={() => apply(draft)}
+              disabled={!!error}
+              loading={query.isFetching}
               loadingText="Screening…"
             >
-              <Search size={16} /> Run Screener
+              <Play size={15} />
+              Run screener
             </Button>
-
-            <HStack gap={2} wrap="wrap">
-              <Input
-                size="sm"
-                placeholder="Preset name..."
-                value={presetName}
-                onChange={(e) => setPresetName(e.target.value)}
-                bg="bg.inset"
-                borderColor="border.subtle"
-                color="fg.default"
-                _placeholder={{ color: 'fg.subtle' }}
-                w="150px"
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                minH={{ base: '11', md: '8' }}
-                borderColor="border.default"
-                color="fg.muted"
-                _hover={{ bg: 'bg.muted', color: 'fg.default' }}
-                onClick={handleSavePreset}
-                disabled={!presetName.trim()}
-              >
-                <Save size={14} /> Save
-              </Button>
-            </HStack>
-          </Flex>
-
-          {presets.length > 0 && (
-            <HStack gap={2} wrap="wrap">
-              <Text color="fg.muted" fontSize="xs">Presets:</Text>
-              {presets.map(preset => (
-                <HStack key={preset.id} gap={1}>
-                  <SignalBadge
-                    tone="accent"
-                    size="sm"
-                    cursor="pointer"
-                    onClick={() => handleLoadPreset(preset)}
-                    _hover={{ opacity: 0.8 }}
-                    px={2}
-                  >
-                    {preset.name}
-                  </SignalBadge>
-                  <Box
-                    as="button"
-                    color="fg.subtle"
-                    _hover={{ color: 'signal.down.fg' }}
-                    onClick={() => handleDeletePreset(preset.id)}
-                  >
-                    <Trash2 size={12} />
-                  </Box>
-                </HStack>
-              ))}
-            </HStack>
-          )}
-        </VStack>
-      </Surface>
-
-      {loading ? (
-        <Surface p={0} variant="raised">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <Box key={i} px={4} py={2} borderBottomWidth={i < 9 ? '1px' : '0'} borderColor="border.subtle">
-              <SkeletonRow cols={6} />
-            </Box>
-          ))}
+            <Text
+              fontSize="xs"
+              color={pending ? 'accent.fg' : 'fg.muted'}
+              mt={2}
+              textAlign="center"
+              role="status"
+            >
+              {pending
+                ? 'You have unapplied changes'
+                : 'Change conditions, then run your screen'}
+            </Text>
+          </Box>
         </Surface>
-      ) : screenerQuery.isError ? (
-        <ErrorState
-          title="Screener request failed"
-          description="The stock filter request failed. Check that the backend is reachable, then retry."
-          onRetry={() => screenerQuery.refetch()}
-        />
-      ) : stocks.length === 0 ? (
-        <EmptyState
-          icon={<Search size={44} />}
-          title="No stocks match your criteria"
-          description="Try adjusting filters and run again."
-        />
-      ) : (
-        <Surface p={0} overflowX="auto" variant="raised">
-          <Flex minW="860px" px={4} py={2} bg="bg.inset" borderBottomWidth="1px" borderColor="border.subtle" color="fg.muted" fontSize="xs" fontWeight="semibold" textTransform="uppercase" letterSpacing="wider" position="sticky" top={0} zIndex={1}>
-            <Text w="100px">Symbol</Text>
-            <Text w="100px" textAlign="right">Price</Text>
-            <Text w="100px" textAlign="right">Change</Text>
-            <Text w="80px" textAlign="right">RSI</Text>
-            <Text w="80px" textAlign="right">Stoch %K</Text>
-            <Text w="100px" textAlign="right">BB Width</Text>
-            <Text w="120px" textAlign="right">Market Cap</Text>
-            <Text flex={1} textAlign="right">Sector</Text>
-          </Flex>
 
-          {stocks.map((stock, idx) => {
-            const tier = getMarketCapTier(stock.market_cap);
-            const rsiIntent = stock.rsi != null && stock.rsi < 30 ? 'up' : stock.rsi != null && stock.rsi > 70 ? 'down' : 'neutral';
-            const stochIntent = stock.stochastic?.k_line != null && stock.stochastic.k_line < 20 ? 'up' : stock.stochastic?.k_line != null && stock.stochastic.k_line > 80 ? 'down' : 'neutral';
-            return (
-              <Link key={stock.symbol} to={`/stocks/${encodeURIComponent(stock.symbol)}`}>
-                <Flex
-                  minW="860px"
-                  px={4}
-                  py={3}
-                  align="center"
-                  borderBottomWidth={idx < stocks.length - 1 ? '1px' : '0'}
-                  borderColor="border.subtle"
-                  _hover={{ bg: 'bg.muted' }}
-                  transition="background 120ms ease"
+        <Box flex="1" minW={0} w="full">
+          <Flex
+            justify="space-between"
+            align="center"
+            gap={3}
+            wrap="wrap"
+            mb={3}
+          >
+            <Box>
+              <Text fontSize="lg" fontWeight="semibold">
+                Matches{' '}
+                <Text
+                  as="span"
+                  color="fg.muted"
+                  fontSize="sm"
+                  fontWeight="normal"
                 >
-                  <Text w="100px" color="accent.fg" fontWeight="semibold">{stock.symbol}</Text>
-                  <Box w="100px" textAlign="right">
-                    <Num value={stock.price} prefix="$" color="fg.default" fontSize="sm" />
-                  </Box>
-                  <Box w="100px" textAlign="right">
-                    <Num
-                      value={stock.price_change_percent}
-                      intent="auto"
-                      sign="always"
-                      suffix="%"
-                      fontSize="sm"
-                    />
-                  </Box>
-                  <Box w="80px" textAlign="right">
-                    <Num value={stock.rsi} intent={rsiIntent} decimals={1} fontSize="sm" />
-                  </Box>
-                  <Box w="80px" textAlign="right">
-                    <Num value={stock.stochastic?.k_line} intent={stochIntent} decimals={1} fontSize="sm" />
-                  </Box>
-                  <Box w="100px" textAlign="right">
-                    <Num value={stock.bollinger?.bandwidth} decimals={4} color="fg.muted" fontSize="sm" />
-                  </Box>
-                  <Box w="120px" textAlign="right">
-                    <SignalBadge
-                      tone={getMarketCapTierColor(tier) === 'purple' ? 'accent' : getMarketCapTierColor(tier) === 'blue' ? 'info' : 'neutral'}
-                      size="sm"
-                      className="num"
-                      data-num=""
-                    >
-                      {fmtMarketCap(stock.market_cap)}
-                    </SignalBadge>
-                  </Box>
-                  <Text flex={1} textAlign="right" color="fg.subtle" fontSize="sm">{stock.sector || '-'}</Text>
-                </Flex>
-              </Link>
-            );
-          })}
-        </Surface>
-      )}
-
-      {totalPages > 1 && (
-        <Flex justify="center" mt={6} gap={2}>
-          <Button
-            size="sm"
-            variant="outline"
-            minH={{ base: '11', md: '8' }}
-            borderColor="border.default"
-            color="fg.muted"
-            _hover={{ bg: 'bg.muted', color: 'fg.default' }}
-            onClick={() => runScreener(page - 1)}
-            disabled={page <= 1 || loading}
-          >
-            <ChevronLeft size={16} /> Prev
-          </Button>
-          <Flex align="center" px={4}>
-            <Text color="fg.muted" fontSize="sm">Page {page} of {totalPages}</Text>
+                  {pagination.total.toLocaleString()}
+                </Text>
+              </Text>
+              <Text fontSize="xs" color="fg.muted">
+                {query.isFetching && !query.isLoading
+                  ? 'Updating results…'
+                  : pending
+                    ? 'Results reflect your last run'
+                    : 'Across the analyzed stock universe'}
+              </Text>
+            </Box>
+            <HStack wrap="wrap">
+              <SortControl filter={committed} onChange={sort} />
+              <ShareViewButton />
+            </HStack>
           </Flex>
-          <Button
-            size="sm"
-            variant="outline"
-            minH={{ base: '11', md: '8' }}
-            borderColor="border.default"
-            color="fg.muted"
-            _hover={{ bg: 'bg.muted', color: 'fg.default' }}
-            onClick={() => runScreener(page + 1)}
-            disabled={page >= totalPages || loading}
-          >
-            Next <ChevronRight size={16} />
-          </Button>
-        </Flex>
-      )}
+          <ActiveFilters
+            filter={committed}
+            onRemove={(key) => apply({ ...committed, [key]: undefined })}
+            onClear={() =>
+              apply({
+                sort_by: committed.sort_by,
+                sort_order: committed.sort_order,
+              })
+            }
+          />
+          {query.isLoading ? (
+            <Surface p={4}>
+              <VStack gap={3} align="stretch">
+                {Array.from({ length: 8 }, (_, i) => (
+                  <SkeletonRow key={i} cols={5} />
+                ))}
+              </VStack>
+            </Surface>
+          ) : query.isError ? (
+            <ErrorState
+              title="Screener request failed"
+              description="The backend could not load these results. Your conditions are still here."
+              onRetry={() => query.refetch()}
+            />
+          ) : stocks.length === 0 ? (
+            <EmptyState
+              icon={<Search size={30} />}
+              title="No stocks match these conditions"
+              description="Widen a range or remove a condition, then run your screen again."
+            />
+          ) : isMobile || workspace.preferences.view === 'card' ? (
+            <SimpleGrid columns={{ base: 1, md: 2, '2xl': 3 }} gap={3}>
+              {stocks.map((stock) => (
+                <StockCardCompact key={stock.symbol} stock={stock} />
+              ))}
+            </SimpleGrid>
+          ) : (
+            <StockTable
+              stocks={stocks}
+              preferences={workspace.preferences}
+              filter={committed}
+              onSort={sort}
+            />
+          )}
+          {!query.isLoading && !query.isError && (
+            <StockPagination
+              pagination={pagination}
+              busy={query.isFetching}
+              onPageChange={(page) =>
+                setParams(stockFilterParams({ ...committed, page }))
+              }
+              onPageSizeChange={(page_size) =>
+                setParams(
+                  stockFilterParams({ ...committed, page_size, page: 1 }),
+                )
+              }
+            />
+          )}
+        </Box>
+      </Flex>
     </Container>
   );
-};
+}

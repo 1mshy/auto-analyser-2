@@ -1,0 +1,2 @@
+/* Auto Analyser portable token entry; canonical tokens ship with the frontend. */
+@import "./frontend/src/theme/tokens.css";

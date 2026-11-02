@@ -1,275 +1,151 @@
-import React from 'react';
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   Box,
+  Button,
   Container,
-  Heading,
-  Text,
-  SimpleGrid,
   Flex,
+  Grid,
+  Heading,
   HStack,
-  VStack,
+  Text,
 } from '@chakra-ui/react';
-import { TrendingUp, TrendingDown, Target, DollarSign, Sparkles } from 'lucide-react';
-import MarkdownContent from '../components/MarkdownContent';
-import { StockAnalysis } from '../types';
+import { ArrowUpRight, LayoutDashboard, RefreshCw } from 'lucide-react';
 import { useSettings } from '../contexts/SettingsContext';
-import { Surface, Num, SignalBadge, TierBadge, PageHeader, StatBlock, ErrorState, Skeleton, SkeletonText } from '../components/ui/primitives';
-import { useMarketSummary, useAIStatus, useAIAnalysis } from '../queries';
+import { useMarketSummary } from '../queries';
+import { Surface, PageHeader } from '../components/ui/primitives';
+import { MarketSnapshot } from '../features/dashboard/MarketSnapshot';
+import { DashboardWidget } from '../features/dashboard/DashboardWidgets';
+import { useWorkspace } from '../features/workspace/useWorkspace';
+import { WorkspaceControls } from '../features/workspace/WorkspaceControls';
+import { widgetCatalog, type WidgetId } from '../features/workspace/model';
 
-const CompactStockRow: React.FC<{
-  stock: StockAnalysis;
-  showChange?: boolean;
-  showRSI?: boolean;
-}> = ({ stock, showChange = true, showRSI = false }) => {
-  return (
-    <Link to={`/stocks/${encodeURIComponent(stock.symbol)}`} style={{ width: '100%' }}>
-      <Flex
-        justify="space-between"
-        align="center"
-        px={3}
-        py={2}
-        borderRadius="md"
-        _hover={{ bg: 'bg.muted' }}
-        transition="background 120ms ease"
-        cursor="pointer"
-      >
-        <HStack gap={3}>
-          <TierBadge marketCap={stock.market_cap} size="sm" variant="subtle" />
-          <VStack align="start" gap={0}>
-            <Text fontWeight="semibold" color="fg.default" letterSpacing="tight">{stock.symbol}</Text>
-            <Num value={stock.price} prefix="$" fontSize="xs" color="fg.muted" />
-          </VStack>
-        </HStack>
-
-        <HStack gap={4}>
-          {showRSI && stock.rsi != null && typeof stock.rsi === 'number' && (
-            <SignalBadge
-              tone={stock.rsi < 30 ? 'up' : stock.rsi > 70 ? 'down' : 'neutral'}
-              size="sm"
-              className="num"
-              data-num=""
-            >
-              RSI: <Num as="span" value={stock.rsi} decimals={1} color="inherit" fontSize="inherit" />
-            </SignalBadge>
-          )}
-          {showChange && stock.price_change_percent != null && typeof stock.price_change_percent === 'number' && (
-            <Num
-              value={stock.price_change_percent}
-              intent="auto"
-              sign="always"
-              suffix="%"
-              fontWeight="semibold"
-            />
-          )}
-        </HStack>
-      </Flex>
-    </Link>
-  );
+const destinations: Record<WidgetId, string> = {
+  sectors: '/sectors',
+  movers: '/stocks?sort_by=price_change_percent&sort_order=desc',
+  oversold: '/opportunities',
+  megacap: '/stocks?min_market_cap=200000000000',
+  watchlists: '/alerts?tab=watchlists',
+  news: '/news',
+  ai: '/research',
 };
-
-const AIAnalysisCard: React.FC<{
-  stock: StockAnalysis;
-}> = ({ stock }) => {
-  const { data: analysis, isLoading, isError } = useAIAnalysis(stock.symbol);
-
-  return (
-    <Surface p={4}>
-      <Flex justify="space-between" align="center" mb={3}>
-        <HStack>
-          <TierBadge marketCap={stock.market_cap} variant="subtle" />
-          <Heading size="sm" color="fg.default" letterSpacing="tight">{stock.symbol}</Heading>
-        </HStack>
-        <Num value={stock.price} prefix="$" color="fg.muted" fontSize="sm" />
-      </Flex>
-      {isLoading ? (
-        <SkeletonText lines={4} />
-      ) : analysis?.success ? (
-        <Box>
-          <Box maxH="9rem" overflow="hidden">
-            <MarkdownContent fontSize="sm" color="fg.muted">{analysis.analysis || ''}</MarkdownContent>
-          </Box>
-          <Text color="fg.subtle" fontSize="xs" mt={2}>
-            Model: {analysis.model_used}
-          </Text>
-        </Box>
-      ) : (
-        <Text color="fg.subtle" fontSize="sm">
-          {isError ? 'Failed to load' : analysis?.error || 'AI analysis not available'}
-        </Text>
-      )}
-    </Surface>
-  );
-};
-
-const SectionCard: React.FC<{
-  title: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  linkTo?: string;
-  linkText?: string;
-}> = ({ title, icon, children, linkTo, linkText }) => (
-  <Surface p={4}>
-    <Flex justify="space-between" align="center" mb={3}>
-      <HStack gap={2}>
-        {icon}
-        <Heading size="sm" color="fg.default" fontWeight="semibold">{title}</Heading>
-      </HStack>
-      {linkTo && (
-        <Link to={linkTo}>
-          <Text color="accent.fg" fontSize="sm" _hover={{ textDecoration: 'underline' }}>
-            {linkText || 'View All →'}
-          </Text>
-        </Link>
-      )}
-    </Flex>
-    <Box>{children}</Box>
-  </Surface>
-);
-
-export const Dashboard: React.FC = () => {
+export function Dashboard() {
   const { settings } = useSettings();
-  const {
-    data: summary,
-    isLoading,
-    isError,
-    isFetching,
-    refetch,
-  } = useMarketSummary(settings);
-  const { data: aiStatus } = useAIStatus();
-  const aiEnabled = aiStatus?.enabled ?? false;
-
-  if (isLoading) {
-    return (
-      <Container maxW="page" py={8}>
-        <Box mb={6}>
-          <Skeleton h="7" w="56" mb={2} />
-          <Skeleton h="4" w="72" />
-        </Box>
-        <SimpleGrid columns={{ base: 2, md: 4 }} gap={3} mb={6}>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Surface key={i} p={4}><SkeletonText lines={2} /></Surface>
-          ))}
-        </SimpleGrid>
-        <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4}>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Surface key={i} p={4}><SkeletonText lines={5} /></Surface>
-          ))}
-        </SimpleGrid>
-      </Container>
-    );
-  }
-
-  if (isError || !summary) {
-    return (
-      <Container maxW="page" py={8}>
-        <ErrorState
-          title="Couldn’t load market overview"
-          description="The market summary request failed. Check that the backend is reachable, then retry."
-          onRetry={() => refetch()}
-        />
-      </Container>
-    );
-  }
-
+  const client = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all(
+        ['market-summary', 'market-indexes', 'sectors', 'news', 'alerts'].map(
+          (key) => client.invalidateQueries({ queryKey: [key] }),
+        ),
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  const summary = useMarketSummary(settings);
+  const workspace = useWorkspace();
+  const generated = summary.data?.generated_at
+    ? new Date(summary.data.generated_at)
+    : null;
   return (
-    <Container maxW="page" py={8}>
+    <Container maxW="page" py={{ base: 5, md: 7 }}>
       <PageHeader
-        title="Market Overview"
-        subtitle={
-          <>
-            Analyzing {summary.total_stocks.toLocaleString()} stocks · Last updated {new Date(summary.generated_at).toLocaleTimeString()}
-            {isFetching && ' · updating…'}
-          </>
+        title="Your market, in focus"
+        subtitle="A clear view of the market. A workspace that fits your research."
+        actions={
+          <Button
+            asChild
+            size="sm"
+            variant="outline"
+            borderColor="border.default"
+          >
+            <Link to="/stocks">
+              Explore stocks <ArrowUpRight size={15} />
+            </Link>
+          </Button>
         }
       />
-
-      {/* Quick Stats */}
-      <SimpleGrid columns={{ base: 2, md: 4 }} gap={3} mb={6}>
-        <StatBlock label="Total Stocks" value={summary.total_stocks} valueDecimals={0} size="md" />
-        <StatBlock label="Top Gainers" value={summary.top_gainers.length} valueIntent="up" valueDecimals={0} size="md" />
-        <StatBlock label="Top Losers" value={summary.top_losers.length} valueIntent="down" valueDecimals={0} size="md" />
-        <StatBlock label="Oversold (RSI < 30)" value={summary.most_oversold.length} valueIntent="warn" valueDecimals={0} size="md" />
-      </SimpleGrid>
-
-      {/* Main Content Grid */}
-      <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4} mb={6}>
-        <SectionCard
-          title="Top Gainers"
-          icon={<Box color="signal.up.fg"><TrendingUp size={18} /></Box>}
-          linkTo="/stocks?sort_by=price_change_percent&sort_order=desc"
-        >
-          <VStack gap={0} align="stretch">
-            {summary.top_gainers.slice(0, 5).map(stock => (
-              <CompactStockRow key={stock.symbol} stock={stock} />
-            ))}
-            {summary.top_gainers.length === 0 && (
-              <Text color="fg.subtle">No gainers data available</Text>
-            )}
-          </VStack>
-        </SectionCard>
-
-        <SectionCard
-          title="Top Losers"
-          icon={<Box color="signal.down.fg"><TrendingDown size={18} /></Box>}
-          linkTo="/stocks?sort_by=price_change_percent&sort_order=asc"
-        >
-          <VStack gap={0} align="stretch">
-            {summary.top_losers.slice(0, 5).map(stock => (
-              <CompactStockRow key={stock.symbol} stock={stock} />
-            ))}
-            {summary.top_losers.length === 0 && (
-              <Text color="fg.subtle">No losers data available</Text>
-            )}
-          </VStack>
-        </SectionCard>
-
-        <SectionCard
-          title="Most Oversold (Opportunities)"
-          icon={<Box color="signal.warn.fg"><Target size={18} /></Box>}
-          linkTo="/opportunities"
-        >
-          <VStack gap={0} align="stretch">
-            {summary.most_oversold.slice(0, 5).map(stock => (
-              <CompactStockRow key={stock.symbol} stock={stock} showChange={false} showRSI />
-            ))}
-            {summary.most_oversold.length === 0 && (
-              <Text color="fg.subtle">No oversold stocks found</Text>
-            )}
-          </VStack>
-        </SectionCard>
-
-        <SectionCard
-          title="Mega Cap Highlights ($200B+)"
-          icon={<Box color="accent.fg"><DollarSign size={18} /></Box>}
-          linkTo="/stocks?min_market_cap=200000000000"
-        >
-          <VStack gap={0} align="stretch">
-            {summary.mega_cap_highlights.slice(0, 5).map(stock => (
-              <CompactStockRow key={stock.symbol} stock={stock} />
-            ))}
-            {summary.mega_cap_highlights.length === 0 && (
-              <Text color="fg.subtle">No mega cap stocks found</Text>
-            )}
-          </VStack>
-        </SectionCard>
-      </SimpleGrid>
-
-      {aiEnabled && summary.most_oversold.length > 0 && (
-        <Box mb={8}>
-          <HStack gap={2} mb={4} color="accent.fg">
-            <Sparkles size={18} />
-            <Heading size="md" color="fg.default" fontWeight="semibold">
-              AI Analysis — Top Oversold Opportunities
-            </Heading>
-          </HStack>
-          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} gap={4}>
-            {summary.most_oversold.slice(0, 3).map(stock => (
-              <AIAnalysisCard key={stock.symbol} stock={stock} />
-            ))}
-          </SimpleGrid>
-        </Box>
+      <MarketSnapshot />
+      <Flex align="center" justify="space-between" gap={3} mb={3} wrap="wrap">
+        <HStack gap={2}>
+          <LayoutDashboard size={17} />
+          <Heading as="h2" size="md">
+            Workspace
+          </Heading>
+        </HStack>
+        <HStack gap={2}>
+          <Text fontSize="xs" color="fg.subtle">
+            {summary.data
+              ? `${summary.data.total_stocks.toLocaleString()} stocks in your universe`
+              : 'Waiting for market analysis'}
+            {generated && Number.isFinite(generated.getTime())
+              ? ` · ${generated.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${generated.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
+              : ''}
+          </Text>
+          <Button
+            variant="ghost"
+            size="xs"
+            aria-label="Refresh workspace"
+            loading={refreshing || summary.isFetching}
+            onClick={refresh}
+          >
+            <RefreshCw size={13} />
+          </Button>
+        </HStack>
+      </Flex>
+      <WorkspaceControls {...workspace} />
+      <Grid
+        templateColumns={{
+          base: 'minmax(0, 1fr)',
+          md: 'repeat(12, minmax(0, 1fr))',
+        }}
+        gap={4}
+        alignItems="stretch"
+      >
+        {workspace.layout.widgets.map((widget) => (
+          <Surface
+            key={widget.id}
+            minW={0}
+            gridColumn={{
+              base: 'auto',
+              md: `span ${widget.width === 4 ? 6 : widget.width}`,
+              xl: `span ${widget.width}`,
+            }}
+            p={{ base: 4, md: 5 }}
+          >
+            <Flex align="center" justify="space-between" gap={2} mb={4}>
+              <Heading as="h3" size="sm" fontWeight="semibold">
+                {widgetCatalog[widget.id].title}
+              </Heading>
+              <Link
+                to={destinations[widget.id]}
+                aria-label={`Open ${widgetCatalog[widget.id].title}`}
+              >
+                <Box color="fg.subtle" p={1} _hover={{ color: 'accent.fg' }}>
+                  <ArrowUpRight size={16} />
+                </Box>
+              </Link>
+            </Flex>
+            <DashboardWidget id={widget.id} summary={summary} />
+          </Surface>
+        ))}
+      </Grid>
+      {!workspace.layout.widgets.length && (
+        <Surface p={8}>
+          <Text fontWeight="medium">A clean slate</Text>
+          <Text color="fg.muted" fontSize="sm" mt={2}>
+            Use Customize to add panels to this layout.
+          </Text>
+        </Surface>
       )}
+      <Text fontSize="xs" color="fg.subtle" mt={5}>
+        Leaderboards are shortlists, not market-wide breadth. Technical signals
+        are research inputs.
+      </Text>
     </Container>
   );
-};
+}

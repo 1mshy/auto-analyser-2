@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Box, Button, Container, Flex, HStack, SimpleGrid, Text, VStack } from '@chakra-ui/react';
-import { ArrowLeft, SearchX, TrendingDown, TrendingUp, Zap } from 'lucide-react';
+import { ArrowLeft, MessageSquareText, SearchX, TrendingDown, TrendingUp, Zap } from 'lucide-react';
 import { WatchButton } from '../components/alerts/WatchButton';
 import NewsCard from '../components/NewsCard';
 import {
@@ -37,7 +37,7 @@ const TABS: StockDetailTab[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'about', label: 'About' },
   { id: 'technicals', label: 'Technical Analysis' },
-  { id: 'chart', label: 'Chart' },
+  { id: 'chart', label: 'Advanced chart' },
   { id: 'ai', label: 'AI Analysis', icon: <Zap size={14} /> },
   { id: 'news', label: 'News' },
   { id: 'insiders', label: 'Insider Trades' },
@@ -45,7 +45,9 @@ const TABS: StockDetailTab[] = [
 
 export const StockDetailPage: React.FC = () => {
   const { symbol: rawSymbol } = useParams<{ symbol: string }>();
-  const symbol = rawSymbol ? decodeURIComponent(rawSymbol) : rawSymbol;
+  // React Router decodes route parameters; decoding twice can corrupt symbols
+  // containing percent signs or throw for a malformed URL.
+  const symbol = rawSymbol;
 
   const { data: stockData, isLoading, isError, refetch } = useStock(
     symbol ? symbol.toUpperCase() : ''
@@ -161,6 +163,7 @@ export const StockDetailPage: React.FC = () => {
           <>
             <AgeBadge timestamp={stock.analyzed_at} />
             <FreshnessChip cached={stockData?.cached} />
+            <Button asChild size="sm" variant="outline"><Link to={`/research?symbols=${encodeURIComponent(stock.symbol)}`}><MessageSquareText size={15} />Ask AI</Link></Button>
             <WatchButton symbol={stock.symbol} size="md" />
           </>
         }
@@ -191,7 +194,7 @@ export const StockDetailPage: React.FC = () => {
               {companyProfile?.long_business_summary
                 ? companyProfile.long_business_summary.slice(0, 180) +
                   (companyProfile.long_business_summary.length > 180 ? '…' : '')
-                : 'Real-time technical profile, company context, charting, news, AI analysis, and insider activity.'}
+                : 'Daily price history, technical indicators, company research, news, and insider activity.'}
             </Text>
           </VStack>
 
@@ -218,6 +221,7 @@ export const StockDetailPage: React.FC = () => {
               />
               <Num
                 value={stock.price_change_percent}
+                decimals={2}
                 intent="auto"
                 sign="always"
                 prefix="("
@@ -232,7 +236,8 @@ export const StockDetailPage: React.FC = () => {
 
       <TabBar tabs={TABS} active={activeTab} onChange={handleTabChange} />
 
-      {activeTab === 'overview' && <OverviewTab stock={stock} earnings={stockEarnings} />}
+      <Box role="tabpanel" id={`stock-panel-${activeTab}`} aria-labelledby={`stock-tab-${activeTab}`} tabIndex={0}>
+      {activeTab === 'overview' && <OverviewTab stock={stock} earnings={stockEarnings} currency={companyProfile?.currency} />}
 
       {activeTab === 'about' && (
         <AboutTab
@@ -272,6 +277,7 @@ export const StockDetailPage: React.FC = () => {
           onRetry={() => insidersQuery.refetch()}
         />
       )}
+      </Box>
     </Container>
   );
 };

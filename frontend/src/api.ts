@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { AIResearchInput, AIResearchResponse } from './types';
 import { StockAnalysis, StockFilter, AnalysisProgress, HistoricalDataPoint, MarketSummary, PaginationInfo, AIAnalysisResponse, GlobalSettings, CompanyProfile, IndexInfo, IndexHeatmapResponse, MarketIndexQuote, AggregatedNewsItem, SectorPerformance, InsiderTrade, EarningsData, EarningsCalendarRow, CorrelationData, Watchlist, NotificationChannel, AlertRule, NotificationHistoryItem, DeliveryResult, AlertScope, ConditionGroup, QuietHours, DiscordChannelConfig, HealthStatus, PositionView, CreatePositionInput, UpdatePositionInput, NewsCardPayload, DailyNewsSymbol, CreateBacktestInput, BacktestRun, BacktestSummary } from './types';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -10,6 +11,23 @@ export interface FilterResponse {
 }
 
 export const api = {
+  researchStocks: async (input: AIResearchInput, signal?: AbortSignal): Promise<AIResearchResponse> => {
+    try {
+      const response = await axios.post<AIResearchResponse | { success: false; error: string }>(
+        `${API_BASE_URL}/api/ai/research`, input, { signal, timeout: 130_000 },
+      );
+      if (!response.data.success) throw new Error(response.data.error || 'AI research could not be completed.');
+      if (typeof response.data.answer !== 'string' || !response.data.answer.trim()) throw new Error('The model returned an empty answer. Please try again.');
+      return response.data;
+    } catch (error) {
+      if (axios.isCancel(error)) throw error;
+      if (axios.isAxiosError<{ error?: string }>(error)) {
+        if (error.code === 'ECONNABORTED') throw new Error('The research request timed out. Try a shorter question or fewer symbols.');
+        throw new Error(error.response?.data?.error || 'Could not reach AI research. Check your connection and try again.');
+      }
+      throw error;
+    }
+  },
   // Get all stocks (paginated)
   getStocks: async (): Promise<StockAnalysis[]> => {
     const response = await axios.get(`${API_BASE_URL}/api/stocks`);
@@ -122,7 +140,10 @@ export const api = {
 
   // Get stock historical data
   getStockHistory: async (symbol: string): Promise<HistoricalDataPoint[]> => {
-    const response = await axios.get(`${API_BASE_URL}/api/stocks/${symbol}/history`);
+    const response = await axios.get(`${API_BASE_URL}/api/stocks/${encodeURIComponent(symbol)}/history`);
+    if (response.data.success === false) {
+      throw new Error(response.data.error || 'Price history is temporarily unavailable.');
+    }
     return response.data.history || [];
   },
 
@@ -465,4 +486,3 @@ export const api = {
     },
   },
 };
-

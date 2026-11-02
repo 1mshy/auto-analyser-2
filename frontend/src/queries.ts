@@ -1,4 +1,5 @@
-import { useQuery, keepPreviousData, type UseQueryResult } from '@tanstack/react-query';
+import { useQuery, useMutation, keepPreviousData, type UseQueryResult } from '@tanstack/react-query';
+import type { AIResearchInput } from './types';
 import { api, FilterResponse } from './api';
 import {
   GlobalSettings,
@@ -136,6 +137,14 @@ export function useAIStatus(): UseQueryResult<AIStatus, Error> {
     queryKey: queryKeys.aiStatus,
     queryFn: api.getAIStatus,
     staleTime: 5 * 60_000,
+  });
+}
+
+/** Research consumes the configured model only after an explicit user action. */
+export function useAIResearch() {
+  return useMutation({
+    mutationFn: ({ input, signal }: { input: AIResearchInput; signal?: AbortSignal }) => api.researchStocks(input, signal),
+    retry: false,
   });
 }
 

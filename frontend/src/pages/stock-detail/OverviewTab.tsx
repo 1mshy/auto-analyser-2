@@ -1,18 +1,20 @@
 import React from 'react';
-import { SimpleGrid } from '@chakra-ui/react';
+import { Box, SimpleGrid } from '@chakra-ui/react';
 import { Calendar, TrendingDown, TrendingUp } from 'lucide-react';
 import { StockAnalysis, EarningsData } from '../../types';
 import { Callout, StatBlock } from '../../components/ui/primitives';
 import { fmtCompactCurrency, fmtMoney, shortDate } from '../../format';
+import { StockHistoryChart } from '../../features/charts/StockHistoryChart';
 
 export interface OverviewTabProps {
   stock: StockAnalysis;
   earnings?: EarningsData | null;
+  currency?: string;
 }
 
-export const OverviewTab: React.FC<OverviewTabProps> = ({ stock, earnings }) => {
+export const OverviewTab: React.FC<OverviewTabProps> = ({ stock, earnings, currency }) => {
   const rsiIntent =
-    stock.rsi && stock.rsi < 30 ? 'up' : stock.rsi && stock.rsi > 70 ? 'down' : 'neutral';
+    stock.rsi != null && stock.rsi < 30 ? 'up' : stock.rsi != null && stock.rsi > 70 ? 'down' : 'neutral';
   const macdBullish = stock.macd ? stock.macd.histogram > 0 : null;
 
   const earningsDays = earnings?.earnings_date
@@ -27,6 +29,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ stock, earnings }) => 
 
   return (
     <>
+      <Box mb={5}><StockHistoryChart key={stock.symbol} symbol={stock.symbol} currency={currency} /></Box>
       {earnings?.earnings_date && (
         <Callout
           tone="warn"

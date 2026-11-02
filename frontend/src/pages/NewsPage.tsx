@@ -161,31 +161,29 @@ export const NewsPage: React.FC = () => {
       ) : (
         <VStack gap={2} align="stretch" opacity={newsQuery.isFetching ? 0.6 : 1}>
           {news.map((item, idx) => (
-            <Surface key={`${item.symbol}-${item.url}-${idx}`} interactive p={4} variant="raised">
+            <Surface key={`${item.symbol}-${item.url}-${idx}`} p={4} variant="raised">
               <a href={item.url} target="_blank" rel="noopener noreferrer">
                 <Flex justify="space-between" align="start">
-                  <VStack align="start" gap={2} flex={1}>
-                    <Text color="fg.default" fontWeight="semibold" _hover={{ color: 'accent.fg' }}>
-                      {item.title}
-                    </Text>
-                    <HStack gap={2} wrap="wrap">
-                      <Link to={`/stocks/${encodeURIComponent(item.symbol)}`} onClick={(e) => e.stopPropagation()}>
-                        <SignalBadge tone="accent" size="xs">{item.symbol}</SignalBadge>
-                      </Link>
-                      {item.sector && (
-                        <SignalBadge tone="info" size="xs">{item.sector}</SignalBadge>
-                      )}
-                      {item.publisher && (
-                        <Text color="fg.subtle" fontSize="xs">{item.publisher}</Text>
-                      )}
-                      {item.ago && (
-                        <Text color="fg.subtle" fontSize="xs">• {item.ago}</Text>
-                      )}
-                    </HStack>
-                  </VStack>
+                  <Text color="fg.default" fontWeight="semibold" _hover={{ color: 'accent.fg' }}>
+                    {item.title}
+                  </Text>
                   <Box color="fg.subtle" ml={2} flexShrink={0}><ExternalLink size={14} /></Box>
                 </Flex>
               </a>
+              <HStack gap={2} wrap="wrap" mt={2}>
+                <Link to={`/stocks/${encodeURIComponent(item.symbol)}`}>
+                  <SignalBadge tone="accent" size="xs">{item.symbol}</SignalBadge>
+                </Link>
+                {item.sector && (
+                  <SignalBadge tone="info" size="xs">{item.sector}</SignalBadge>
+                )}
+                {item.publisher && (
+                  <Text color="fg.subtle" fontSize="xs">{item.publisher}</Text>
+                )}
+                {item.ago && (
+                  <Text color="fg.subtle" fontSize="xs">• {item.ago}</Text>
+                )}
+              </HStack>
             </Surface>
           ))}
         </VStack>

@@ -11,38 +11,55 @@ import {
   IconButton,
   Slider,
   SimpleGrid,
-  Card,
   Separator,
 } from '@chakra-ui/react';
-import { Settings, CircleCheck, Sparkles, Building2, Globe } from 'lucide-react';
+import { Settings, CircleCheck, Sparkles, Building2, Globe, X } from 'lucide-react';
 import { useSettings } from '../contexts/SettingsContext';
-import { MARKET_CAP_TIERS, SETTINGS_PRESETS } from '../types';
+import { MARKET_CAP_TIERS, SETTINGS_PRESETS, type GlobalSettings } from '../types';
 import { toaster } from './ui/toaster';
 
 interface SettingsPanelProps {
   showBadge?: boolean;
 }
 
-const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
+const PRICE_CHANGE_LIMITS = [null, 15, 20, 25, 30, 50, 100] as const;
+
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
   const { open, onOpen, onClose } = useDisclosure();
   const { settings, updateSettings, applyPreset, isFiltered } = useSettings();
   
   // Local state for slider (to avoid too many re-renders)
   const [localMinMarketCap, setLocalMinMarketCap] = useState<number | null>(settings.minMarketCap);
   const [localMaxPriceChange, setLocalMaxPriceChange] = useState<number | null>(settings.maxPriceChangePercent);
+  const [localPreset, setLocalPreset] = useState<GlobalSettings['preset']>(settings.preset);
+  const marketCapOptions = MARKET_CAP_TIERS.map(tier => ({ value: tier.value, label: tier.label }));
+  if (localMinMarketCap !== null && !marketCapOptions.some(tier => tier.value === localMinMarketCap)) {
+    marketCapOptions.push({ value: localMinMarketCap, label: `$${localMinMarketCap.toLocaleString()}+` });
+    marketCapOptions.sort((a, b) => (a.value ?? 0) - (b.value ?? 0));
+  }
+  const priceChangeOptions: (number | null)[] = [...PRICE_CHANGE_LIMITS];
+  if (localMaxPriceChange !== null && !priceChangeOptions.includes(localMaxPriceChange)) {
+    priceChangeOptions.push(localMaxPriceChange);
+    priceChangeOptions.sort((a, b) => (a ?? 0) - (b ?? 0));
+  }
 
   // Sync local state when drawer opens
   const handleOpen = () => {
     setLocalMinMarketCap(settings.minMarketCap);
     setLocalMaxPriceChange(settings.maxPriceChangePercent);
+    setLocalPreset(settings.preset);
     onOpen();
   };
 
   const handleApply = () => {
-    updateSettings({
-      minMarketCap: localMinMarketCap,
-      maxPriceChangePercent: localMaxPriceChange,
-    });
+    if (localPreset === 'custom') {
+      updateSettings({
+        minMarketCap: localMinMarketCap,
+        maxPriceChangePercent: localMaxPriceChange,
+      });
+    } else {
+      applyPreset(localPreset);
+    }
     toaster.create({
       title: 'Settings Applied',
       description: 'Your filter preferences have been saved',
@@ -53,33 +70,28 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
   };
 
   const handlePreset = (preset: 'all' | 'quality' | 'large_cap') => {
-    applyPreset(preset);
+    setLocalPreset(preset);
     setLocalMinMarketCap(SETTINGS_PRESETS[preset].minMarketCap);
     setLocalMaxPriceChange(SETTINGS_PRESETS[preset].maxPriceChangePercent);
-    toaster.create({
-      title: 'Preset Applied',
-      description: `Switched to "${preset === 'all' ? 'Show All' : preset === 'quality' ? 'Quality Stocks' : 'Large Cap Only'}" preset`,
-      type: 'success',
-      duration: 2000,
-    });
   };
 
   // Find the market cap tier label
   const getMarketCapLabel = (value: number | null) => {
-    const tier = MARKET_CAP_TIERS.find(t => t.value === value);
+    const tier = marketCapOptions.find(t => t.value === value);
     return tier?.label || 'Custom';
   };
 
   // Find slider index from value
   const getSliderIndex = (value: number | null): number => {
-    const index = MARKET_CAP_TIERS.findIndex(t => t.value === value);
+    const index = marketCapOptions.findIndex(t => t.value === value);
     return index >= 0 ? index : 0;
   };
 
   const handleSliderChange = (details: { value: number[] }) => {
     const index = details.value[0];
-    const tier = MARKET_CAP_TIERS[index];
+    const tier = marketCapOptions[index];
     setLocalMinMarketCap(tier?.value ?? null);
+    setLocalPreset('custom');
   };
 
   return (
@@ -124,7 +136,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
               <Text fontSize="sm" color="fg.muted" mt={1}>
                 Filter settings apply across all views
               </Text>
-              <Drawer.CloseTrigger />
+              <Drawer.CloseTrigger aria-label="Close settings"><X size={18} /></Drawer.CloseTrigger>
             </Drawer.Header>
 
             <Drawer.Body>
@@ -135,62 +147,80 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                     Quick Presets
                   </Text>
                   <SimpleGrid columns={3} gap={3}>
-                    <Card.Root
-                      bg={settings.preset === 'all' ? 'accent.muted' : 'bg.inset'}
-                      borderColor={settings.preset === 'all' ? 'accent.solid' : 'border.subtle'}
+                    <Button
+                      variant="outline"
+                      height="auto"
+                      minW={0}
+                      whiteSpace="normal"
+                      p={3}
+                      bg={localPreset === 'all' ? 'accent.muted' : 'bg.inset'}
+                      borderColor={localPreset === 'all' ? 'accent.solid' : 'border.subtle'}
                       borderWidth="1px"
                       borderRadius="lg"
                       cursor="pointer"
                       onClick={() => handlePreset('all')}
+                      aria-pressed={localPreset === 'all'}
                       _hover={{ borderColor: 'border.emphasis' }}
                       transition="all 0.12s"
                     >
-                      <Card.Body p={3} textAlign="center">
+                      <Box textAlign="center">
                         <Box color="fg.muted" mb={2}>
                           <Globe size={22} />
                         </Box>
                         <Text fontWeight="semibold" color="fg.default" fontSize="sm">Show All</Text>
                         <Text fontSize="xs" color="fg.muted">No filtering</Text>
-                      </Card.Body>
-                    </Card.Root>
+                      </Box>
+                    </Button>
 
-                    <Card.Root
-                      bg={settings.preset === 'quality' ? 'signal.up.muted' : 'bg.inset'}
-                      borderColor={settings.preset === 'quality' ? 'signal.up.solid' : 'border.subtle'}
+                    <Button
+                      variant="outline"
+                      height="auto"
+                      minW={0}
+                      whiteSpace="normal"
+                      p={3}
+                      bg={localPreset === 'quality' ? 'signal.up.muted' : 'bg.inset'}
+                      borderColor={localPreset === 'quality' ? 'signal.up.solid' : 'border.subtle'}
                       borderWidth="1px"
                       borderRadius="lg"
                       cursor="pointer"
                       onClick={() => handlePreset('quality')}
+                      aria-pressed={localPreset === 'quality'}
                       _hover={{ borderColor: 'border.emphasis' }}
                       transition="all 0.12s"
                     >
-                      <Card.Body p={3} textAlign="center">
+                      <Box textAlign="center">
                         <Box color="signal.up.fg" mb={2}>
                           <Sparkles size={22} />
                         </Box>
                         <Text fontWeight="semibold" color="fg.default" fontSize="sm">Quality</Text>
-                        <Text fontSize="xs" color="fg.muted">$1B+ / ±50%</Text>
-                      </Card.Body>
-                    </Card.Root>
+                        <Text fontSize="xs" color="fg.muted">$500M+ / ±25%</Text>
+                      </Box>
+                    </Button>
 
-                    <Card.Root
-                      bg={settings.preset === 'large_cap' ? 'accent.muted' : 'bg.inset'}
-                      borderColor={settings.preset === 'large_cap' ? 'accent.solid' : 'border.subtle'}
+                    <Button
+                      variant="outline"
+                      height="auto"
+                      minW={0}
+                      whiteSpace="normal"
+                      p={3}
+                      bg={localPreset === 'large_cap' ? 'accent.muted' : 'bg.inset'}
+                      borderColor={localPreset === 'large_cap' ? 'accent.solid' : 'border.subtle'}
                       borderWidth="1px"
                       borderRadius="lg"
                       cursor="pointer"
                       onClick={() => handlePreset('large_cap')}
+                      aria-pressed={localPreset === 'large_cap'}
                       _hover={{ borderColor: 'border.emphasis' }}
                       transition="all 0.12s"
                     >
-                      <Card.Body p={3} textAlign="center">
+                      <Box textAlign="center">
                         <Box color="accent.fg" mb={2}>
                           <Building2 size={22} />
                         </Box>
                         <Text fontWeight="semibold" color="fg.default" fontSize="sm">Large Cap</Text>
-                        <Text fontSize="xs" color="fg.muted">$10B+ / ±30%</Text>
-                      </Card.Body>
-                    </Card.Root>
+                        <Text fontSize="xs" color="fg.muted">$10B+ / ±15%</Text>
+                      </Box>
+                    </Button>
                   </SimpleGrid>
                 </Box>
 
@@ -212,7 +242,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                   <Box px={2}>
                     <Slider.Root
                       min={0}
-                      max={MARKET_CAP_TIERS.length - 1}
+                      max={marketCapOptions.length - 1}
                       step={1}
                       value={[getSliderIndex(localMinMarketCap)]}
                       onValueChange={handleSliderChange}
@@ -222,7 +252,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                         <Slider.Track>
                           <Slider.Range />
                         </Slider.Track>
-                        <Slider.Thumb index={0} />
+                        <Slider.Thumb index={0} aria-label="Minimum market cap" aria-valuetext={getMarketCapLabel(localMinMarketCap)} />
                       </Slider.Control>
                     </Slider.Root>
                   </Box>
@@ -248,18 +278,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                   <Box px={2}>
                     <Slider.Root
                       min={0}
-                      max={5}
+                      max={priceChangeOptions.length - 1}
                       step={1}
-                      value={[
-                        localMaxPriceChange === null ? 0 :
-                        localMaxPriceChange === 20 ? 1 :
-                        localMaxPriceChange === 30 ? 2 :
-                        localMaxPriceChange === 50 ? 3 :
-                        localMaxPriceChange === 100 ? 4 : 5
-                      ]}
+                      value={[Math.max(0, priceChangeOptions.findIndex(value => value === localMaxPriceChange))]}
                       onValueChange={(details: { value: number[] }) => {
-                        const values = [null, 20, 30, 50, 100, null];
-                        setLocalMaxPriceChange(values[details.value[0]]);
+                        setLocalMaxPriceChange(priceChangeOptions[details.value[0]] ?? null);
+                        setLocalPreset('custom');
                       }}
                       colorPalette="orange"
                     >
@@ -267,7 +291,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
                         <Slider.Track>
                           <Slider.Range />
                         </Slider.Track>
-                        <Slider.Thumb index={0} />
+                        <Slider.Thumb index={0} aria-label="Maximum daily price change" aria-valuetext={localMaxPriceChange === null ? 'No limit' : `${localMaxPriceChange} percent`} />
                       </Slider.Control>
                     </Slider.Root>
                   </Box>
@@ -328,5 +352,3 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ showBadge = true }) => {
 };
 
 export default SettingsPanel;
-
-

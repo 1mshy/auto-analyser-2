@@ -6,138 +6,97 @@ import {
   HStack,
   VStack,
   Text,
+  CloseButton,
 } from '@chakra-ui/react';
-import {
-  Home,
-  List,
-  TrendingUp,
-  Activity,
-  BarChart3,
-  Newspaper,
-  PieChart,
-  Search,
-  Bell,
-  FlaskConical,
-} from 'lucide-react';
-import { SignalBadge } from './ui/primitives';
+import { Activity } from 'lucide-react';
+import { navigation, isNavigationActive } from '../app/navigation';
 
 export interface MobileDrawerNavItem {
   to: string;
   label: string;
   icon: React.ReactNode;
 }
+export const MOBILE_NAV_ITEMS: MobileDrawerNavItem[] = navigation.flatMap(
+  (group) =>
+    group.items.map((item) => ({ ...item, icon: <item.icon size={18} /> })),
+);
 
-// Single source of truth for the mobile nav list. Mirrors `Navigation.tsx`.
-export const MOBILE_NAV_ITEMS: MobileDrawerNavItem[] = [
-  { to: '/', label: 'Dashboard', icon: <Home size={18} /> },
-  { to: '/stocks', label: 'All Stocks', icon: <List size={18} /> },
-  { to: '/opportunities', label: 'Opportunities', icon: <TrendingUp size={18} /> },
-  { to: '/funds', label: 'Funds', icon: <BarChart3 size={18} /> },
-  { to: '/news', label: 'News', icon: <Newspaper size={18} /> },
-  { to: '/sectors', label: 'Sectors', icon: <PieChart size={18} /> },
-  { to: '/screener', label: 'Screener', icon: <Search size={18} /> },
-  { to: '/backtest', label: 'Backtest', icon: <FlaskConical size={18} /> },
-  { to: '/alerts', label: 'Alerts', icon: <Bell size={18} /> },
-];
-
-interface MobileDrawerProps {
+const MobileDrawer: React.FC<{
   open: boolean;
   onClose: () => void;
   unread?: number;
-}
-
-const MobileDrawer: React.FC<MobileDrawerProps> = ({ open, onClose, unread = 0 }) => {
+}> = ({ open, onClose, unread = 0 }) => {
   const location = useLocation();
-
   return (
     <Drawer.Root
       open={open}
-      onOpenChange={(e: any) => (e.open ? null : onClose())}
+      onOpenChange={(event) => {
+        if (!event.open) onClose();
+      }}
       placement="start"
       size="xs"
     >
       <Drawer.Backdrop />
       <Drawer.Positioner>
-        <Drawer.Content
-          bg="bg.surface"
-          borderRightWidth="1px"
-          borderColor="border.default"
-        >
+        <Drawer.Content bg="bg.surface" maxW="min(320px, 90vw)">
           <Drawer.Header borderBottomWidth="1px" borderColor="border.subtle">
-            <Drawer.Title color="fg.default">
-              <HStack gap={2}>
-                <Box
-                  color="accent.fg"
-                  bg="accent.subtle"
-                  borderWidth="1px"
-                  borderColor="accent.muted"
-                  borderRadius="md"
-                  p={1.5}
-                  lineHeight={0}
-                >
-                  <Activity size={16} />
+            <Drawer.Title>
+              <HStack>
+                <Box color="accent.fg">
+                  <Activity size={20} />
                 </Box>
-                <Text fontWeight="semibold">Stock Analyser</Text>
+                <Text>Auto Analyser</Text>
               </HStack>
             </Drawer.Title>
-            <Drawer.CloseTrigger />
+            <Drawer.CloseTrigger asChild>
+              <CloseButton aria-label="Close navigation" size="sm" />
+            </Drawer.CloseTrigger>
           </Drawer.Header>
-
-          <Drawer.Body>
-            <VStack gap={1} align="stretch" py={2}>
-              {MOBILE_NAV_ITEMS.map((item) => {
-                const isActive = location.pathname === item.to;
-                const showUnread = item.to === '/alerts' && unread > 0;
-                return (
-                  <Link key={item.to} to={item.to} onClick={onClose}>
-                    <HStack
-                      px={3}
-                      py={2.5}
-                      gap={3}
-                      borderRadius="md"
-                      bg={isActive ? 'accent.muted' : 'transparent'}
-                      color={isActive ? 'accent.fg' : 'fg.muted'}
-                      _hover={{
-                        bg: isActive ? 'accent.muted' : 'bg.muted',
-                        color: isActive ? 'accent.fg' : 'fg.default',
-                      }}
-                      transition="background 120ms ease, color 120ms ease"
-                      cursor="pointer"
-                      position="relative"
-                    >
-                      {item.icon}
-                      <Text
-                        fontSize="sm"
-                        fontWeight={isActive ? 'semibold' : 'medium'}
-                        flex={1}
+          <Drawer.Body as="nav" aria-label="Mobile navigation" py={5}>
+            {navigation.map((group) => (
+              <Box key={group.label} mb={5}>
+                <Text color="fg.subtle" fontSize="xs" mb={2} px={3}>
+                  {group.label}
+                </Text>
+                <VStack align="stretch" gap={1}>
+                  {group.items.map((item) => {
+                    const active = isNavigationActive(
+                      location.pathname,
+                      item.to,
+                    );
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        onClick={onClose}
+                        aria-current={active ? 'page' : undefined}
                       >
-                        {item.label}
-                      </Text>
-                      {showUnread && (
-                        <SignalBadge
-                          tone="down"
-                          variant="solid"
-                          size="xs"
-                          borderRadius="full"
-                          minW="20px"
-                          h="20px"
-                          px={1.5}
-                          fontSize="10px"
-                          lineHeight="20px"
+                        <HStack
+                          px={3}
+                          minH="44px"
+                          gap={3}
+                          borderRadius="md"
+                          bg={active ? 'accent.muted' : 'transparent'}
+                          color={active ? 'accent.fg' : 'fg.muted'}
                         >
-                          {unread > 99 ? '99+' : unread}
-                        </SignalBadge>
-                      )}
-                    </HStack>
-                  </Link>
-                );
-              })}
-            </VStack>
+                          <item.icon size={18} />
+                          <Text fontSize="sm" flex={1} whiteSpace="nowrap">
+                            {item.label}
+                          </Text>
+                          {item.to === '/alerts' && unread > 0 && (
+                            <Text fontSize="xs">{unread}</Text>
+                          )}
+                        </HStack>
+                      </Link>
+                    );
+                  })}
+                </VStack>
+              </Box>
+            ))}
           </Drawer.Body>
         </Drawer.Content>
       </Drawer.Positioner>
     </Drawer.Root>
   );
 };
-
 export default MobileDrawer;

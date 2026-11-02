@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import './theme/tokens.css';
 
 body {
   margin: 0;
@@ -27,4 +28,27 @@ code, pre, kbd, samp, .num, [data-num] {
 }
 @media (prefers-reduced-motion: reduce) {
   [data-skeleton] { animation: none !important; }
+}
+
+/* Hallmark · macrostructure: Workbench · designed-as-app · design-system: design.md */
+html, body { overflow-x: clip; }
+body { font-family: var(--font-body); }
+h1, h2, h3, h4 { font-family: var(--font-display); font-style: normal; min-width: 0; }
+button, [role="button"], nav a { white-space: nowrap; }
+button, a, input, select { touch-action: manipulation; }
+.workspace-sidebar { position: fixed; inset: 0 auto 0 0; width: var(--sidebar-width); z-index: 30; }
+.workspace-main { min-width: 0; }
+.workspace-main > .chakra-container { padding-inline: var(--space-xl); }
+.workspace-topbar form:focus-within { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: var(--radius-md); }
+.skip-link { position: fixed; top: -100px; left: var(--space-lg); z-index: 100; padding: var(--space-md); background: var(--color-paper-2); color: var(--color-ink); }
+.skip-link:focus { top: var(--space-md); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (min-width: 1024px) {
+  .workspace-main, .workspace-topbar { margin-left: var(--sidebar-width); }
+}
+@media (max-width: 639px) {
+  .workspace-main > .chakra-container { padding-inline: var(--space-md); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

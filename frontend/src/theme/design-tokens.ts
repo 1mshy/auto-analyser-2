@@ -7,26 +7,26 @@
 
 export const designTokens = {
   color: {
-    canvas: "#080a0f",
-    surface: "#0f131a",
-    surfaceRaised: "#141922",
-    surfaceInset: "#0b0e14",
-    rowHover: "#151b24",
-    rowActive: "#182231",
-    borderSubtle: "#202633",
-    borderDefault: "#283141",
+    canvas: "var(--color-paper)",
+    surface: "var(--color-paper-2)",
+    surfaceRaised: "var(--color-paper-3)",
+    surfaceInset: "var(--color-paper)",
+    rowHover: "var(--color-paper-3)",
+    rowActive: "var(--color-paper-3)",
+    borderSubtle: "var(--color-rule)",
+    borderDefault: "var(--color-rule)",
     borderStrong: "#384355",
-    textPrimary: "#f4f7fb",
-    textSecondary: "#a6b0bf",
-    textMuted: "#747f8f",
+    textPrimary: "var(--color-ink)",
+    textSecondary: "var(--color-ink-2)",
+    textMuted: "var(--color-ink-2)",
     accent: "#4ea1ff",
     accentMuted: "rgba(78, 161, 255, 0.16)",
     positive: "#2ebd85",
     negative: "#ff5c70",
   },
   typography: {
-    ui: 'Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    numeric: '"JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace',
+    ui: "var(--font-body)",
+    numeric: "var(--font-outlier)",
     features: '"cv11", "ss01", "ss03"',
     numericFeatures: '"tnum", "zero"',
   },
@@ -239,54 +239,54 @@ export const chakraTokens = {
 export const chakraSemanticTokens = {
   colors: {
     "bg.canvas": {
-      value: { _light: "{colors.gray.50}", _dark: "{colors.canvas}" },
+      value: "var(--color-paper)",
     },
     "bg.surface": {
-      value: { _light: "{colors.white}", _dark: "{colors.surface}" },
+      value: "var(--color-paper-2)",
     },
     "bg.surfaceRaised": {
-      value: { _light: "{colors.white}", _dark: "{colors.surfaceRaised}" },
+      value: "var(--color-paper-3)",
     },
     "bg.inset": {
-      value: { _light: "{colors.gray.100}", _dark: "{colors.surfaceInset}" },
+      value: "var(--color-paper)",
     },
     "bg.muted": {
-      value: { _light: "{colors.gray.100}", _dark: "{colors.rowHover}" },
+      value: "var(--color-paper-3)",
     },
     "bg.emphasized": {
-      value: { _light: "{colors.gray.200}", _dark: "{colors.rowActive}" },
+      value: "var(--color-paper-3)",
     },
     "bg.subtle": {
-      value: { _light: "{colors.gray.50}", _dark: "{colors.surfaceInset}" },
+      value: "var(--color-paper)",
     },
     "bg.panel": {
-      value: { _light: "{colors.white}", _dark: "{colors.surface}" },
+      value: "var(--color-paper-2)",
     },
 
     "border.subtle": {
-      value: { _light: "{colors.gray.100}", _dark: "{colors.hairline}" },
+      value: "var(--color-rule)",
     },
     "border.default": {
-      value: { _light: "{colors.gray.200}", _dark: "{colors.hairlineDefault}" },
+      value: "var(--color-rule)",
     },
     "border.emphasis": {
       value: { _light: "{colors.gray.400}", _dark: "{colors.hairlineStrong}" },
     },
     "border.muted": {
-      value: { _light: "{colors.gray.100}", _dark: "{colors.hairline}" },
+      value: "var(--color-rule)",
     },
     "border.emphasized": {
       value: { _light: "{colors.gray.300}", _dark: "{colors.hairlineStrong}" },
     },
 
     "fg.default": {
-      value: { _light: "{colors.gray.900}", _dark: "{colors.textPrimary}" },
+      value: "var(--color-ink)",
     },
     "fg.muted": {
-      value: { _light: "{colors.gray.600}", _dark: "{colors.textSecondary}" },
+      value: "var(--color-ink-2)",
     },
     "fg.subtle": {
-      value: { _light: "{colors.gray.500}", _dark: "{colors.textMuted}" },
+      value: "var(--color-ink-2)",
     },
 
     "accent.solid": {
@@ -365,17 +365,17 @@ export const chakraSemanticTokens = {
     },
 
     "chart.grid": {
-      value: { _light: "#e4e4e7", _dark: "#202633" },
+      value: "var(--color-rule)",
     },
     "chart.axis": {
-      value: { _light: "#71717a", _dark: "#747f8f" },
+      value: "var(--color-ink-2)",
     },
-    "chart.series.1": { value: "#4ea1ff" },
-    "chart.series.2": { value: "#2ebd85" },
-    "chart.series.3": { value: "#f5a524" },
-    "chart.series.4": { value: "#ff5c70" },
-    "chart.series.5": { value: "#64b5f6" },
-    "chart.series.6": { value: "#a78bfa" },
+    "chart.series.1": { value: "var(--color-accent)" },
+    "chart.series.2": { value: "var(--color-positive)" },
+    "chart.series.3": { value: "var(--color-chart-warn)" },
+    "chart.series.4": { value: "var(--color-negative)" },
+    "chart.series.5": { value: "var(--color-chart-info)" },
+    "chart.series.6": { value: "var(--color-chart-alternate)" },
   },
   shadows: {
     "elevation.raised": {

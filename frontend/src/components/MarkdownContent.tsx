@@ -6,12 +6,14 @@ interface MarkdownContentProps {
   children: string;
   fontSize?: string;
   color?: string;
+  allowImages?: boolean;
 }
 
 const MarkdownContent: React.FC<MarkdownContentProps> = ({
   children,
   fontSize = 'md',
   color = 'fg.muted',
+  allowImages = true,
 }) => {
   return (
     <Box
@@ -73,7 +75,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
         '& p:last-child': { mb: 0 },
       }}
     >
-      <ReactMarkdown>{children}</ReactMarkdown>
+      <ReactMarkdown components={allowImages ? undefined : { img: () => null }}>{children}</ReactMarkdown>
     </Box>
   );
 };
