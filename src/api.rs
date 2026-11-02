@@ -81,6 +81,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/progress", get(get_progress))
         .route("/api/ai/status", get(get_ai_status))
         .route("/api/ai/models", get(get_ai_models))
+        .route(
+            "/api/ai/research",
+            post(crate::ai_research::research)
+                .layer(axum::extract::DefaultBodyLimit::max(16 * 1024)),
+        )
         // Marketaux + AI news card (per-stock)
         .route("/api/stocks/:symbol/news", get(get_stock_news_card))
         .route(

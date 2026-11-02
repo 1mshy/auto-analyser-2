@@ -241,6 +241,42 @@ Returns the full run (`{ "success": true, "run": { ... } }`) or
 
 ---
 
+## AI research
+
+```http
+POST /api/ai/research
+Content-Type: application/json
+```
+
+Generate an answer grounded in the latest stored analyses for one to four stock symbols. This endpoint does not modify stock data or user portfolios.
+
+```json
+{
+  "symbols": ["AAPL", "MSFT"],
+  "question": "Compare the available technical signals and identify the main uncertainties."
+}
+```
+
+The question must contain 1–1,000 characters after trimming. Symbols are normalized and validated; duplicate symbols do not produce duplicate source rows. Unavailable symbols are reported separately. An entirely unavailable selection returns an error rather than generating an ungrounded answer.
+
+Successful responses contain:
+
+| Field | Meaning |
+| --- | --- |
+| `success` | `true` |
+| `answer` | Generated Markdown with symbol references |
+| `question` | The submitted, normalized question |
+| `model_used` | Model discovered from the configured endpoint |
+| `generated_at` | Generation timestamp |
+| `sources` | Exact source snapshots used: symbol, analyzed_at, price, day change percentage, RSI, SMA 20/50, sector, volume, and market cap |
+| `missing_symbols` | Requested symbols with no stored analysis |
+
+Indicators and metadata may be `null`. Prices use the source listing's units; cross-currency absolute prices are not comparable without conversion. `analyzed_at` is the application's analysis timestamp, not a guarantee of real-time exchange data.
+
+Errors use a non-success HTTP status and `{ "success": false, "error": "..." }`: 400 for invalid inputs or duplicate symbols, 404 when all symbols are missing, 422 for an invalid stored price, 429 while another research request is running, 503 for unavailable data/model services, 504 for the 120-second deadline, and 502 for an invalid, truncated, or failed model response. JSON bodies are limited to 16 KiB. The model output is capped at 1,200 tokens and 64 KiB of response bytes. See [AI research setup](docs/ai-research.md) for the local model connection.
+
+`GET /api/ai/status` returns `enabled`, `current_model`, `available_models_count`, and `base_url`. Existing stock-analysis and news-summary routes continue to use the same configured AI client.
+
 ## Technical Indicators
 
 ### RSI (Relative Strength Index)

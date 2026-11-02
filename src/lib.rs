@@ -6,6 +6,7 @@
 //! - Async batch fetching with rate limiting
 //! - NASDAQ data integration
 
+pub mod ai_research;
 pub mod analysis;
 pub mod api;
 pub mod async_fetcher;

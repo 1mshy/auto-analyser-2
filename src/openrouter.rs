@@ -5,7 +5,7 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{OwnedSemaphorePermit, RwLock, Semaphore};
 use tracing::{error, info, warn};
 
 /// Default OpenAI-compatible API root. Point `AI_BASE_URL` at a self-hosted
@@ -188,6 +188,52 @@ pub struct OpenRouterClient {
     base_url: String,
     current_model_index: Arc<AtomicUsize>,
     enabled: bool,
+    research_slot: Arc<Semaphore>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ResearchGenerationError {
+    #[error("AI research is disabled on this server.")]
+    Disabled,
+    #[error("Another AI research request is running. Try again after it finishes.")]
+    Busy,
+    #[error("No research model is available from the configured AI endpoint.")]
+    NoModels,
+    #[error("The AI research request timed out. Try again later.")]
+    Timeout,
+    #[error("The AI endpoint could not be reached. Try again later.")]
+    Unavailable,
+    #[error("The AI endpoint returned HTTP {0}. Try again later.")]
+    Upstream(u16),
+    #[error("The AI endpoint did not return a usable research answer.")]
+    InvalidResponse,
+    #[error("The AI research answer was cut short. Try a more focused question.")]
+    TruncatedResponse,
+}
+
+// Research has stricter completion requirements than legacy analysis responses.
+#[derive(Deserialize)]
+struct ResearchCompletionResponse {
+    choices: Vec<ResearchChoice>,
+}
+
+#[derive(Deserialize)]
+struct ResearchChoice {
+    message: ChatMessage,
+    finish_reason: Option<String>,
+}
+
+pub struct ResearchCompletion {
+    pub answer: String,
+    pub model_used: String,
+}
+
+fn research_transport_error(error: reqwest::Error) -> ResearchGenerationError {
+    if error.is_timeout() {
+        ResearchGenerationError::Timeout
+    } else {
+        ResearchGenerationError::Unavailable
+    }
 }
 
 impl OpenRouterClient {
@@ -202,6 +248,7 @@ impl OpenRouterClient {
             base_url,
             current_model_index: Arc::new(AtomicUsize::new(0)),
             enabled: enabled && is_configured,
+            research_slot: Arc::new(Semaphore::new(1)),
         }
     }
 
@@ -213,6 +260,110 @@ impl OpenRouterClient {
     /// The OpenAI-compatible endpoint this client talks to
     pub fn base_url(&self) -> &str {
         &self.base_url
+    }
+
+    /// The permit is held across source loading and generation by the research
+    /// endpoint. Cloning the client shares the same limit; requests never queue.
+    pub fn try_acquire_research(
+        &self,
+    ) -> std::result::Result<OwnedSemaphorePermit, ResearchGenerationError> {
+        self.research_slot
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| ResearchGenerationError::Busy)
+    }
+
+    /// One bounded completion for the grounded research workflow. Deliberately
+    /// separate from the older analysis fallback loops: local inference must not
+    /// start another long request after an error or rate limit.
+    pub async fn generate_research(
+        &self,
+        system: &str,
+        prompt: &str,
+    ) -> std::result::Result<ResearchCompletion, ResearchGenerationError> {
+        if !self.is_enabled() {
+            return Err(ResearchGenerationError::Disabled);
+        }
+        let model = self
+            .current_model()
+            .await
+            .ok_or(ResearchGenerationError::NoModels)?;
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .map_err(|_| ResearchGenerationError::Unavailable)?;
+        let mut body = serde_json::json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": system },
+                { "role": "user", "content": prompt }
+            ],
+            "max_tokens": 1200,
+            "temperature": 0.2,
+            "stream": false
+        });
+        if !is_openrouter(&self.base_url) {
+            // Supported by the configured local Qwen endpoint. Keep this local
+            // option out of OpenRouter requests and all existing analysis paths.
+            body["chat_template_kwargs"] = serde_json::json!({ "enable_thinking": false });
+        }
+        let mut response = self
+            .authorize(client.post(format!("{}/chat/completions", self.base_url)))
+            .json(&body)
+            .send()
+            .await
+            .map_err(research_transport_error)?;
+        if !response.status().is_success() {
+            return Err(ResearchGenerationError::Upstream(
+                response.status().as_u16(),
+            ));
+        }
+        // Bound unexpected provider responses, including any unused reasoning.
+        const MAX_RESPONSE_BYTES: usize = 65_536;
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_RESPONSE_BYTES as u64)
+        {
+            return Err(ResearchGenerationError::InvalidResponse);
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(research_transport_error)? {
+            if bytes.len() + chunk.len() > MAX_RESPONSE_BYTES {
+                return Err(ResearchGenerationError::InvalidResponse);
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        let completion: ResearchCompletionResponse =
+            serde_json::from_slice(&bytes).map_err(|_| ResearchGenerationError::InvalidResponse)?;
+        let choice = completion
+            .choices
+            .into_iter()
+            .next()
+            .ok_or(ResearchGenerationError::InvalidResponse)?;
+        match choice.finish_reason.as_deref() {
+            Some("length") => return Err(ResearchGenerationError::TruncatedResponse),
+            Some("stop") | None => {}
+            _ => return Err(ResearchGenerationError::InvalidResponse),
+        }
+        let answer = choice
+            .message
+            .content
+            .map(|content| content.trim().to_string())
+            .filter(|content| {
+                // Never expose reasoning-only or mixed reasoning content as a
+                // final answer when a local provider ignores thinking=false.
+                let lower = content.to_ascii_lowercase();
+                !content.is_empty()
+                    && content.chars().count() <= 12_000
+                    && !lower.contains("<think")
+                    && !lower.contains("</think")
+            })
+            .ok_or(ResearchGenerationError::InvalidResponse)?;
+        Ok(ResearchCompletion {
+            answer,
+            model_used: model,
+        })
     }
 
     /// Models available on the configured endpoint (cached after first call)
@@ -737,6 +888,128 @@ mod tests {
     use crate::models::MACDIndicator;
 
     const VLLM_BASE_URL: &str = "http://10.150.0.30:1234/v1";
+
+    #[test]
+    fn research_limit_is_shared_by_client_clones_and_releases_on_drop() {
+        let client = OpenRouterClient::new(None, true, Some(VLLM_BASE_URL.to_string()));
+        let clone = client.clone();
+        let permit = client.try_acquire_research().unwrap();
+        assert!(matches!(
+            clone.try_acquire_research(),
+            Err(ResearchGenerationError::Busy)
+        ));
+        drop(permit);
+        assert!(clone.try_acquire_research().is_ok());
+    }
+
+    async fn research_server(
+        status: axum::http::StatusCode,
+        completion: serde_json::Value,
+    ) -> (
+        OpenRouterClient,
+        Arc<tokio::sync::Mutex<Vec<serde_json::Value>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        use axum::{
+            routing::{get, post},
+            Json, Router,
+        };
+        let requests = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let captured = requests.clone();
+        let app = Router::new()
+            .route("/models", get(|| async { Json(serde_json::json!({ "data": [{ "id": "test-research-model" }, { "id": "unused-fallback-model" }] })) }))
+            .route("/chat/completions", post(move |Json(body): Json<serde_json::Value>| {
+                let captured = captured.clone();
+                let completion = completion.clone();
+                async move { captured.lock().await.push(body); (status, Json(completion)) }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        (
+            OpenRouterClient::new(None, true, Some(base_url)),
+            requests,
+            server,
+        )
+    }
+
+    #[tokio::test]
+    async fn research_completion_uses_single_bounded_local_request_and_content_only() {
+        let (client, requests, server) = research_server(axum::http::StatusCode::OK, serde_json::json!({
+            "choices": [{ "message": { "content": "  Snapshot observation [AAPL].  ", "reasoning_content": "private reasoning" } }]
+        })).await;
+        let result = client
+            .generate_research("Grounded system instructions", "Snapshot JSON")
+            .await
+            .unwrap();
+        assert_eq!(result.answer, "Snapshot observation [AAPL].");
+        assert_eq!(result.model_used, "test-research-model");
+        let requests = requests.lock().await;
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0]["max_tokens"], 1200);
+        assert_eq!(requests[0]["stream"], false);
+        assert_eq!(
+            requests[0]["chat_template_kwargs"]["enable_thinking"],
+            false
+        );
+        assert_eq!(requests[0]["messages"][0]["role"], "system");
+        assert_eq!(requests[0]["messages"][1]["content"], "Snapshot JSON");
+        assert!(requests[0].get("tools").is_none());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn research_completion_does_not_retry_provider_failures() {
+        let (client, requests, server) = research_server(
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            serde_json::json!({ "error": "quota" }),
+        )
+        .await;
+        assert!(matches!(
+            client.generate_research("system", "facts").await,
+            Err(ResearchGenerationError::Upstream(429))
+        ));
+        assert_eq!(requests.lock().await.len(), 1);
+        assert_eq!(client.current_model_index(), 0);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn research_completion_rejects_empty_or_reasoning_only_answers() {
+        for completion in [
+            serde_json::json!({ "choices": [] }),
+            serde_json::json!({ "choices": [{ "message": { "content": "  " } }] }),
+            serde_json::json!({ "choices": [{ "message": { "content": null, "reasoning_content": "unfinished" } }] }),
+            serde_json::json!({ "choices": [{ "message": { "content": "<think>unfinished reasoning</think>" } }] }),
+            serde_json::json!({ "choices": [{ "message": { "content": "<THINK>reasoning</THINK> Final answer" } }] }),
+            serde_json::json!({ "choices": [{ "finish_reason": "tool_calls", "message": { "content": "Run a tool" } }] }),
+            serde_json::json!({ "unexpected": true }),
+        ] {
+            let (client, requests, server) =
+                research_server(axum::http::StatusCode::OK, completion).await;
+            assert!(matches!(
+                client.generate_research("system", "facts").await,
+                Err(ResearchGenerationError::InvalidResponse)
+            ));
+            assert_eq!(requests.lock().await.len(), 1);
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn research_completion_rejects_truncated_answers() {
+        let (client, requests, server) = research_server(axum::http::StatusCode::OK,
+            serde_json::json!({ "choices": [{ "finish_reason": "length", "message": { "content": "Incomplete note [AAPL]" } }] })
+        ).await;
+        assert!(matches!(
+            client.generate_research("system", "facts").await,
+            Err(ResearchGenerationError::TruncatedResponse)
+        ));
+        assert_eq!(requests.lock().await.len(), 1);
+        server.abort();
+    }
 
     #[test]
     fn test_fallback_models_list() {

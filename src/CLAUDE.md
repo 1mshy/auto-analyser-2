@@ -16,6 +16,7 @@ This file is loaded only when working inside `src/`. For the task→file map, se
 - `cache.rs` — two-tier Moka (stock-level 10k + list-level 100). List cache is invalidated end-of-cycle.
 - `api.rs` — Axum router + `AppState`. `/ws` streams progress **and** per-stock updates; `/metrics` returns Prometheus text (exempt from the JSON convention).
 - `openrouter.rs` — optional AI layer; gated by `OPENROUTER_ENABLED` + (key presence *or* a non-OpenRouter `AI_BASE_URL`). Raw OpenAI-compatible HTTP, so it serves OpenRouter and self-hosted vLLM alike; models come from the endpoint's `/models` list, never hardcoded.
+- `ai_research.rs` — bounded, on-demand stock questions and comparisons over stored analysis snapshots. Keep validation before model calls, source snapshots attached to answers, and generated content separate from actions or database mutations.
 - `marketaux.rs` — optional Marketaux news client; free tier is 100 req/day.
 - `backtest.rs` — backtesting engine (`POST /api/backtest`); see `BACKTESTING.md`.
 - `metrics.rs` — Prometheus counters on a dedicated `REGISTRY` + the `/metrics` handler.

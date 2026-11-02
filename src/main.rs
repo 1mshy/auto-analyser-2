@@ -1,3 +1,4 @@
+mod ai_research;
 mod analysis;
 mod api;
 mod async_fetcher;
