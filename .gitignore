@@ -1,7 +1,10 @@
 # Environment
-.env
-**.env
-.env.docker
+# Ignore every .env variant at any depth, except the two tracked templates.
+# (The old `**.env` did not match `.env.local` / `.env.production`, and the
+# separate `.env.docker` line was inert — gitignore never applies to tracked files.)
+.env*
+!.env.example
+!.env.docker
 
 # Build artifacts
 /target/
@@ -24,5 +27,12 @@ Thumbs.db
 *.db
 *.sqlite
 
-.claude
+# Agent tooling: local state is ignored, but INDEX.md is shared project
+# knowledge that CLAUDE.md's opening line tells every contributor to read.
+.claude/*
+!.claude/INDEX.md
 .tokensave
+
+# Agent tooling caches
+.serena/
+.hallmark/

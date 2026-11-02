@@ -30,3 +30,7 @@ frontend/
 # Test files
 test_*.sh
 TEST_*.md
+
+# Agent tooling (large local caches: .claude/worktrees is ~549MB, .tokensave ~19MB)
+.claude/
+.tokensave/
